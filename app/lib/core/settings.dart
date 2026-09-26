@@ -54,10 +54,6 @@ class AppSettings extends ChangeNotifier {
   bool get autoReceive => _prefs.getBool('autoReceive') ?? true;
   set autoReceive(bool v) => _set('autoReceive', v);
 
-  /** saveToGallery：图片与视频同时存入相册（iOS） */
-  bool get saveToGallery => _prefs.getBool('saveToGallery') ?? false;
-  set saveToGallery(bool v) => _set('saveToGallery', v);
-
   /** biometric：打开 App、进入 Agent 会话或终端时验证 */
   bool get biometric => _prefs.getBool('biometric') ?? true;
   set biometric(bool v) => _set('biometric', v);
