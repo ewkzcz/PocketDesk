@@ -74,6 +74,8 @@ class EventChannel {
       // 1、连接与 hello
       final ch = factory(uri, {'Authorization': 'Bearer $token'});
       _ch = ch;
+      // 握手失败会同时出现在 ready 与 stream 上，统一由 stream 的 onError 处理
+      unawaited(ch.ready.catchError((Object _) {}));
       ch.sink.add(jsonEncode({'type': 'hello', 'cursors': cursors()}));
       _armWatchdog();
       // 2、消息
