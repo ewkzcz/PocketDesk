@@ -11,6 +11,7 @@ import '../data/chat.dart';
 import '../data/local_db.dart';
 import '../data/models.dart';
 import '../net/api.dart';
+import 'app_log.dart';
 
 /** SessionsStore：一台电脑的会话数据 */
 class SessionsStore extends ChangeNotifier {
@@ -83,7 +84,7 @@ class SessionsStore extends ChangeNotifier {
     _all = list;
     loaded = true;
     for (final s in list) {
-      unawaited(db.saveSessionCache(hostId, s));
+      unawaited(db.saveSessionCache(hostId, s).catchError(_logDb));
     }
     notifyListeners();
   }
@@ -195,7 +196,7 @@ class SessionsStore extends ChangeNotifier {
     // 3、未读
     if (viewing != e.session && _countsUnread(e)) {
       _unread[e.session] = unread(e.session) + 1;
-      unawaited(db.setUnread(hostId, e.session, _unread[e.session]!));
+      unawaited(db.setUnread(hostId, e.session, _unread[e.session]!).catchError(_logDb));
     }
     // 4、缓存
     (_pendingCache[e.session] ??= []).add(e);
@@ -203,13 +204,16 @@ class SessionsStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /** _logDb：本地缓存写入失败只记录日志，不影响界面 */
+  static void _logDb(Object e) => AppLog.w('db', '缓存写入失败：$e');
+
   /** _flushCache：批量写缓存，避免流式片段逐条写库 */
   Future<void> _flushCache() async {
     _flush = null;
     final pending = Map.of(_pendingCache);
     _pendingCache.clear();
     for (final entry in pending.entries) {
-      await db.cacheEvents(hostId, entry.key, entry.value);
+      await db.cacheEvents(hostId, entry.key, entry.value).catchError(_logDb);
     }
   }
 
