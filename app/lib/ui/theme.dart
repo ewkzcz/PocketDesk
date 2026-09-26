@@ -31,6 +31,14 @@ ThemeData buildTheme(Brightness b) {
     outlineVariant: c.divider,
   );
   final overlay = b == Brightness.dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark;
+  final base = Typography.material2021(platform: TargetPlatform.android).black.apply(bodyColor: c.text, displayColor: c.text);
+  // 控件文字都从基础文字样式派生，保证字体一致
+  TextStyle t(double size, Color color, [FontWeight? w]) => base.bodyMedium!.copyWith(fontSize: size, color: color, fontWeight: w, height: null);
+  final textTheme = base.copyWith(
+    bodyLarge: t(PdFont.body, c.text),
+    bodyMedium: t(PdFont.item, c.text),
+    bodySmall: t(PdFont.summary, c.text3),
+  );
   return ThemeData(
     useMaterial3: true,
     brightness: b,
@@ -52,20 +60,16 @@ ThemeData buildTheme(Brightness b) {
       centerTitle: true,
       toolbarHeight: PdSize.topBar,
       systemOverlayStyle: overlay,
-      titleTextStyle: TextStyle(fontSize: PdFont.title, fontWeight: FontWeight.w600, color: c.text),
+      titleTextStyle: t(PdFont.title, c.text, FontWeight.w600),
     ),
-    textTheme: Typography.material2021(platform: TargetPlatform.android).black.apply(bodyColor: c.text, displayColor: c.text).copyWith(
-          bodyLarge: TextStyle(fontSize: PdFont.body, color: c.text),
-          bodyMedium: TextStyle(fontSize: PdFont.item, color: c.text),
-          bodySmall: TextStyle(fontSize: PdFont.summary, color: c.text3),
-        ),
+    textTheme: textTheme,
     dividerTheme: DividerThemeData(color: c.divider, thickness: PdSize.divider, space: PdSize.divider),
     dialogTheme: DialogThemeData(
       backgroundColor: c.card,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(PdSize.cardRadius)),
-      titleTextStyle: TextStyle(fontSize: PdFont.title, fontWeight: FontWeight.w600, color: c.text),
-      contentTextStyle: TextStyle(fontSize: PdFont.item, color: c.text2, height: 1.5),
+      titleTextStyle: t(PdFont.title, c.text, FontWeight.w600),
+      contentTextStyle: t(PdFont.item, c.text2).copyWith(height: 1.5),
     ),
     bottomSheetTheme: BottomSheetThemeData(
       backgroundColor: c.card,
@@ -74,22 +78,24 @@ ThemeData buildTheme(Brightness b) {
       showDragHandle: false,
     ),
     popupMenuTheme: PopupMenuThemeData(
+      elevation: 4,
+      shadowColor: Colors.black26,
       color: b == Brightness.dark ? const Color(0xFF2C2C2C) : const Color(0xFF4C4C4C),
       surfaceTintColor: Colors.transparent,
-      textStyle: const TextStyle(fontSize: PdFont.item, color: Colors.white),
+      textStyle: t(PdFont.item, Colors.white),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(PdSize.smallRadius)),
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
       backgroundColor: b == Brightness.dark ? const Color(0xFF2C2C2C) : const Color(0xE6333333),
-      contentTextStyle: const TextStyle(fontSize: 14, color: Colors.white),
+      contentTextStyle: t(14, Colors.white),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(PdSize.smallRadius)),
     ),
     inputDecorationTheme: InputDecorationTheme(
       isDense: true,
       filled: true,
       fillColor: c.card,
-      hintStyle: TextStyle(color: c.text4, fontSize: PdFont.item),
+      hintStyle: t(PdFont.item, c.text4),
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(PdSize.smallRadius), borderSide: BorderSide.none),
     ),
@@ -106,10 +112,11 @@ ThemeData buildTheme(Brightness b) {
         foregroundColor: Colors.white,
         minimumSize: const Size(0, PdSize.touch),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(PdSize.smallRadius)),
-        textStyle: const TextStyle(fontSize: PdFont.item, fontWeight: FontWeight.w500),
+        textStyle: t(PdFont.item, Colors.white, FontWeight.w500),
       ),
     ),
-    textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(foregroundColor: c.accent, textStyle: const TextStyle(fontSize: PdFont.item))),
+    textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(foregroundColor: c.accent, textStyle: t(PdFont.item, c.accent))),
+    outlinedButtonTheme: OutlinedButtonThemeData(style: OutlinedButton.styleFrom(textStyle: t(PdFont.item, c.text2))),
     pageTransitionsTheme: const PageTransitionsTheme(builders: {
       TargetPlatform.android: CupertinoPageTransitionsBuilder(),
       TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
