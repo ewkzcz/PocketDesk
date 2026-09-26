@@ -592,6 +592,18 @@ func sessionFlow(t *testing.T, e *env) {
 	if !replayed {
 		t.Fatal("补发缺少断线期间的回复")
 	}
+	// 落后超过上限时不补发，手机改为按需拉取最近一段
+	for i := 0; i < 1100; i++ {
+		if _, err := e.a.Store.AppendEvent(context.Background(), sess.ID, "system", map[string]string{"text": "x"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c3 := e.dial("/ws")
+	defer c3.Close()
+	c3.WriteJSON(map[string]any{"type": "hello", "cursors": map[string]int64{sess.ID: lastSeen}})
+	if got = readUntil(t, c3, func(m wsMsg) bool { return m.Type == "ready" }); len(got) != 1 {
+		t.Fatalf("落后太多时不应补发，实际补发 %d 条", len(got)-1)
+	}
 	if res, _ := e.do("POST", "/api/approvals/"+ap.ID, map[string]string{"action": "deny"}, nil); res.StatusCode != 409 {
 		t.Fatal("重复审批应返回 409")
 	}

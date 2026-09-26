@@ -137,8 +137,22 @@ func (s *Server) eventSocket(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-/** replay：补发某会话 after 之后的全部事件，返回最后序号 */
+/** maxReplay：连接时每个会话最多补发的事件数，落后更多时手机改为按需拉取最近一段 */
+const maxReplay = 1000
+
+/**
+ * replay：补发某会话 after 之后的事件，返回最后序号
+ *
+ * 处理流程：
+ * 1、落后超过 maxReplay 条时不补发，手机打开会话时只拉取最近一段
+ * 2、否则分页补发全部缺失事件
+ */
 func (s *Server) replay(ctx context.Context, conn *wsConn, sid string, after int64) (int64, error) {
+	// 1、落后太多
+	if sess, err := s.Store.Session(ctx, sid); err == nil && sess.LastSeq-after > maxReplay {
+		return sess.LastSeq, nil
+	}
+	// 2、分页补发
 	last := after
 	for {
 		evs, err := s.Store.EventsAfter(ctx, sid, last, 500)
