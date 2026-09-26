@@ -142,5 +142,13 @@ void main() {
     expect(await db.hiddenSessions('h'), {'b'});
     store.onEvent(PdEvent.fromJson({'type': 'session.created', 'data': {'id': 'd', 'kind': 'pi', 'title': '新', 'updatedAt': 99}}));
     expect(store.sessions[1].id, 'd');
+    // 过程中的流式片段不会让它重新出现，完成的回复会
+    store.onEvent(PdEvent.fromJson(ev('b', 1, 'msg.delta', {'id': 'm', 'text': '…'})));
+    expect(store.sessions.map((s) => s.id), isNot(contains('b')));
+    store.onEvent(PdEvent.fromJson(ev('b', 2, 'msg.done', {'id': 'm', 'text': '好了'})));
+    expect(store.sessions.map((s) => s.id), contains('b'));
+    expect(store.unread('b'), 1);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(await db.hiddenSessions('h'), isEmpty);
   });
 }

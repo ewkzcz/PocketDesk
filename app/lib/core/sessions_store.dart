@@ -170,7 +170,7 @@ class SessionsStore extends ChangeNotifier with SafeNotifier {
    * 处理流程：
    * 1、全局事件：会话新建、更新、终端摘要变化
    * 2、会话事件：合并进已打开的聊天记录，更新列表摘要与状态
-   * 3、不在该会话界面时累加未读
+   * 3、不在该会话界面时累加未读，删除过的会话收到新消息时重新显示
    * 4、批量写入缓存
    */
   void onEvent(PdEvent e) {
@@ -194,7 +194,10 @@ class SessionsStore extends ChangeNotifier with SafeNotifier {
     final known = byId(e.session) != null;
     _patch(e.session, (s) => _summarize(s, e));
     if (!known) unawaited(refresh().catchError((Object _) {}));
-    // 3、未读
+    // 3、未读；手机上删除过的会话收到新消息时重新出现
+    if (_countsUnread(e) && _hidden.remove(e.session)) {
+      unawaited(db.unhideSession(hostId, e.session).catchError(_logDb));
+    }
     if (viewing != e.session && _countsUnread(e)) {
       _unread[e.session] = unread(e.session) + 1;
       unawaited(db.setUnread(hostId, e.session, _unread[e.session]!).catchError(_logDb));

@@ -159,6 +159,10 @@ class LocalDb {
     await db.delete('session_cache', where: 'host_id=? AND session_id=?', whereArgs: [hostId, sessionId]);
   }
 
+  /** unhideSession：删除过的会话有新消息时重新显示 */
+  Future<void> unhideSession(String hostId, String sessionId) =>
+      db.delete('hidden_sessions', where: 'host_id=? AND session_id=?', whereArgs: [hostId, sessionId]);
+
   /** hiddenSessions：已在手机上删除的会话 */
   Future<Set<String>> hiddenSessions(String hostId) async {
     final rows = await db.query('hidden_sessions', where: 'host_id=?', whereArgs: [hostId]);
