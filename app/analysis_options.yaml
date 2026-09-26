@@ -1,0 +1,20 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+  language:
+    strict-casts: true
+    strict-raw-types: true
+
+linter:
+  rules:
+    # 注释规范统一使用 /** */ 文档块
+    slash_for_doc_comments: false
+    prefer_single_quotes: true
+    always_declare_return_types: true
+    avoid_print: true
+    unawaited_futures: true
+    prefer_final_locals: true

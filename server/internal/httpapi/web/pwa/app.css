@@ -1,0 +1,129 @@
+/* 手机浏览器应急网页：与 App 相同的类微信配色，颜色与尺寸全部来自变量 */
+:root {
+  --pd-accent: #07C160;
+  --pd-danger: #FA5151;
+  --pd-bg: #EDEDED;
+  --pd-bar: #F7F7F7;
+  --pd-surface: #FFFFFF;
+  --pd-input: #DEDEDE;
+  --pd-divider: #E5E5E5;
+  --pd-text: #000000;
+  --pd-text-2: #5C5C5C;
+  --pd-text-3: #888888;
+  --pd-text-4: #B2B2B2;
+  --pd-bubble-mine: #95EC69;
+  --pd-bubble-mine-text: #000000;
+  --pd-bubble-agent: #FFFFFF;
+  --pd-tool: #F5F5F5;
+  --pd-warn-bg: #FFF7E6;
+  --pd-warn-border: #F5C15D;
+  --pd-warn-text: #B4690E;
+  --pd-mono: "SF Mono", Menlo, Consolas, monospace;
+  --pd-bar-h: 44px;
+  --pd-tab-h: 50px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --pd-bg: #111111;
+    --pd-bar: #191919;
+    --pd-surface: #191919;
+    --pd-input: #2C2C2C;
+    --pd-divider: #2A2A2A;
+    --pd-text: #D5D5D5;
+    --pd-text-2: #A8A8A8;
+    --pd-text-3: #7F7F7F;
+    --pd-text-4: #5E5E5E;
+    --pd-bubble-mine: #3EB575;
+    --pd-bubble-mine-text: #000000;
+    --pd-bubble-agent: #2C2C2C;
+    --pd-tool: #232323;
+    --pd-warn-bg: #2E2410;
+    --pd-warn-border: #6E5520;
+    --pd-warn-text: #E8C27A;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--pd-bg); color: var(--pd-text); font: 16px/1.4 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", Roboto, sans-serif; overscroll-behavior: none; }
+button, input, textarea { font: inherit; color: inherit; }
+.pd-icon { flex-shrink: 0; display: block; }
+.pd-app { height: 100%; display: flex; flex-direction: column; max-width: 720px; margin: 0 auto; background: var(--pd-bg); }
+
+/* 顶栏 */
+.pd-bar { height: calc(var(--pd-bar-h) + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); flex-shrink: 0; background: var(--pd-bar); border-bottom: .5px solid var(--pd-divider); display: flex; align-items: center; position: relative; }
+.pd-bar-title { position: absolute; left: 56px; right: 56px; text-align: center; font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pd-bar-title small { display: block; font-size: 11px; font-weight: 400; color: var(--pd-text-3); }
+.pd-bar-btn { width: 44px; height: 44px; border: 0; background: none; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.pd-bar-right { margin-left: auto; }
+
+/* 列表 */
+.pd-scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.pd-row { position: relative; display: flex; align-items: center; gap: 12px; height: 72px; padding: 0 16px; background: var(--pd-surface); width: 100%; border: 0; text-align: left; cursor: pointer; }
+.pd-row:active { background: var(--pd-input); }
+.pd-row + .pd-row::before { content: ""; position: absolute; left: 76px; right: 0; top: 0; height: .5px; background: var(--pd-divider); }
+.pd-avatar { width: 48px; height: 48px; border-radius: 6px; color: #fff; font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.pd-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.pd-row-title { font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pd-row-sub { font-size: 13px; color: var(--pd-text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pd-row-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+.pd-time { font-size: 12px; color: var(--pd-text-4); }
+.pd-badge { background: var(--pd-danger); color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 8px; }
+.pd-spin { animation: pd-spin 1s linear infinite; color: var(--pd-accent); }
+@keyframes pd-spin { to { transform: rotate(360deg); } }
+.pd-empty { padding: 48px 24px; text-align: center; color: var(--pd-text-3); }
+
+/* 聊天 */
+.pd-chat { flex: 1; overflow-y: auto; padding: 14px 12px; display: flex; flex-direction: column; gap: 12px; }
+.pd-sys { text-align: center; font-size: 12px; color: var(--pd-text-3); }
+.pd-sys.err { color: var(--pd-danger); }
+.pd-line { display: flex; gap: 8px; align-items: flex-start; }
+.pd-line.mine { justify-content: flex-end; }
+.pd-line .pd-avatar { width: 36px; height: 36px; font-size: 12px; }
+.pd-stack { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; max-width: 70%; min-width: 0; }
+.pd-bubble { padding: 10px 12px; font-size: 16px; line-height: 1.5; border-radius: 4px; white-space: pre-wrap; word-break: break-word; position: relative; max-width: 100%; }
+.pd-bubble.agent { background: var(--pd-bubble-agent); }
+.pd-bubble.mine { background: var(--pd-bubble-mine); color: var(--pd-bubble-mine-text); max-width: 70%; }
+.pd-bubble.agent::before { content: ""; position: absolute; left: -5px; top: 12px; border: 5px solid transparent; border-left: 0; border-right-color: var(--pd-bubble-agent); }
+.pd-bubble.mine::after { content: ""; position: absolute; right: -5px; top: 12px; border: 5px solid transparent; border-right: 0; border-left-color: var(--pd-bubble-mine); }
+.pd-queued { font-size: 11px; color: var(--pd-text-3); align-self: center; }
+.pd-tool { background: var(--pd-tool); border-radius: 10px; padding: 10px 12px; font-size: 13px; color: var(--pd-text-2); display: flex; align-items: center; gap: 8px; max-width: 100%; border: 0; text-align: left; cursor: pointer; }
+.pd-tool code { font: 12px/1.4 var(--pd-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.pd-tool-out { font: 12px/1.5 var(--pd-mono); background: var(--pd-tool); border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; word-break: break-all; max-height: 240px; overflow: auto; max-width: 100%; }
+.pd-card { background: var(--pd-surface); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; width: 260px; max-width: 100%; }
+.pd-card-title { font-size: 13px; font-weight: 600; }
+.pd-diffrow { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.pd-diffrow code { font-family: var(--pd-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pd-add { color: var(--pd-accent); }
+.pd-del { color: var(--pd-danger); }
+.pd-approve { background: var(--pd-warn-bg); border: 1px solid var(--pd-warn-border); }
+.pd-approve .pd-card-title { color: var(--pd-warn-text); display: flex; align-items: center; gap: 6px; }
+.pd-approve pre { margin: 0; background: var(--pd-surface); border-radius: 6px; padding: 8px; font: 12px/1.4 var(--pd-mono); white-space: pre-wrap; word-break: break-all; }
+.pd-approve-btns { display: flex; gap: 8px; }
+.pd-btn { flex: 1; min-height: 36px; border-radius: 6px; border: 1px solid var(--pd-divider); background: var(--pd-surface); color: var(--pd-text-2); cursor: pointer; font-size: 14px; }
+.pd-btn-primary { background: var(--pd-accent); border-color: var(--pd-accent); color: #fff; }
+.pd-always { text-align: center; font-size: 12px; color: var(--pd-text-3); background: none; border: 0; cursor: pointer; padding: 4px; }
+.pd-decided { font-size: 12px; color: var(--pd-text-3); }
+.pd-file { display: flex; align-items: center; gap: 10px; background: var(--pd-surface); border-radius: 8px; padding: 10px 12px; min-width: 200px; max-width: 100%; }
+.pd-file-name { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pd-file-sub { font-size: 12px; color: var(--pd-text-3); }
+
+/* 输入栏 */
+.pd-inputbar { flex-shrink: 0; background: var(--pd-bar); border-top: .5px solid var(--pd-divider); padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); display: flex; align-items: flex-end; gap: 10px; }
+.pd-inputbar textarea { flex: 1; min-height: 36px; max-height: 120px; resize: none; border: 0; border-radius: 8px; padding: 8px 12px; background: var(--pd-surface); outline: none; font-size: 16px; line-height: 20px; }
+.pd-round { width: 36px; height: 36px; border-radius: 50%; border: 0; background: none; color: var(--pd-text-2); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
+.pd-send { height: 36px; padding: 0 14px; border-radius: 6px; border: 0; background: var(--pd-accent); color: #fff; font-size: 14px; cursor: pointer; flex-shrink: 0; }
+.pd-send:disabled { opacity: .5; }
+
+/* 配对页 */
+.pd-login { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; text-align: center; }
+.pd-login .pd-logo { width: 64px; height: 64px; border-radius: 16px; background: var(--pd-accent); color: #fff; display: flex; align-items: center; justify-content: center; }
+.pd-login input { width: 100%; max-width: 280px; height: 48px; border-radius: 8px; border: 1px solid var(--pd-divider); background: var(--pd-surface); text-align: center; font: 600 20px var(--pd-mono); letter-spacing: 3px; text-transform: uppercase; outline: none; }
+.pd-login input:focus { border-color: var(--pd-accent); }
+.pd-login .pd-send { width: 100%; max-width: 280px; height: 44px; font-size: 16px; }
+.pd-hint { font-size: 13px; color: var(--pd-text-3); max-width: 280px; line-height: 1.6; }
+
+.pd-toast { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); background: rgba(0,0,0,.78); color: #fff; padding: 10px 16px; border-radius: 8px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .15s ease-out; max-width: calc(100% - 48px); text-align: center; z-index: 10; }
+.pd-toast.show { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .pd-spin { animation: none; } .pd-toast { transition: none; } }

@@ -1,0 +1,10 @@
+{
+  "name": "PocketDesk",
+  "short_name": "PocketDesk",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#EDEDED",
+  "theme_color": "#07C160",
+  "icons": [{ "src": "/pwa/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
