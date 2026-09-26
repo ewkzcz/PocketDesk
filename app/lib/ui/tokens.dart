@@ -37,6 +37,8 @@ class PdColors extends ThemeExtension<PdColors> {
     required this.info,
     required this.neutral,
     required this.field,
+    required this.menu,
+    required this.toast,
   });
 
   final Color accent;
@@ -74,6 +76,12 @@ class PdColors extends ThemeExtension<PdColors> {
   /** 输入栏中的输入框底色 */
   final Color field;
 
+  /** 深色弹出菜单底色 */
+  final Color menu;
+
+  /** 轻提示底色 */
+  final Color toast;
+
   /** 浅色：页面 #EDEDED、卡片 #FFFFFF、我方气泡 #95EC69 */
   static const light = PdColors(
     accent: Color(0xFF07C160),
@@ -104,6 +112,8 @@ class PdColors extends ThemeExtension<PdColors> {
     info: Color(0xFF3B6FE0),
     neutral: Color(0xFF8C8C8C),
     field: Color(0xFFFFFFFF),
+    menu: Color(0xFF4C4C4C),
+    toast: Color(0xE6333333),
   );
 
   /** 深色：页面 #111111、卡片 #191919、我方气泡 #3EB575 */
@@ -136,6 +146,8 @@ class PdColors extends ThemeExtension<PdColors> {
     info: Color(0xFF4E7FE8),
     neutral: Color(0xFF5E5E5E),
     field: Color(0xFF2C2C2C),
+    menu: Color(0xFF2C2C2C),
+    toast: Color(0xFF2C2C2C),
   );
 
   @override
@@ -174,6 +186,8 @@ class PdColors extends ThemeExtension<PdColors> {
       info: l(info, other.info),
       neutral: l(neutral, other.neutral),
       field: l(field, other.field),
+      menu: l(menu, other.menu),
+      toast: l(toast, other.toast),
     );
   }
 }
@@ -239,4 +253,28 @@ abstract final class PdFileColors {
   static const Color archive = Color(0xFF8B5CF6);
   static const Color image = Color(0xFFF08A3C);
   static const Color media = Color(0xFFE0569B);
+}
+
+/** PdAgentColors：各类会话头像底色（浅色深色通用） */
+abstract final class PdAgentColors {
+  static const Color claude = Color(0xFFD97757);
+  static const Color codex = Color(0xFF10A37F);
+  static const Color pi = Color(0xFF6B5BFF);
+  static const Color dsh = Color(0xFF4D6BFE);
+  static const Color terminal = Color(0xFF333333);
+  static const Color assistant = Color(0xFF07C160);
+  static const Color other = Color(0xFF8C8C8C);
+}
+
+/** PdDarkUi：始终为深色的界面（扫码、看图、终端顶栏）使用的固定配色 */
+abstract final class PdDarkUi {
+  static const Color background = Color(0xFF0B0B0B);
+  static const Color text = Color(0xFFD8D8D8);
+  static const Color muted = Color(0xFFB2B2B2);
+  static const Color subtle = Color(0xFF999999);
+  static const Color warn = Color(0xFFF2C94C);
+  static const Color onLight = Color(0xFF1A1A1A);
+  static const Color overlayText = Color(0xB3FFFFFF);
+  static const Color overlaySpinner = Color(0x8AFFFFFF);
+  static const Color shadow = Color(0x1F000000);
 }

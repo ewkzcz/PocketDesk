@@ -105,7 +105,7 @@ class _PairPageState extends State<PairPage> with SingleTickerProviderStateMixin
   Widget build(BuildContext context) {
     const box = 240.0;
     return Scaffold(
-      backgroundColor: const Color(0xFF0B0B0B),
+      backgroundColor: PdDarkUi.background,
       body: Stack(children: [
         Positioned.fill(
           child: MobileScanner(
@@ -115,7 +115,7 @@ class _PairPageState extends State<PairPage> with SingleTickerProviderStateMixin
               child: Padding(
                 padding: const EdgeInsets.all(40),
                 child: Text('无法使用相机，请在系统设置中允许 PocketDesk 使用相机，或改用手动输入配对码',
-                    textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFFD8D8D8), fontSize: 14, height: 1.6)),
+                    textAlign: TextAlign.center, style: const TextStyle(color: PdDarkUi.text, fontSize: 14, height: 1.6)),
               ),
             ),
           ),
@@ -145,14 +145,14 @@ class _PairPageState extends State<PairPage> with SingleTickerProviderStateMixin
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: Text(_hint.isNotEmpty ? _hint : '将取景框对准电脑「配对新手机」\n页面上显示的二维码',
-                  textAlign: TextAlign.center, style: TextStyle(color: _hint.isNotEmpty ? const Color(0xFFF2C94C) : const Color(0xFFD8D8D8), fontSize: 14, height: 1.6)),
+                  textAlign: TextAlign.center, style: TextStyle(color: _hint.isNotEmpty ? PdDarkUi.warn : PdDarkUi.text, fontSize: 14, height: 1.6)),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(0, 20, 0, 32),
               child: Column(children: [
                 TextButton.icon(
                   onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ManualPairPage())),
-                  style: TextButton.styleFrom(foregroundColor: const Color(0xFFB2B2B2)),
+                  style: TextButton.styleFrom(foregroundColor: PdDarkUi.muted),
                   icon: const Icon(LucideIcons.keyboard300, size: 18),
                   label: const Text('手动输入配对码', style: TextStyle(fontSize: 14)),
                 ),
@@ -166,7 +166,7 @@ class _PairPageState extends State<PairPage> with SingleTickerProviderStateMixin
                       width: 44,
                       height: 44,
                       decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                      child: const Icon(LucideIcons.flashlight300, size: 22, color: Color(0xFF1A1A1A)),
+                      child: const Icon(LucideIcons.flashlight300, size: 22, color: PdDarkUi.onLight),
                     ),
                   ),
                 ),

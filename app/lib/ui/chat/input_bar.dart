@@ -254,7 +254,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
               const SizedBox(height: 8),
               Text(_heard.isEmpty ? '正在听…' : _heard, textAlign: TextAlign.center, maxLines: 4, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 14)),
               const SizedBox(height: 6),
-              Text(_cancelZone ? '松开手指，取消' : '上滑取消', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              Text(_cancelZone ? '松开手指，取消' : '上滑取消', style: const TextStyle(color: PdDarkUi.overlayText, fontSize: 12)),
             ]),
           ),
         ),

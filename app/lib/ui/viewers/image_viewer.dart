@@ -13,6 +13,7 @@ import '../../core/app_state.dart';
 import '../../data/models.dart';
 import '../../net/api.dart';
 import '../share.dart';
+import '../tokens.dart';
 import '../widgets.dart';
 import 'fetch.dart';
 
@@ -81,9 +82,9 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
           future: _file(i),
           builder: (context, snap) {
             if (snap.hasError) {
-              return Center(child: Text(snap.error is ApiException ? (snap.error! as ApiException).message : '图片加载失败', style: const TextStyle(color: Colors.white70)));
+              return Center(child: Text(snap.error is ApiException ? (snap.error! as ApiException).message : '图片加载失败', style: const TextStyle(color: PdDarkUi.overlayText)));
             }
-            if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: Colors.white54, strokeWidth: 2));
+            if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: PdDarkUi.overlaySpinner, strokeWidth: 2));
             return InteractiveViewer(
               minScale: 1,
               maxScale: 6,
@@ -91,7 +92,7 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
                 child: Image.file(
                   snap.data!,
                   fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) => const Text('无法显示这张图片', style: TextStyle(color: Colors.white70)),
+                  errorBuilder: (_, _, _) => const Text('无法显示这张图片', style: TextStyle(color: PdDarkUi.overlayText)),
                 ),
               ),
             );

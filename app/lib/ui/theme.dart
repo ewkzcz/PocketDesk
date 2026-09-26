@@ -79,15 +79,15 @@ ThemeData buildTheme(Brightness b) {
     ),
     popupMenuTheme: PopupMenuThemeData(
       elevation: 4,
-      shadowColor: Colors.black26,
-      color: b == Brightness.dark ? const Color(0xFF2C2C2C) : const Color(0xFF4C4C4C),
+      shadowColor: PdDarkUi.shadow,
+      color: c.menu,
       surfaceTintColor: Colors.transparent,
       textStyle: t(PdFont.item, Colors.white),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(PdSize.smallRadius)),
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
-      backgroundColor: b == Brightness.dark ? const Color(0xFF2C2C2C) : const Color(0xE6333333),
+      backgroundColor: c.toast,
       contentTextStyle: t(14, Colors.white),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(PdSize.smallRadius)),
     ),

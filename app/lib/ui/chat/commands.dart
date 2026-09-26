@@ -60,7 +60,7 @@ class CommandPopup extends StatelessWidget {
       decoration: BoxDecoration(
         color: c.card,
         borderRadius: BorderRadius.circular(PdSize.smallRadius),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 12, offset: const Offset(0, -2))],
+        boxShadow: [BoxShadow(color: PdDarkUi.shadow, blurRadius: 12, offset: const Offset(0, -2))],
       ),
       child: ListView.separated(
         shrinkWrap: true,

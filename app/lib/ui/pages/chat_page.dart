@@ -722,7 +722,7 @@ class _ChatPageState extends State<ChatPage> {
                         decoration: BoxDecoration(
                           color: c.card,
                           borderRadius: BorderRadius.circular(16),
-                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 8)],
+                          boxShadow: [BoxShadow(color: PdDarkUi.shadow, blurRadius: 8)],
                         ),
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
                           Icon(LucideIcons.arrowDown300, size: 14, color: c.accent),

@@ -47,7 +47,7 @@ class PdBar extends StatelessWidget implements PreferredSizeWidget {
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                   Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: subtitle.isEmpty ? PdFont.title : PdFont.listTitle, fontWeight: FontWeight.w600, color: fg)),
                   if (subtitle.isNotEmpty)
-                    Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.tiny, color: dark ? const Color(0xFF999999) : c.text3)),
+                    Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.tiny, color: dark ? PdDarkUi.subtle : c.text3)),
                 ]),
               ),
             ),
