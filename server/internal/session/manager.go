@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ewkzcz/pocketdesk/server/internal/idem"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -69,6 +70,9 @@ type Manager struct {
 	interruptGrace  time.Duration
 	now             func() time.Time
 	closed          atomic.Bool
+
+	/** 最近处理过的消息编号，忽略网络重试造成的重复发送 */
+	recent *idem.Recent
 }
 
 /** runtime：一个会话的运行时 */
@@ -107,7 +111,7 @@ func New(d Deps) *Manager {
 	if d.Notifier == nil {
 		d.Notifier = func() notify.Notifier { return notify.Nop{} }
 	}
-	return &Manager{d: d, rts: map[string]*runtime{}, pend: map[string]*pending{}, approvalTimeout: 10 * time.Minute, interruptGrace: 10 * time.Second, now: time.Now}
+	return &Manager{d: d, rts: map[string]*runtime{}, pend: map[string]*pending{}, approvalTimeout: 10 * time.Minute, interruptGrace: 10 * time.Second, now: time.Now, recent: idem.New(2000, 30*time.Minute)}
 }
 
 /** SetTimeouts：调整审批超时与打断宽限，仅供测试 */
@@ -222,7 +226,7 @@ func (m *Manager) runtime(ctx context.Context, id string) (*runtime, error) {
  * Send：发送消息
  *
  * 处理流程：
- * 1、校验开关，首条消息时用内容生成标题
+ * 1、校验开关，重发的同一条消息直接返回，首条消息时用内容生成标题
  * 2、执行中：支持插话且要求插话时立即送达，否则排队
  * 3、空闲：记录用户消息并开始新一轮
  */
@@ -240,6 +244,10 @@ func (m *Manager) Send(ctx context.Context, id string, in Input) error {
 	}
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
+	// 同一条消息因网络超时被重发时直接视为成功
+	if in.ClientID != "" && m.recent.Has(id+"\x00"+in.ClientID) {
+		return nil
+	}
 	if in.Delegate == rt.sess.Kind {
 		in.Delegate = ""
 	}
@@ -275,6 +283,7 @@ func (m *Manager) Send(ctx context.Context, id string, in Input) error {
 
 /** emitUser：记录用户消息事件 */
 func (m *Manager) emitUser(ctx context.Context, rt *runtime, in Input, queued bool) {
+	m.recent.Add(rt.id + "\x00" + in.ClientID)
 	m.emit(ctx, rt.id, "msg.user", map[string]any{"text": in.Text, "attachments": in.Attachments, "queued": queued, "mode": in.Mode, "delegate": in.Delegate, "clientId": in.ClientID})
 }
 

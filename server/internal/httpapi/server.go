@@ -5,6 +5,7 @@ package httpapi
 
 import (
 	"context"
+	"github.com/ewkzcz/pocketdesk/server/internal/idem"
 	"net/http"
 	"runtime"
 	"sync"
@@ -27,6 +28,10 @@ import (
 
 /** Server：接口层依赖 */
 type Server struct {
+	/** 文件传输助手最近处理过的消息编号，textMu 保证同一编号只处理一次 */
+	recentText idem.Recent
+	textMu     sync.Mutex
+
 	Cfg      *config.Store
 	Store    *store.Store
 	Identity *security.Identity
