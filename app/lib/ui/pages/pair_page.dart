@@ -277,6 +277,7 @@ class _ManualPairPageState extends State<ManualPairPage> {
                 textCapitalization: TextCapitalization.characters,
                 maxLength: 9,
                 autocorrect: false,
+                inputFormatters: [TextInputFormatter.withFunction((_, v) => v.copyWith(text: v.text.toUpperCase()))],
                 enableSuggestions: false,
                 style: TextStyle(fontSize: 22, letterSpacing: 4, color: c.text, fontFamily: PdFont.mono, fontFamilyFallback: PdFont.monoFallback),
                 textAlign: TextAlign.center,
