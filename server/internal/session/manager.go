@@ -759,7 +759,7 @@ func (m *Manager) emit(ctx context.Context, id, typ string, data map[string]any)
 	}
 	// 3、广播
 	if m.d.Hub != nil {
-		m.d.Hub.Publish(hub.Message{Session: id, Seq: e.Seq, Type: e.Type, Data: e.Data})
+		m.d.Hub.Publish(hub.Message{Session: id, Seq: e.Seq, Type: e.Type, Data: e.Data, CreatedAt: e.CreatedAt})
 	}
 }
 

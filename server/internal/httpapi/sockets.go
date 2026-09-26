@@ -149,7 +149,7 @@ func (s *Server) replay(ctx context.Context, conn *wsConn, sid string, after int
 			return last, err
 		}
 		for _, e := range evs {
-			if err := conn.writeJSON(hub.Message{Session: e.Session, Seq: e.Seq, Type: e.Type, Data: e.Data}); err != nil {
+			if err := conn.writeJSON(hub.Message{Session: e.Session, Seq: e.Seq, Type: e.Type, Data: e.Data, CreatedAt: e.CreatedAt}); err != nil {
 				return last, err
 			}
 			last = e.Seq

@@ -10,10 +10,11 @@ import (
 
 /** Message：推送给手机的一条消息 */
 type Message struct {
-	Session string          `json:"session,omitempty"`
-	Seq     int64           `json:"seq,omitempty"`
-	Type    string          `json:"type"`
-	Data    json.RawMessage `json:"data"`
+	Session   string          `json:"session,omitempty"`
+	Seq       int64           `json:"seq,omitempty"`
+	Type      string          `json:"type"`
+	Data      json.RawMessage `json:"data"`
+	CreatedAt int64           `json:"createdAt,omitempty"`
 }
 
 /** Sub：一个订阅者 */

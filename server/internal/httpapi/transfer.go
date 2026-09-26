@@ -81,7 +81,7 @@ func (s *Server) emit(ctx context.Context, sid, typ string, data map[string]any,
 	if preview != "" {
 		s.Store.UpdateSession(ctx, sid, store.SessionPatch{Preview: &preview})
 	}
-	s.Hub.Publish(hub.Message{Session: sid, Seq: e.Seq, Type: e.Type, Data: e.Data})
+	s.Hub.Publish(hub.Message{Session: sid, Seq: e.Seq, Type: e.Type, Data: e.Data, CreatedAt: e.CreatedAt})
 }
 
 /** filePreview：文件消息的列表摘要 */
