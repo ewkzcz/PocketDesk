@@ -129,8 +129,12 @@ class PdCell extends StatelessWidget {
                   if (subtitle.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text(subtitle, style: TextStyle(fontSize: PdFont.time, color: c.text3))),
                 ]),
               ),
+              // 右侧说明靠右，最多占一半宽度，过长省略
               if (value.isNotEmpty)
-                Flexible(child: Padding(padding: const EdgeInsets.only(left: 8), child: Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.summary, color: c.text3)))),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.5),
+                  child: Padding(padding: const EdgeInsets.only(left: 8), child: Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.right, style: TextStyle(fontSize: PdFont.summary, color: c.text3))),
+                ),
               ?trailing,
               if (trailing == null && arrow && onTap != null) Padding(padding: const EdgeInsets.only(left: 4), child: Icon(LucideIcons.chevronRight300, size: 18, color: c.text4)),
             ]),
@@ -388,11 +392,16 @@ class SearchField extends StatelessWidget {
           onTap: onTap,
           onChanged: onChanged,
           onSubmitted: onSubmitted,
+          // 撑满 36 高的灰底，文字垂直居中
+          expands: true,
+          maxLines: null,
+          textAlignVertical: TextAlignVertical.center,
           textInputAction: TextInputAction.search,
           style: TextStyle(fontSize: 14, color: c.text),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: TextStyle(fontSize: 14, color: c.text3),
+            hintMaxLines: 1,
+            hintStyle: TextStyle(fontSize: 14, color: c.text3, overflow: TextOverflow.ellipsis),
             fillColor: c.input,
             contentPadding: EdgeInsets.zero,
             prefixIcon: Icon(LucideIcons.search300, size: 16, color: c.text3),
