@@ -19,6 +19,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 )
 
@@ -75,6 +76,21 @@ func Fingerprint(der []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+/** dnsLabel：合法的 DNS 名称（字母、数字、连字符与点） */
+var dnsLabel = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$`)
+
+/**
+ * dnsNames：证书中的 DNS 名称
+ * 电脑名含中文或空格时不能写入证书（否则生成失败），手机按指纹固定证书、用 IP 连接，不依赖这里的名称
+ */
+func dnsNames(hostName string) []string {
+	names := []string{"localhost"}
+	if hostName != "localhost" && len(hostName) <= 253 && dnsLabel.MatchString(hostName) {
+		names = append(names, hostName)
+	}
+	return names
+}
+
 /** generate：生成 PEM 格式的自签名证书与私钥 */
 func generate(hostName string) ([]byte, []byte, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -93,7 +109,7 @@ func generate(hostName string) ([]byte, []byte, error) {
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
-		DNSNames:              []string{"localhost", hostName},
+		DNSNames:              dnsNames(hostName),
 		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")},
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tpl, tpl, &key.PublicKey, key)

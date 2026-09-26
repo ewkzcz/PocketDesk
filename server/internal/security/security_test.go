@@ -28,6 +28,25 @@ func TestIdentityPersistsFingerprint(t *testing.T) {
 	}
 }
 
+func TestIdentityNonASCIIHostName(t *testing.T) {
+	// 中文电脑名不能写入证书的 DNS 名称，但证书必须能正常生成
+	for _, name := range []string{"张三的电脑", "My PC", "desk-01.local"} {
+		id, err := LoadOrCreateIdentity(t.TempDir(), name)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if len(id.Fingerprint) != 64 {
+			t.Fatalf("%s: 指纹异常", name)
+		}
+	}
+	if got := dnsNames("张三的电脑"); len(got) != 1 || got[0] != "localhost" {
+		t.Fatalf("中文名不应写入 DNS 名称: %v", got)
+	}
+	if got := dnsNames("desk-01.local"); len(got) != 2 {
+		t.Fatalf("合法主机名应保留: %v", got)
+	}
+}
+
 func TestIdentityBrokenFile(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "host.crt"), []byte("x"), 0o600)
