@@ -265,6 +265,10 @@ func (p *claudeParser) streamEvent(raw json.RawMessage) []Event {
 			p.streamed[id] = true
 			return []Event{ev(EvDelta, "id", id, "text", e.Delta.Text)}
 		case "thinking_delta":
+			// 思考内容被隐藏时增量为空，不产生空白的思考块
+			if e.Delta.Thinking == "" {
+				return nil
+			}
 			p.streamed[id] = true
 			return []Event{ev(EvThinking, "id", id, "text", e.Delta.Thinking, "delta", true)}
 		}
@@ -288,10 +292,12 @@ func (p *claudeParser) assistant(raw json.RawMessage) []Event {
 		case "text":
 			out = append(out, ev(EvDone, "id", id, "text", b.Text))
 		case "thinking":
-			if !p.streamed[id] {
+			if !p.streamed[id] && b.Thinking != "" {
 				out = append(out, ev(EvThinking, "id", id, "text", b.Thinking))
 			}
-			out = append(out, ev(EvThinking, "id", id, "done", true))
+			if p.streamed[id] || b.Thinking != "" {
+				out = append(out, ev(EvThinking, "id", id, "done", true))
+			}
 		case "tool_use":
 			out = append(out, ev(EvToolStart, "id", b.ID, "name", b.Name, "kind", toolKind(b.Name), "summary", toolSummary(b.Name, b.Input), "input", b.Input))
 			if writeTools[b.Name] {

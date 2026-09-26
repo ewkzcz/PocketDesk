@@ -51,7 +51,7 @@ func startLineProc(argv []string, cwd string, env []string, onLine func(*linePro
 	}
 	cmd := exec.Command(path, argv[1:]...)
 	cmd.Dir = cwd
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = append(childEnv(), env...)
 	setProcAttr(cmd)
 	// 2、管道
 	p := &lineProc{cmd: cmd, events: make(chan Event, 256), done: make(chan struct{}), stderr: &tailBuffer{max: 8192}}
@@ -99,6 +99,19 @@ func startLineProc(argv []string, cwd string, env []string, onLine func(*linePro
 		p.emitMu.Unlock()
 	}()
 	return p, nil
+}
+
+/** childEnv：当前环境变量，去掉会让子进程误认为运行在 Claude Code 会话内的变量 */
+func childEnv() []string {
+	var out []string
+	for _, kv := range os.Environ() {
+		k := strings.SplitN(kv, "=", 2)[0]
+		if k == "CLAUDECODE" || strings.HasPrefix(k, "CLAUDE_CODE_SESSION") || k == "CLAUDE_CODE_ENTRYPOINT" {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
 }
 
 /** emit：向事件通道发送，进程已结束时丢弃 */
