@@ -84,32 +84,43 @@ class PairingService {
     if (addresses.isEmpty) throw const PairError('二维码里没有可用的电脑地址');
     PairError? last;
     for (final addr in addresses) {
-      // 1、连接并核对
       var seen = '';
       final api = PdApi(base: Uri(scheme: scheme, host: addr, port: port), client: IOClient(_clients(accept, (fp) => seen = fp)));
       try {
-        final HostStatus st;
+        // 1、握手：未配对时电脑返回 401，但握手成功已说明证书通过了核对
+        HostStatus? st;
         try {
           st = await api.host(wait: const Duration(seconds: 4));
         } on ApiException catch (e) {
-          last = e.code == 'cert' ? const PairError('电脑证书与二维码不一致，已停止配对') : const PairError('连接不到电脑，请确认手机和电脑在同一网络');
-          if (e.code == 'cert') throw last;
-          continue;
+          if (e.code == 'cert') throw const PairError('电脑证书与二维码不一致，已停止配对');
+          if (e.offline) {
+            last = const PairError('连接不到电脑，请确认手机和电脑在同一网络');
+            continue;
+          }
         }
-        final fp = (seen.isNotEmpty ? seen : st.fingerprint).toLowerCase();
-        if (!accept(fp)) throw const PairError('电脑证书与二维码不一致，已停止配对');
+        // HTTPS 下握手时已拿到证书指纹，提交配对码前核对
+        if (seen.isNotEmpty && !accept(seen)) throw const PairError('电脑证书与二维码不一致，已停止配对');
         // 2、提交配对码
-        final ({String token, String deviceId}) res;
+        final ({String token, String deviceId, String hostName, String fingerprint}) res;
         try {
           res = await api.pair(code, deviceName, platform);
         } on ApiException catch (e) {
           throw PairError(_message(e));
         }
-        // 3、保存
-        final addrs = <String>{addr, ...addresses, ...st.addresses.map((a) => a.ip)}.toList();
+        final fp = (seen.isNotEmpty ? seen : res.fingerprint).toLowerCase();
+        if (!accept(fp)) throw const PairError('电脑证书与二维码不一致，已停止配对');
+        // 3、配对后读取电脑的全部地址，失败不影响配对结果
+        api.token = res.token;
+        try {
+          st ??= await api.host(wait: const Duration(seconds: 4));
+        } on ApiException {
+          // 使用二维码中的地址
+        }
+        final addrs = <String>{addr, ...addresses, ...?st?.addresses.map((a) => a.ip)}.toList();
+        final hostName = [res.hostName, st?.name ?? '', name].firstWhere((n) => n.isNotEmpty, orElse: () => '电脑');
         final host = PairedHost(
           id: fp,
-          name: st.name.isNotEmpty ? st.name : (name.isEmpty ? '电脑' : name),
+          name: hostName,
           addresses: addrs,
           port: port,
           fingerprint: fp,

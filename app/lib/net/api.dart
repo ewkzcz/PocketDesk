@@ -128,9 +128,10 @@ class PdApi {
   /* ---------- 配对与电脑 ---------- */
 
   /** pair：提交配对码，最长等待 2 分钟电脑端确认 */
-  Future<({String token, String deviceId})> pair(String code, String name, String platform) async {
+  Future<({String token, String deviceId, String hostName, String fingerprint})> pair(String code, String name, String platform) async {
     final j = Json.map(await json('POST', '/api/pair', body: {'code': code, 'name': name, 'platform': platform}, wait: const Duration(minutes: 2, seconds: 10)));
-    return (token: Json.str(j['token']), deviceId: Json.str(j['deviceId']));
+    final host = Json.map(j['host']);
+    return (token: Json.str(j['token']), deviceId: Json.str(j['deviceId']), hostName: Json.str(host['name']), fingerprint: Json.str(host['fingerprint']));
   }
 
   /** host：电脑信息 */
