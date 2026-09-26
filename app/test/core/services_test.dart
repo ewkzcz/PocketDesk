@@ -241,6 +241,7 @@ void main() {
       final s = app.scope!;
       await until(() => s.conn.online);
       await until(() => host.acked.contains('o1'));
+      await until(() => s.transfers.done.isNotEmpty);
       expect(s.transfers.done.single.name, '结果.txt');
       // 局域网发现：同一台电脑的新地址被记录
       disc.ctrl.add(Found(name: 'x', ip: '127.0.0.9', port: host.base.port, fpPrefix: host.fingerprint.substring(0, 16)));
