@@ -140,7 +140,7 @@ class _DiffFileViewState extends State<DiffFileView> {
   @override
   Widget build(BuildContext context) {
     final c = context.pd;
-    final md = viewKindOf(widget.file.path) == ViewKind.markdown && widget.file.status != 'D';
+    final md = viewKindOf(widget.file.path) == ViewKind.markdown && widget.file.status != 'D' && widget.file.status != 'deleted';
     final diff = _diff;
     return Scaffold(
       appBar: PdBar(
