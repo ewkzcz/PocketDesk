@@ -35,6 +35,10 @@ dependencies:
   connectivity_plus: ^7.3.1
   battery_plus: ^7.1.1
   receive_sharing_intent: ^1.9.0
+  flutter_highlight: ^0.7.0
+  highlight: ^0.7.0
+  flutter_localizations:
+    sdk: flutter
 
 dev_dependencies:
   flutter_test:
