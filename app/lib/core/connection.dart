@@ -38,6 +38,9 @@ class Probe {
 /** ClientFactory：按指纹创建证书固定的 HttpClient，测试时可替换 */
 typedef ClientFactory = HttpClient Function(String fingerprint);
 
+/** ApiFactory：按地址创建接口客户端，测试时可替换 */
+typedef ApiFactory = PdApi Function(Uri base, String token);
+
 /**
  * HostConnection：与一台电脑的连接
  */
@@ -48,6 +51,7 @@ class HostConnection extends ChangeNotifier {
     required this.cursors,
     ClientFactory? clients,
     this.sockets,
+    this.apis,
     this.scheme = 'https',
   })  : _clients = clients ?? ((fp) => pinnedHttpClient(fp));
 
@@ -58,6 +62,9 @@ class HostConnection extends ChangeNotifier {
 
   /** 测试时替换 WebSocket 创建方式 */
   final SocketFactory? sockets;
+
+  /** 测试时替换接口客户端 */
+  final ApiFactory? apis;
   final String scheme;
 
   PdApi? _api;
@@ -96,7 +103,7 @@ class HostConnection extends ChangeNotifier {
   Uri baseFor(String addr) => Uri(scheme: scheme, host: addr, port: host.port);
 
   /** newApi：为某地址创建接口客户端 */
-  PdApi newApi(String addr) => PdApi(base: baseFor(addr), client: IOClient(_clients(host.fingerprint)), token: token);
+  PdApi newApi(String addr) => apis?.call(baseFor(addr), token) ?? PdApi(base: baseFor(addr), client: IOClient(_clients(host.fingerprint)), token: token);
 
   /** tus：当前地址的上传客户端 */
   TusClient tus() => TusClient(base: api.base, token: token, client: _clients(host.fingerprint));
@@ -225,6 +232,17 @@ class HostConnection extends ChangeNotifier {
     } on ApiException {
       // 离线时保持旧信息
     }
+  }
+
+  /** debugOnline：测试时直接标记为已连接（不建立事件通道） */
+  @visibleForTesting
+  void debugOnline(String addr, HostStatus st, {Duration latency = const Duration(milliseconds: 12)}) {
+    address = addr;
+    status = st;
+    this.latency = latency;
+    _api = newApi(addr);
+    link = LinkState.online;
+    notifyListeners();
   }
 
   /** addAddress：mDNS 发现电脑的新地址时加入候选 */
