@@ -44,6 +44,17 @@ class FakeHost {
   int _concurrentPatch = 0;
   int rangeRequests = 0;
 
+  /** 电脑待发文件与已确认的 ID */
+  final outbox = <String, ({String name, Uint8List data})>{};
+  final acked = <String>[];
+
+  /** WebSocket 客户端与收到的消息 */
+  final sockets = <WebSocket>[];
+  final received = <Map<String, dynamic>>[];
+
+  /** 离线模拟：为 true 时 /api 请求直接断开 */
+  bool apiDown = false;
+
   Uri get base => Uri.parse('http://127.0.0.1:${_server.port}');
 
   /** start：启动服务 */
@@ -92,7 +103,18 @@ class FakeHost {
     final res = req.response;
     final path = req.uri.path;
     try {
-      if (path.startsWith('/files/')) {
+      if (path == '/ws' && WebSocketTransformer.isUpgradeRequest(req)) {
+        await _socket(req);
+        return;
+      }
+      if (path.startsWith('/api/')) {
+        if (apiDown) {
+          final sock = await res.detachSocket(writeHeaders: false);
+          sock.destroy();
+          return;
+        }
+        await _api(req, res, path);
+      } else if (path.startsWith('/files/')) {
         await _tus(req, res, path.substring('/files/'.length));
       } else if (path.startsWith('/dl/')) {
         await _download(req, res, path.substring('/dl/'.length));
@@ -192,6 +214,62 @@ class FakeHost {
         uploads.remove(id);
         res.statusCode = 204;
     }
+  }
+
+  /** _socket：收到 hello 后回复 ready，ping 回 pong */
+  Future<void> _socket(HttpRequest req) async {
+    final ws = await WebSocketTransformer.upgrade(req);
+    sockets.add(ws);
+    ws.listen((raw) {
+      final m = (jsonDecode(raw as String) as Map).cast<String, dynamic>();
+      received.add(m);
+      if (m['type'] == 'hello') ws.add(jsonEncode({'type': 'ready'}));
+      if (m['type'] == 'ping') ws.add(jsonEncode({'type': 'pong'}));
+    }, onDone: () => sockets.remove(ws));
+  }
+
+  /** push：向全部连接推送事件 */
+  void push(Map<String, dynamic> e) {
+    for (final ws in sockets) {
+      ws.add(jsonEncode(e));
+    }
+  }
+
+  /** dropSockets：断开全部连接 */
+  Future<void> dropSockets() async {
+    for (final ws in List.of(sockets)) {
+      await ws.close();
+    }
+  }
+
+  /** _api：电脑信息与待发文件接口 */
+  Future<void> _api(HttpRequest req, HttpResponse res, String path) async {
+    res.headers.contentType = ContentType.json;
+    if (path == '/api/host') {
+      res.write(jsonEncode({'name': '测试电脑', 'version': '1.0.0', 'os': 'linux', 'agents': [], 'features': {}, 'addresses': []}));
+      return;
+    }
+    if (path == '/api/outbox') {
+      res.write(jsonEncode([
+        for (final e in outbox.entries)
+          {'id': e.key, 'name': e.value.name, 'size': e.value.data.length, 'sha256': sha256.convert(e.value.data).toString(), 'createdAt': 1},
+      ]));
+      return;
+    }
+    final m = RegExp(r'^/api/outbox/([^/]+)/(file|ack)$').firstMatch(path);
+    if (m != null && outbox.containsKey(m.group(1))) {
+      final id = m.group(1)!;
+      if (m.group(2) == 'ack') {
+        acked.add(id);
+        outbox.remove(id);
+        res.statusCode = 204;
+        return;
+      }
+      files['outbox-$id'] = outbox[id]!.data;
+      await _download(req, res, 'outbox-$id');
+      return;
+    }
+    res.statusCode = 404;
   }
 
   /** _download：Range 下载，支持 If-Range */
