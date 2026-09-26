@@ -416,7 +416,13 @@ class DiffCard extends StatelessWidget {
           Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2), child: Text('还有 ${item.files.length - shown.length} 个文件', style: TextStyle(fontSize: PdFont.time, color: c.text3))),
         InkWell(
           onTap: () => onOpen(null),
-          child: Padding(padding: const EdgeInsets.fromLTRB(12, 6, 12, 12), child: Text('查看差异 ›', style: TextStyle(fontSize: PdFont.summary, color: c.accent))),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+            child: Row(children: [
+              Text('查看差异', style: TextStyle(fontSize: PdFont.summary, color: c.accent)),
+              Icon(LucideIcons.chevronRight300, size: 14, color: c.accent),
+            ]),
+          ),
         ),
       ]),
     );
