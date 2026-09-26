@@ -36,6 +36,7 @@ class PdColors extends ThemeExtension<PdColors> {
     required this.termText,
     required this.info,
     required this.neutral,
+    required this.field,
   });
 
   final Color accent;
@@ -70,6 +71,9 @@ class PdColors extends ThemeExtension<PdColors> {
   /** 置顶等中性操作按钮 */
   final Color neutral;
 
+  /** 输入栏中的输入框底色 */
+  final Color field;
+
   /** 浅色：页面 #EDEDED、卡片 #FFFFFF、我方气泡 #95EC69 */
   static const light = PdColors(
     accent: Color(0xFF07C160),
@@ -99,6 +103,7 @@ class PdColors extends ThemeExtension<PdColors> {
     termText: Color(0xFFD8D8D8),
     info: Color(0xFF3B6FE0),
     neutral: Color(0xFF8C8C8C),
+    field: Color(0xFFFFFFFF),
   );
 
   /** 深色：页面 #111111、卡片 #191919、我方气泡 #3EB575 */
@@ -130,6 +135,7 @@ class PdColors extends ThemeExtension<PdColors> {
     termText: Color(0xFFD8D8D8),
     info: Color(0xFF4E7FE8),
     neutral: Color(0xFF5E5E5E),
+    field: Color(0xFF2C2C2C),
   );
 
   @override
@@ -167,6 +173,7 @@ class PdColors extends ThemeExtension<PdColors> {
       termText: l(termText, other.termText),
       info: l(info, other.info),
       neutral: l(neutral, other.neutral),
+      field: l(field, other.field),
     );
   }
 }

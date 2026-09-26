@@ -180,7 +180,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                         child: Container(
                           height: 38,
                           alignment: Alignment.center,
-                          decoration: BoxDecoration(color: _listening ? c.pressed : c.card, borderRadius: BorderRadius.circular(PdSize.smallRadius)),
+                          decoration: BoxDecoration(color: _listening ? c.pressed : c.field, borderRadius: BorderRadius.circular(PdSize.smallRadius)),
                           child: Text(_listening ? '松开 结束' : '按住 说话', style: TextStyle(fontSize: PdFont.item, fontWeight: FontWeight.w500, color: c.text)),
                         ),
                       )
@@ -196,16 +196,14 @@ class _ChatInputBarState extends State<ChatInputBar> {
                           style: TextStyle(fontSize: PdFont.item, color: c.text, height: 1.35),
                           decoration: InputDecoration(
                             hintText: '输入消息…',
-                            fillColor: c.card,
+                            fillColor: c.field,
                             contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
                           ),
                         ),
                       ),
               ),
               if (widget.showSlash && !_hasText)
-                _RoundIcon(
-                  icon: LucideIcons.slash300,
-                  tooltip: '指令',
+                _SlashButton(
                   onTap: () {
                     widget.controller.text = '/';
                     widget.controller.selection = const TextSelection.collapsed(offset: 1);
@@ -281,6 +279,28 @@ class _RoundIcon extends StatelessWidget {
           onTap: onTap,
           radius: 20,
           child: SizedBox(width: 40, height: 40, child: Icon(icon, size: 26, color: context.pd.text2)),
+        ),
+      );
+}
+
+/** _SlashButton：「/」指令按钮 */
+class _SlashButton extends StatelessWidget {
+  const _SlashButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        label: '指令',
+        button: true,
+        child: InkResponse(
+          onTap: onTap,
+          radius: 20,
+          child: SizedBox(
+            width: 36,
+            height: 40,
+            child: Center(child: Text('/', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: context.pd.text2))),
+          ),
         ),
       );
 }
@@ -366,7 +386,7 @@ class _Panel extends StatelessWidget {
                   Container(
                     width: 56,
                     height: 56,
-                    decoration: BoxDecoration(color: c.card, borderRadius: BorderRadius.circular(PdSize.cardRadius)),
+                    decoration: BoxDecoration(color: c.field, borderRadius: BorderRadius.circular(PdSize.cardRadius)),
                     child: Icon(it.icon, size: 26, color: c.text2),
                   ),
                   const SizedBox(height: 6),
