@@ -338,7 +338,7 @@ class _FilesPageState extends State<FilesPage> {
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
             child: SearchField(
               controller: _filter,
-              hint: _global ? '全工作区搜索，输入后回车' : '在当前目录中查找（长按切换全局）',
+              hint: _global ? '搜索整个工作区' : '查找当前目录（长按搜全部）',
               onChanged: (_) => setState(() {
                 if (_filter.text.isEmpty) _results = null;
               }),
@@ -360,21 +360,32 @@ class _FilesPageState extends State<FilesPage> {
             padding: const EdgeInsets.fromLTRB(PdSize.gutter, 8, 8, 4),
             child: Row(children: [
               Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  reverse: true,
-                  child: Row(children: [
+                // 路径较长时滚到末尾显示当前目录，较短时靠左
+                child: LayoutBuilder(
+                  builder: (context, box) => SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    reverse: true,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minWidth: box.maxWidth),
+                      child: Row(children: [
                     _Crumb(text: _ws?.name ?? '', active: parts.isEmpty, onTap: () => _cd('')),
                     for (var i = 0; i < parts.length; i++) ...[
                       Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: Text('/', style: TextStyle(fontSize: PdFont.summary, color: c.text4))),
                       _Crumb(text: parts[i], active: i == parts.length - 1, onTap: () => _cd(parts.sublist(0, i + 1).join('/'))),
                     ],
                   ]),
+                    ),
+                  ),
                 ),
               ),
               TextButton.icon(
                 onPressed: _pickSort,
-                style: TextButton.styleFrom(foregroundColor: c.text2, padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: const Size(0, 36)),
+                style: TextButton.styleFrom(
+                  foregroundColor: c.text2,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
                 icon: Icon(_desc ? LucideIcons.arrowDownWideNarrow300 : LucideIcons.arrowUpNarrowWide300, size: 16),
                 label: Text(sortLabel, style: const TextStyle(fontSize: PdFont.summary)),
               ),
