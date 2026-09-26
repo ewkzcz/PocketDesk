@@ -251,6 +251,12 @@ class FakeHost {
   Future<void> _api(HttpRequest req, HttpResponse res, String path) async {
     res.headers.contentType = ContentType.json;
     if (path == '/api/host') {
+      // 与电脑端一致：未带令牌时返回 401
+      if (!tokens.any((t) => req.headers.value('authorization') == 'Bearer $t') && req.headers.value('authorization') != 'Bearer tk') {
+        res.statusCode = 401;
+        res.write(jsonEncode({'code': 'unauthorized', 'message': '请先配对'}));
+        return;
+      }
       res.write(jsonEncode({'name': '测试电脑', 'version': '1.0.0', 'os': 'linux', 'fingerprint': fingerprint, 'agents': [], 'features': {}, 'addresses': []}));
       return;
     }
@@ -263,7 +269,7 @@ class FakeHost {
       }
       final token = 'tok${tokens.length}';
       tokens.add(token);
-      res.write(jsonEncode({'token': token, 'deviceId': 'dev${tokens.length}'}));
+      res.write(jsonEncode({'token': token, 'deviceId': 'dev${tokens.length}', 'host': {'name': '测试电脑', 'fingerprint': fingerprint}}));
       return;
     }
     if (path == '/api/outbox') {

@@ -110,7 +110,9 @@ void main() {
       await expectLater(service().pairTicket(ticket(code: 'WRONG')), throwsA(isA<PairError>().having((e) => e.message, 'm', '配对码错误或已过期')));
       await expectLater(service().pairTicket(ticket(addrs: ['127.0.0.3'])), throwsA(isA<PairError>().having((e) => e.message, 'm', contains('连接不到'))));
       await expectLater(service().pairTicket(ticket(addrs: [])), throwsA(isA<PairError>()));
-      expect(host.tokens, isEmpty);
+      // 指纹不一致时不保存任何电脑与令牌（HTTPS 下握手即拒绝，由真实电脑端联调覆盖）
+      expect(await db.hosts(), isEmpty);
+      expect(await vault.token('cd' * 32), isNull);
     });
 
     test('手动输入配对码：指纹前缀须一致', () async {
