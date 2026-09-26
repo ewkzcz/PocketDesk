@@ -209,7 +209,17 @@ func normalize(c Config) Config {
 func (s *Store) Get() Config {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.cfg
+	return clone(s.cfg)
+}
+
+/** clone：深拷贝配置中的引用类型，避免调用方修改共享数据 */
+func clone(c Config) Config {
+	agents := make(map[string][]string, len(c.Agents))
+	for k, v := range c.Agents {
+		agents[k] = append([]string(nil), v...)
+	}
+	c.Agents = agents
+	return c
 }
 
 /**
@@ -223,7 +233,7 @@ func (s *Store) Update(fn func(*Config)) (Config, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// 1、修改副本
-	next := s.cfg
+	next := clone(s.cfg)
 	fn(&next)
 	// 2、规范化并落盘，失败时保留旧值
 	prev := s.cfg
@@ -232,7 +242,7 @@ func (s *Store) Update(fn func(*Config)) (Config, error) {
 		s.cfg = prev
 		return prev, err
 	}
-	return s.cfg, nil
+	return clone(s.cfg), nil
 }
 
 /** save：先写临时文件再改名，避免写一半损坏 */
