@@ -1,5 +1,6 @@
 package com.pocketdesk.pocketdesk
 
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 
-class MainActivity : FlutterActivity()
+// 生物识别需要 FragmentActivity
+class MainActivity : FlutterFragmentActivity()
