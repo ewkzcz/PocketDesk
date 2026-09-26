@@ -206,9 +206,9 @@ class _ThinkingBlockState extends State<ThinkingBlock> {
   }
 }
 
-/** toolIcon：工具类型图标 */
+/** toolIcon：工具类型图标（电脑端统一为 command、read、edit、search、web、other） */
 IconData toolIcon(String kind) => switch (kind) {
-      'exec' || 'bash' || 'shell' => LucideIcons.squareTerminal300,
+      'command' || 'exec' || 'bash' || 'shell' => LucideIcons.squareTerminal300,
       'read' => LucideIcons.fileText300,
       'write' || 'edit' => LucideIcons.filePen300,
       'search' || 'grep' || 'glob' => LucideIcons.search300,
@@ -300,7 +300,7 @@ class _ToolCardState extends State<ToolCard> {
 
 /** approvalTitle：审批标题 */
 String approvalTitle(String kind) => switch (kind) {
-      'exec' || 'bash' || 'shell' => '需要执行命令',
+      'command' || 'exec' || 'bash' || 'shell' => '需要执行命令',
       'write' || 'edit' => '需要修改文件',
       'read' => '需要读取文件',
       'web' || 'fetch' => '需要访问网络',

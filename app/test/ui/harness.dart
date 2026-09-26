@@ -57,7 +57,7 @@ class UiServer {
       {'seq': 5, 'type': 'thinking', 'data': {'id': 'th', 'text': '需要找出重复的手机号与金额校验', 'done': true}},
       {'seq': 6, 'type': 'msg.done', 'data': {'id': 'a2', 'text': '找到了 3 处重复的手机号和金额校验，我把它们提到 `shared/validators.js` 里：\n\n```js\nexport const isPhone = (s) => /^1\\d{10}\$/.test(s);\n```\n\n| 文件 | 改动 |\n| --- | --- |\n| checkout.js | 引用共享校验 |'}},
       {'seq': 7, 'type': 'diff.summary', 'data': {'files': [{'path': 'shared/validators.js', 'added': 42, 'removed': 0, 'status': 'A'}, {'path': 'payments/validator.js', 'added': 5, 'removed': 20, 'status': 'M'}, {'path': 'payments/checkout.js', 'added': 3, 'removed': 3, 'status': 'M'}], 'git': true}},
-      {'seq': 8, 'type': 'approval.request', 'data': {'id': 'ap1', 'tool': 'Bash', 'kind': 'exec', 'summary': 'rm -rf payments/legacy/', 'input': {'command': 'rm -rf payments/legacy/'}, 'expiresAt': 0}},
+      {'seq': 8, 'type': 'approval.request', 'data': {'id': 'ap1', 'tool': 'Bash', 'kind': 'command', 'summary': 'rm -rf payments/legacy/', 'input': {'command': 'rm -rf payments/legacy/'}, 'expiresAt': 0}},
       {'seq': 9, 'type': 'error', 'data': {'message': '网络请求超时', 'retryable': true}},
       {'seq': 10, 'type': 'msg.user', 'data': {'text': '顺便把测试也补上', 'queued': true}},
     ],
