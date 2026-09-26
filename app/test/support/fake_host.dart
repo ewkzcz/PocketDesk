@@ -52,6 +52,11 @@ class FakeHost {
   final sockets = <WebSocket>[];
   final received = <Map<String, dynamic>>[];
 
+  /** 配对：正确的配对码、证书指纹与已发出的令牌 */
+  String pairCode = 'K7M29QXA';
+  String fingerprint = 'ab' * 32;
+  final tokens = <String>[];
+
   /** 离线模拟：为 true 时 /api 请求直接断开 */
   bool apiDown = false;
 
@@ -246,7 +251,19 @@ class FakeHost {
   Future<void> _api(HttpRequest req, HttpResponse res, String path) async {
     res.headers.contentType = ContentType.json;
     if (path == '/api/host') {
-      res.write(jsonEncode({'name': '测试电脑', 'version': '1.0.0', 'os': 'linux', 'agents': [], 'features': {}, 'addresses': []}));
+      res.write(jsonEncode({'name': '测试电脑', 'version': '1.0.0', 'os': 'linux', 'fingerprint': fingerprint, 'agents': [], 'features': {}, 'addresses': []}));
+      return;
+    }
+    if (path == '/api/pair') {
+      final j = jsonDecode(await utf8.decodeStream(req)) as Map;
+      if (j['code'] != pairCode) {
+        res.statusCode = 401;
+        res.write(jsonEncode({'code': 'invalid_code', 'message': '配对码错误或已过期'}));
+        return;
+      }
+      final token = 'tok${tokens.length}';
+      tokens.add(token);
+      res.write(jsonEncode({'token': token, 'deviceId': 'dev${tokens.length}'}));
       return;
     }
     if (path == '/api/outbox') {
