@@ -4,6 +4,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -11,6 +12,7 @@ import 'package:provider/provider.dart';
 
 import '../core/app_state.dart';
 import '../core/auth_gate.dart';
+import '../core/settings.dart';
 import '../transfer/task.dart';
 import 'pages/files_page.dart';
 import 'pages/me_page.dart';
@@ -82,7 +84,25 @@ class HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     _authing = true;
     final ok = await context.read<AuthGate>().ensure('验证身份以打开 PocketDesk');
     _authing = false;
-    if (mounted && ok) setState(() => locked = false);
+    if (mounted && ok) {
+      setState(() => locked = false);
+      unawaited(_backgroundHint());
+    }
+  }
+
+  /** _backgroundHint：Android 首次配对后提示允许后台运行，避免传输被系统中断（只提示一次） */
+  Future<void> _backgroundHint() async {
+    final settings = context.read<AppSettings>();
+    if (!Platform.isAndroid || settings.backgroundHintShown || context.read<AppState>().scope == null) return;
+    settings.backgroundHintShown = true;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('允许后台运行'),
+        content: const Text('部分手机会限制应用在后台运行，导致传输中断。建议在系统设置中把 PocketDesk 加入「允许后台运行」和「自启动」。'),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('知道了'))],
+      ),
+    );
   }
 
   /** _onShared：系统分享进来的文件或文字发到文件传输助手 */
