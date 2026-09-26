@@ -209,6 +209,32 @@ void main() {
     expect(ctrlChar('1'), '1');
   });
 
+  testWidgets('发送失败后重发沿用同一消息编号', (tester) async {
+    final env = await start(tester);
+    await tester.tap(find.text('DSH · 周报生成'));
+    await settle(tester, 20);
+    env.server.failSends = 1;
+    await tester.enterText(find.byType(TextField).last, '整理一下');
+    await settle(tester);
+    await tester.tap(find.text('发送'));
+    await settle(tester);
+    // 失败后文字回到输入框；等提示消失后重发
+    expect(find.text('整理一下'), findsOneWidget);
+    await settle(tester, 70);
+    await tester.tap(find.text('发送'));
+    await settle(tester);
+    expect(env.server.sent.length, 2);
+    expect(env.server.sent[0]['clientId'], isNotEmpty);
+    expect(env.server.sent[1]['clientId'], env.server.sent[0]['clientId']);
+    // 发送成功后，新消息使用新编号
+    await tester.enterText(find.byType(TextField).last, '再来一条');
+    await settle(tester);
+    await tester.tap(find.text('发送'));
+    await settle(tester);
+    expect(env.server.sent[2]['clientId'], isNot(env.server.sent[0]['clientId']));
+    await finish(tester, env);
+  });
+
   testWidgets('文本查看与编辑保存', (tester) async {
     final env = await start(tester, page: const TextViewerPage(ws: _ws, path: 'main.go'));
     await settle(tester);

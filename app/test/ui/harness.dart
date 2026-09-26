@@ -94,6 +94,10 @@ class UiServer {
   final calls = <String>[];
   final bodies = <String, Object?>{};
 
+  /** 发消息记录，failSends 大于 0 时模拟网络中断 */
+  final sent = <Map<String, dynamic>>[];
+  int failSends = 0;
+
   http.Response _json(Object? v, [int code = 200, Map<String, String> headers = const {}]) =>
       http.Response.bytes(utf8.encode(jsonEncode(v)), code, headers: {'content-type': 'application/json', ...headers});
 
@@ -117,6 +121,13 @@ class UiServer {
     final p = req.url.path;
     calls.add('${req.method} $p');
     if (req.body.isNotEmpty) bodies['${req.method} $p'] = req.headers['content-type']?.contains('json') == true ? jsonDecode(req.body) : req.body;
+    if (p.endsWith('/messages') && req.method == 'POST') {
+      sent.add((jsonDecode(req.body) as Map).cast<String, dynamic>());
+      if (failSends > 0) {
+        failSends--;
+        throw const SocketException('网络中断');
+      }
+    }
     final q = req.url.queryParameters;
     if (p == '/api/host') {
       return _json({
