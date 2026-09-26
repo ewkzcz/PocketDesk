@@ -66,11 +66,11 @@ func Classify(ip net.IP) string {
  * 3、局域网在前、Tailscale 在后排序
  */
 func Private() []Addr {
+	out := []Addr{}
 	ifs, err := net.Interfaces()
 	if err != nil {
-		return nil
+		return out
 	}
-	var out []Addr
 	// 1、网卡
 	for _, ifc := range ifs {
 		if ifc.Flags&net.FlagUp == 0 || ifc.Flags&net.FlagLoopback != 0 {
