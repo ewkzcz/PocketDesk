@@ -103,6 +103,10 @@ class LocalDb {
     });
   }
 
+  /** clearEvents：清空某会话的事件缓存（缓存与电脑相差太多、改为只取最近一段时） */
+  Future<void> clearEvents(String hostId, String sessionId) =>
+      db.delete('event_cache', where: 'host_id=? AND session_id=?', whereArgs: [hostId, sessionId]);
+
   /** cachedEvents：读取缓存事件（升序） */
   Future<List<PdEvent>> cachedEvents(String hostId, String sessionId) async {
     final rows = await db.query('event_cache', where: 'host_id=? AND session_id=?', whereArgs: [hostId, sessionId], orderBy: 'seq ASC');

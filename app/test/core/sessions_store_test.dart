@@ -121,6 +121,30 @@ void main() {
     expect(identical(await store.log('a'), log), isTrue);
   });
 
+  test('没有缓存的长会话只取最近一段，上滑再加载更早的', () async {
+    server.events['a'] = [for (var i = 1; i <= 5000; i++) ev('a', i, 'msg.user', {'text': 'q$i'})];
+    server.sessions.first['lastSeq'] = 5000;
+    await store.refresh();
+    final log = await store.log('a');
+    expect(log.items.length, 200);
+    expect(log.firstSeq, 4801);
+    expect(log.lastSeq, 5000);
+    expect(server.calls.where((c) => c.contains('/events')).length, lessThanOrEqualTo(2));
+    expect(await store.loadEarlier('a'), isTrue);
+    expect(log.firstSeq, 4601);
+  });
+
+  test('缓存远落后于电脑时丢弃旧缓存，只取最近一段', () async {
+    await db.cacheEvents('h', 'a', [for (var i = 1; i <= 50; i++) PdEvent.fromJson(ev('a', i, 'msg.user', {'text': 'old$i'}))]);
+    server.events['a'] = [for (var i = 1; i <= 3000; i++) ev('a', i, 'msg.user', {'text': 'q$i'})];
+    server.sessions.first['lastSeq'] = 3000;
+    await store.refresh();
+    final log = await store.log('a');
+    expect(log.firstSeq, 2801);
+    expect((log.items.first as UserItem).text, 'q2801');
+    expect((await db.cachedEvents('h', 'a')).first.seq, 2801);
+  });
+
   test('已打开的会话忽略重复事件', () async {
     server.events['a'] = [ev('a', 1, 'msg.user', {'text': 'x'})];
     final log = await store.log('a');

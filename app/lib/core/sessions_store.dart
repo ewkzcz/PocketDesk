@@ -102,25 +102,43 @@ class SessionsStore extends ChangeNotifier with SafeNotifier {
     notifyListeners();
   }
 
+  /** 缓存落后超过这么多条时，只取最近一段，不从头补拉 */
+  static const _gapLimit = 1000;
+
   /**
    * log：取会话的聊天记录，首次打开时先读缓存再向电脑补拉缺失部分
    *
    * 处理流程：
    * 1、已加载直接返回
    * 2、读取本地缓存
-   * 3、从最后序号起分页补拉，写入缓存
+   * 3、没有缓存或缓存落后太多时，只取最近 200 条（更早的上滑时再加载），避免一次拉取全部历史
+   * 4、从最后序号起分页补拉，写入缓存
    */
   Future<ChatLog> log(String id) async {
     // 1、已加载
     final existing = _logs[id];
     if (existing != null) return existing;
-    final log = ChatLog(id);
+    var log = ChatLog(id);
     _logs[id] = log;
     // 2、缓存
     for (final e in await db.cachedEvents(hostId, id)) {
       log.apply(e);
     }
-    // 3、补拉
+    // 3、最近一段
+    final remote = byId(id)?.lastSeq ?? 0;
+    if (remote - log.lastSeq > _gapLimit || (log.lastSeq == 0 && remote > 200)) {
+      try {
+        final recent = await api().events(id, before: remote + 1, limit: 200);
+        log = ChatLog(id)..prepend(recent);
+        _logs[id] = log;
+        // 旧缓存与最近一段不连续，丢弃后只缓存最近一段
+        await db.clearEvents(hostId, id).catchError(_logDb);
+        await db.cacheEvents(hostId, id, recent).catchError(_logDb);
+      } on ApiException {
+        // 离线时先展示缓存
+      }
+    }
+    // 4、补拉
     await catchUp(id);
     return log;
   }
