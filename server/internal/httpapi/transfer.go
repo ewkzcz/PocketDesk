@@ -72,16 +72,20 @@ func (s *Server) EnsureAssistant(ctx context.Context) error {
 }
 
 /** emit：向会话追加事件、更新摘要并推送 */
-func (s *Server) emit(ctx context.Context, sid, typ string, data map[string]any, preview string) {
-	e, err := s.Store.AppendEvent(ctx, sid, typ, data)
+func (s *Server) emit(ctx context.Context, sid, typ string, data map[string]any, preview string) error {
+	// 已被接受的操作必须记录完整，不随手机断开连接而取消
+	ctx = context.WithoutCancel(ctx)
+	_, err := s.Store.AppendEventThen(ctx, sid, typ, data, func(e store.Event) {
+		s.Hub.Publish(hub.Message{Session: sid, Seq: e.Seq, Type: e.Type, Data: e.Data, CreatedAt: e.CreatedAt})
+	})
 	if err != nil {
 		slog.Warn("写入事件失败", "session", sid, "err", err)
-		return
+		return err
 	}
 	if preview != "" {
 		s.Store.UpdateSession(ctx, sid, store.SessionPatch{Preview: &preview})
 	}
-	s.Hub.Publish(hub.Message{Session: sid, Seq: e.Seq, Type: e.Type, Data: e.Data, CreatedAt: e.CreatedAt})
+	return nil
 }
 
 /** filePreview：文件消息的列表摘要 */
@@ -205,7 +209,7 @@ func (s *Server) outboxAck(w http.ResponseWriter, r *http.Request) {
  * assistantText：在文件传输助手里发文字，文字同时存为收件目录下的 txt 文件
  *
  * 处理流程：
- * 1、校验内容
+ * 1、校验内容，同一编号的重发直接返回成功
  * 2、写入临时文件后按时间戳命名落盘
  * 3、写入会话事件
  */
@@ -218,9 +222,15 @@ func (s *Server) assistantText(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, err)
 		return
 	}
-	// 1、校验
+	// 1、校验；网络超时后重发的同一条消息直接视为成功
 	if strings.TrimSpace(in.Text) == "" {
 		writeErr(w, r, errf(400, "empty", "消息不能为空"))
+		return
+	}
+	s.textMu.Lock()
+	defer s.textMu.Unlock()
+	if s.recentText.Has(in.ClientID) {
+		writeJSON(w, 200, map[string]bool{"ok": true})
 		return
 	}
 	// 2、落盘
@@ -245,7 +255,12 @@ func (s *Server) assistantText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 3、事件
-	s.emit(r.Context(), AssistantID, "msg.user", map[string]any{"text": in.Text, "clientId": in.ClientID, "file": map[string]string{"name": name, "relPath": date + "/" + name}}, "你："+firstLine(in.Text))
+	if err := s.emit(r.Context(), AssistantID, "msg.user", map[string]any{"text": in.Text, "clientId": in.ClientID, "file": map[string]string{"name": name, "relPath": date + "/" + name}}, "你："+firstLine(in.Text)); err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	// 记录成功后才登记编号，失败时手机重发会重新处理
+	s.recentText.Add(in.ClientID)
 	s.audit(r, "assistant.text", map[string]any{"file": date + "/" + name})
 	writeJSON(w, 200, map[string]string{"name": name})
 }

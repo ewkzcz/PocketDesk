@@ -212,9 +212,9 @@ void main() {
           discovery: () => disc,
         );
 
-    Future<void> until(bool Function() ok) async {
+    Future<void> until(FutureOr<bool> Function() ok) async {
       final end = DateTime.now().add(const Duration(seconds: 10));
-      while (!ok()) {
+      while (!await ok()) {
         if (DateTime.now().isAfter(end)) throw TimeoutException('条件未满足');
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
@@ -236,11 +236,22 @@ void main() {
       host.outbox['o1'] = (name: '结果.txt', data: randomBytes(100));
       final h = await PairingService(db: db, vault: vault, deviceName: 'p', platform: 'android', clients: (a, s) => HttpClient(), scheme: 'http')
           .pairTicket(PairTicket(name: '', addresses: ['127.0.0.3'], port: host.base.port, fingerprint: host.fingerprint, code: 'K7M29QXA').copyWithAddresses(['127.0.0.1']));
+      host.hostAddresses = [{'ip': '100.100.7.8', 'kind': 'tailscale'}];
       await app.addHost(h);
       expect(settings.currentHost, h.id);
       final s = app.scope!;
       await until(() => s.conn.online);
+      // 连接后记住电脑的 Tailscale 地址，下次不在同一网络也能连
+      await until(() => s.conn.host.addresses.contains('100.100.7.8'));
+      await until(() async => (await db.hosts()).single.addresses.contains('100.100.7.8'));
+      expect(s.conn.host.addresses.first, '127.0.0.1');
+      // 手动添加与删除
+      expect(await app.addAddress('my-pc.tail1234.ts.net'), isTrue);
+      expect(await app.addAddress('my-pc.tail1234.ts.net'), isFalse);
+      expect(await app.removeAddress('my-pc.tail1234.ts.net'), isTrue);
+      expect((await db.hosts()).single.addresses, isNot(contains('my-pc.tail1234.ts.net')));
       await until(() => host.acked.contains('o1'));
+      await until(() => s.transfers.done.isNotEmpty);
       expect(s.transfers.done.single.name, '结果.txt');
       // 局域网发现：同一台电脑的新地址被记录
       disc.ctrl.add(Found(name: 'x', ip: '127.0.0.9', port: host.base.port, fpPrefix: host.fingerprint.substring(0, 16)));

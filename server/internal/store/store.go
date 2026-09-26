@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -22,6 +23,9 @@ var ErrNotFound = errors.New("记录不存在")
 type Store struct {
 	db  *sql.DB
 	now func() time.Time
+
+	/** 每个会话一把锁，保证事件写入与推送的顺序和序号一致 */
+	emitLocks sync.Map
 }
 
 /** migrations：按顺序执行的建表语句，只追加不修改 */

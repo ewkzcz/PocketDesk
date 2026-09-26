@@ -192,6 +192,10 @@ class _ChatPageState extends State<ChatPage> {
 
   PdApi get _api => _scope!.conn.api;
 
+  /** 上一次发送失败的内容与编号，重发同一内容时沿用 */
+  String _retryKey = '';
+  String _retryId = '';
+
   /** _clientId：消息去重 ID */
   String _clientId() => '${DateTime.now().microsecondsSinceEpoch}${_rand.nextInt(1 << 30)}';
 
@@ -204,7 +208,7 @@ class _ChatPageState extends State<ChatPage> {
    * 处理流程：
    * 1、斜杠指令直接执行
    * 2、等待附件上传完成，取得附件路径
-   * 3、解析 @ 委托与引用，发送给电脑；失败时恢复输入
+   * 3、解析 @ 委托与引用，发送给电脑；失败时恢复输入与附件，重发同一内容沿用同一编号
    */
   Future<void> _send({String mode = ''}) async {
     final s = _session;
@@ -239,21 +243,32 @@ class _ChatPageState extends State<ChatPage> {
       final saved = _input.text;
       _input.clear();
       final quote = _quote;
+      final pending = List.of(_pending);
       setState(() {
         _pending.clear();
         _quote = '';
       });
+      // 同一内容重试时沿用同一编号：上次其实已送达（只是响应丢了）时电脑端不会重复执行
+      final key = '$mode|${d.delegate}|$text|${attachments.join('|')}';
+      if (key != _retryKey) {
+        _retryKey = key;
+        _retryId = _clientId();
+      }
       try {
         if (s.isAssistant) {
-          await _api.assistantText(text, clientId: _clientId());
+          await _api.assistantText(text, clientId: _retryId);
         } else {
-          await _api.sendMessage(_id, text, attachments: attachments, mode: mode, delegate: d.delegate, clientId: _clientId());
+          await _api.sendMessage(_id, text, attachments: attachments, mode: mode, delegate: d.delegate, clientId: _retryId);
         }
+        _retryKey = '';
         _toBottom();
       } on ApiException catch (e) {
         _input.text = saved;
-        setState(() => _quote = quote);
-        if (mounted) toast(context, e.offline ? '电脑不在线，消息未发送' : e.message);
+        setState(() {
+          _quote = quote;
+          _pending.addAll(pending);
+        });
+        if (mounted) toast(context, e.offline ? '网络不稳定，消息可能未发送，可直接重发（不会重复）' : e.message);
       }
     } finally {
       if (mounted) setState(() => _sending = false);

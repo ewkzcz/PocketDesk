@@ -48,6 +48,39 @@ func TestDevices(t *testing.T) {
 	}
 }
 
+func TestAppendEventThenKeepsOrder(t *testing.T) {
+	// 并发写入同一会话时，回调（推送）顺序必须与序号一致
+	s, ctx := openTest(t), context.Background()
+	if _, err := s.CreateSession(ctx, Session{ID: "s1", Kind: "claude", WorkspaceID: "w", Cwd: ".", State: "idle"}); err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var got []int64
+	var wg sync.WaitGroup
+	for i := 0; i < 200; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := s.AppendEventThen(ctx, "s1", "msg.delta", map[string]int{}, func(e Event) {
+				mu.Lock()
+				got = append(got, e.Seq)
+				mu.Unlock()
+			}); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	if len(got) != 200 {
+		t.Fatalf("推送数 %d", len(got))
+	}
+	for i, seq := range got {
+		if seq != int64(i+1) {
+			t.Fatalf("推送顺序与序号不一致：第 %d 次推送序号 %d", i, seq)
+		}
+	}
+}
+
 func TestWorkspaces(t *testing.T) {
 	s, ctx := openTest(t), context.Background()
 	if err := s.SaveWorkspace(ctx, Workspace{ID: "w1", Name: "a", RootPath: "/a"}); err != nil {

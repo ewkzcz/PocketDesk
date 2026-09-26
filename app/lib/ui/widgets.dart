@@ -309,32 +309,59 @@ Future<int?> actionSheet(BuildContext context, List<SheetAction> actions, {Strin
   );
 }
 
-/** inputDialog：单行输入对话框 */
-Future<String?> inputDialog(BuildContext context, {required String title, String initial = '', String hint = '', String ok = '确定', int maxLines = 1}) async {
-  final ctrl = TextEditingController(text: initial);
-  // 选中文件名主体，方便直接改名
-  final dot = initial.lastIndexOf('.');
-  ctrl.selection = TextSelection(baseOffset: 0, extentOffset: dot > 0 ? dot : initial.length);
-  final c = context.pd;
-  final r = await showDialog<String>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: Text(title),
+/** inputDialog：输入对话框，确定返回输入内容，取消返回 null */
+Future<String?> inputDialog(BuildContext context, {required String title, String initial = '', String hint = '', String ok = '确定', int maxLines = 1}) =>
+    showDialog<String>(context: context, builder: (_) => _InputDialog(title: title, initial: initial, hint: hint, ok: ok, maxLines: maxLines));
+
+/** _InputDialog：输入框由对话框自己持有，关闭动画结束、对话框移除后才释放 */
+class _InputDialog extends StatefulWidget {
+  const _InputDialog({required this.title, required this.initial, required this.hint, required this.ok, required this.maxLines});
+
+  final String title;
+  final String initial;
+  final String hint;
+  final String ok;
+  final int maxLines;
+
+  @override
+  State<_InputDialog> createState() => _InputDialogState();
+}
+
+class _InputDialogState extends State<_InputDialog> {
+  late final TextEditingController _ctrl = TextEditingController(text: widget.initial);
+
+  @override
+  void initState() {
+    super.initState();
+    // 选中文件名主体，方便直接改名
+    final dot = widget.initial.lastIndexOf('.');
+    _ctrl.selection = TextSelection(baseOffset: 0, extentOffset: dot > 0 ? dot : widget.initial.length);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.pd;
+    return AlertDialog(
+      title: Text(widget.title),
       content: TextField(
-        controller: ctrl,
+        controller: _ctrl,
         autofocus: true,
-        maxLines: maxLines,
-        decoration: InputDecoration(hintText: hint, fillColor: c.page),
-        onSubmitted: maxLines == 1 ? (v) => Navigator.pop(ctx, v) : null,
+        maxLines: widget.maxLines,
+        decoration: InputDecoration(hintText: widget.hint, fillColor: c.page),
+        onSubmitted: widget.maxLines == 1 ? (v) => Navigator.pop(context, v) : null,
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), style: TextButton.styleFrom(foregroundColor: c.text2), child: const Text('取消')),
-        TextButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: Text(ok)),
+        TextButton(onPressed: () => Navigator.pop(context), style: TextButton.styleFrom(foregroundColor: c.text2), child: const Text('取消')),
+        TextButton(onPressed: () => Navigator.pop(context, _ctrl.text), child: Text(widget.ok)),
       ],
-    ),
-  );
-  ctrl.dispose();
-  return r;
+    );
+  }
 }
 
 /** EmptyHint：空状态 */

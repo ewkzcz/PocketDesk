@@ -178,12 +178,51 @@ class AppState extends ChangeNotifier {
       s.lastLink = link;
       if (link == LinkState.online) {
         AppLog.i('conn', '已连接 ${s.conn.kindLabel}');
+        unawaited(_learnAddresses(s));
         unawaited(s.sessions.refresh().catchError((Object _) {}));
         s.transfers.onConnected();
       }
     }
     s.transfers.pump();
     notifyListeners();
+  }
+
+  /**
+   * _learnAddresses：记住电脑当前的全部地址
+   * 配对后才装好 Tailscale 等情况下，下次不在同一网络时也能连上
+   */
+  Future<void> _learnAddresses(HostScope s) async {
+    final st = s.conn.status;
+    if (st == null) return;
+    var changed = false;
+    for (final a in st.addresses) {
+      if (s.conn.addAddress(a.ip, front: false)) changed = true;
+    }
+    if (changed) await _saveAddresses(s);
+  }
+
+  /** _saveAddresses：保存当前电脑的地址列表 */
+  Future<void> _saveAddresses(HostScope s) async {
+    await db.saveHost(s.conn.host);
+    hosts = await db.hosts();
+    notifyListeners();
+  }
+
+  /** addAddress：手动添加连接地址（如 Tailscale 名称或自建隧道地址），并立即重新探测 */
+  Future<bool> addAddress(String address) async {
+    final s = scope;
+    if (s == null || !s.conn.addAddress(address, front: false)) return false;
+    await _saveAddresses(s);
+    unawaited(s.conn.networkChanged());
+    return true;
+  }
+
+  /** removeAddress：删除一个连接地址 */
+  Future<bool> removeAddress(String address) async {
+    final s = scope;
+    if (s == null || !s.conn.removeAddress(address)) return false;
+    await _saveAddresses(s);
+    return true;
   }
 
   /** _onSignal：网络或电量变化 */

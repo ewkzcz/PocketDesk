@@ -29,6 +29,13 @@ class SessionsStore extends ChangeNotifier with SafeNotifier {
   Map<String, int> _unread = {};
   final Map<String, ChatLog> _logs = {};
   final Map<String, int> _cursors = {};
+
+  /** 各会话已计入摘要与未读的最大序号 */
+  final Map<String, int> _seen = {};
+
+  /** 正在补拉的会话，以及补拉期间又发现缺口、需要再拉一次的会话 */
+  final Set<String> _catching = {};
+  final Set<String> _catchAgain = {};
   final Map<String, List<PdEvent>> _pendingCache = {};
   Timer? _flush;
   String? viewing;
@@ -42,6 +49,7 @@ class SessionsStore extends ChangeNotifier with SafeNotifier {
     _hidden = await db.hiddenSessions(hostId);
     _unread = await db.unreadCounts(hostId);
     _cursors.addAll(await db.lastSeqs(hostId));
+    _seen.addAll(_cursors);
   }
 
   /** sessions：可见会话（置顶优先、按更新时间倒序，支持搜索） */
@@ -160,25 +168,42 @@ class SessionsStore extends ChangeNotifier with SafeNotifier {
     return log;
   }
 
-  /** catchUp：补拉某会话 lastSeq 之后的事件 */
+  /**
+   * catchUp：补拉某会话 lastSeq 之后的事件
+   *
+   * 处理流程：
+   * 1、同一会话同时只补拉一次，期间再次请求的在结束后重拉
+   * 2、分页拉取并按序号合并，写入缓存
+   */
   Future<void> catchUp(String id) async {
     final log = _logs[id];
     if (log == null) return;
+    // 1、合并并发请求
+    if (!_catching.add(id)) {
+      _catchAgain.add(id);
+      return;
+    }
     try {
-      while (true) {
-        final evs = await api().events(id, after: log.lastSeq, limit: 500);
-        for (final e in evs) {
-          log.apply(e);
+      do {
+        _catchAgain.remove(id);
+        // 2、分页拉取
+        while (true) {
+          final evs = await api().events(id, after: log.lastSeq, limit: 500);
+          for (final e in evs) {
+            log.apply(e);
+          }
+          _cursors[id] = log.lastSeq;
+          if (log.lastSeq > (_seen[id] ?? 0)) _seen[id] = log.lastSeq;
+          await db.cacheEvents(hostId, id, evs).catchError(_logDb);
+          if (evs.length < 500) break;
         }
-        _cursors[id] = log.lastSeq;
-        await db.cacheEvents(hostId, id, evs);
-        if (evs.length < 500) break;
-      }
-      // 缓存为空的新会话只保留最近一段，更早的上滑时再加载
+      } while (_catchAgain.contains(id));
       notifyListeners();
     } on ApiException {
-      // 离线时先展示缓存
+      // 离线时先展示缓存，重连就绪后会再次补拉
       notifyListeners();
+    } finally {
+      _catching.remove(id);
     }
   }
 
@@ -203,9 +228,10 @@ class SessionsStore extends ChangeNotifier with SafeNotifier {
    * onEvent：处理实时事件
    *
    * 处理流程：
-   * 1、全局事件：会话新建、更新、终端摘要变化
-   * 2、会话事件：合并进已打开的聊天记录，更新列表摘要与状态
-   * 3、不在该会话界面时累加未读，删除过的会话收到新消息时重新显示
+   * 1、全局事件：会话新建、更新、终端摘要变化；重连就绪后刷新列表并补齐已打开的会话
+   * 2、会话事件：按序号去重；已打开的会话出现序号缺口时向电脑补拉（含本条），不直接拼接；
+   *    未打开的会话只在序号连续时写入缓存并推进游标，有缺口时留到打开时补拉
+   * 3、更新列表摘要与状态；不在该会话界面时累加未读（按已处理的最大序号去重），删除过的会话收到新消息时重新显示
    * 4、批量写入缓存
    */
   void onEvent(PdEvent e) {
@@ -218,29 +244,57 @@ class SessionsStore extends ChangeNotifier with SafeNotifier {
           _patch(Json.str(e.data['session']), (s) => s.copyWith(preview: Json.str(e.data['preview'])));
         case 'ready':
           unawaited(refresh().catchError((Object _) {}));
+          for (final id in _logs.keys.toList()) {
+            unawaited(catchUp(id));
+          }
       }
       return;
     }
-    // 2、会话事件
-    final log = _logs[e.session];
-    if (log != null && e.seq <= log.lastSeq) return;
-    log?.apply(e);
-    if (e.seq > (_cursors[e.session] ?? 0)) _cursors[e.session] = e.seq;
-    final known = byId(e.session) != null;
-    _patch(e.session, (s) => _summarize(s, e));
-    if (!known) unawaited(refresh().catchError((Object _) {}));
-    // 3、未读；手机上删除过的会话收到新消息时重新出现
-    if (_countsUnread(e) && _hidden.remove(e.session)) {
-      unawaited(db.unhideSession(hostId, e.session).catchError(_logDb));
+    // 2、去重与缺口
+    final id = e.session;
+    final log = _logs[id];
+    var cache = false;
+    if (log != null) {
+      if (e.seq <= log.lastSeq) return;
+      if (log.lastSeq > 0 && e.seq > log.lastSeq + 1) {
+        unawaited(catchUp(id));
+      } else {
+        log.apply(e);
+        _cursors[id] = log.lastSeq;
+        cache = true;
+      }
+    } else {
+      final cursor = _cursors[id] ?? 0;
+      if (cursor == 0 || e.seq == cursor + 1) {
+        _cursors[id] = e.seq;
+        cache = true;
+      }
     }
-    if (viewing != e.session && _countsUnread(e)) {
-      _unread[e.session] = unread(e.session) + 1;
-      unawaited(db.setUnread(hostId, e.session, _unread[e.session]!).catchError(_logDb));
+    // 3、摘要与未读（同一序号只处理一次，重连补发不会重复计数）
+    if (e.seq <= (_seen[id] ?? 0)) {
+      if (cache) _queueCache(e);
+      return;
+    }
+    _seen[id] = e.seq;
+    final known = byId(id) != null;
+    _patch(id, (s) => _summarize(s, e));
+    if (!known) unawaited(refresh().catchError((Object _) {}));
+    if (_countsUnread(e) && _hidden.remove(id)) {
+      unawaited(db.unhideSession(hostId, id).catchError(_logDb));
+    }
+    if (viewing != id && _countsUnread(e)) {
+      _unread[id] = unread(id) + 1;
+      unawaited(db.setUnread(hostId, id, _unread[id]!).catchError(_logDb));
     }
     // 4、缓存
+    if (cache) _queueCache(e);
+    notifyListeners();
+  }
+
+  /** _queueCache：事件加入待写缓存，500 毫秒后批量写入 */
+  void _queueCache(PdEvent e) {
     (_pendingCache[e.session] ??= []).add(e);
     _flush ??= Timer(const Duration(milliseconds: 500), _flushCache);
-    notifyListeners();
   }
 
   /** _logDb：本地缓存写入失败只记录日志，不影响界面 */

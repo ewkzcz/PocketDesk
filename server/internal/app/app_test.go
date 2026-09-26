@@ -592,6 +592,21 @@ func sessionFlow(t *testing.T, e *env) {
 	if !replayed {
 		t.Fatal("补发缺少断线期间的回复")
 	}
+	// 同一编号重发（网络超时后重试）只记录一次
+	for i := 0; i < 2; i++ {
+		if res, _ := e.do("POST", "/api/sessions/"+sess.ID+"/messages", map[string]string{"text": "dup", "clientId": "dup-1"}, nil); res.StatusCode >= 300 {
+			t.Fatalf("重发应返回成功 %d", res.StatusCode)
+		}
+		if res, _ := e.do("POST", "/api/assistant/messages", map[string]string{"text": "dup", "clientId": "dup-2"}, nil); res.StatusCode >= 300 {
+			t.Fatalf("文件传输助手重发应返回成功 %d", res.StatusCode)
+		}
+	}
+	for sid, cid := range map[string]string{sess.ID: "dup-1", "assistant": "dup-2"} {
+		_, body := e.do("GET", "/api/sessions/"+sid+"/events?after=0&limit=5000", nil, nil)
+		if n := strings.Count(string(body), `"clientId":"`+cid+`"`); n != 1 {
+			t.Fatalf("%s 重发的消息应只记录一次，实际 %d 次", sid, n)
+		}
+	}
 	// 落后超过上限时不补发，手机改为按需拉取最近一段
 	for i := 0; i < 1100; i++ {
 		if _, err := e.a.Store.AppendEvent(context.Background(), sess.ID, "system", map[string]string{"text": "x"}); err != nil {

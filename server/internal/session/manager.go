@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ewkzcz/pocketdesk/server/internal/idem"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -44,6 +45,7 @@ const maxRestarts = 3
 var (
 	ErrDisabled    = errors.New("电脑端已关闭 Agent 会话功能")
 	ErrUnknownKind = errors.New("不支持的 Agent 类型")
+	ErrClosed      = errors.New("电脑端正在退出")
 	ErrNotAgent    = errors.New("该会话不是 Agent 会话")
 	ErrBusy        = errors.New("会话正在执行")
 	ErrNothing     = errors.New("没有可重试的消息")
@@ -69,6 +71,9 @@ type Manager struct {
 	interruptGrace  time.Duration
 	now             func() time.Time
 	closed          atomic.Bool
+
+	/** 最近处理过的消息编号，忽略网络重试造成的重复发送 */
+	recent *idem.Recent
 }
 
 /** runtime：一个会话的运行时 */
@@ -107,7 +112,7 @@ func New(d Deps) *Manager {
 	if d.Notifier == nil {
 		d.Notifier = func() notify.Notifier { return notify.Nop{} }
 	}
-	return &Manager{d: d, rts: map[string]*runtime{}, pend: map[string]*pending{}, approvalTimeout: 10 * time.Minute, interruptGrace: 10 * time.Second, now: time.Now}
+	return &Manager{d: d, rts: map[string]*runtime{}, pend: map[string]*pending{}, approvalTimeout: 10 * time.Minute, interruptGrace: 10 * time.Second, now: time.Now, recent: idem.New(2000, 30*time.Minute)}
 }
 
 /** SetTimeouts：调整审批超时与打断宽限，仅供测试 */
@@ -222,7 +227,7 @@ func (m *Manager) runtime(ctx context.Context, id string) (*runtime, error) {
  * Send：发送消息
  *
  * 处理流程：
- * 1、校验开关，首条消息时用内容生成标题
+ * 1、校验开关，重发的同一条消息直接返回，首条消息时用内容生成标题
  * 2、执行中：支持插话且要求插话时立即送达，否则排队
  * 3、空闲：记录用户消息并开始新一轮
  */
@@ -234,12 +239,18 @@ func (m *Manager) Send(ctx context.Context, id string, in Input) error {
 	if strings.TrimSpace(in.Text) == "" && len(in.Attachments) == 0 {
 		return errors.New("消息不能为空")
 	}
+	// 消息一旦开始处理就完整执行，不随手机断开连接而中途取消
+	ctx = context.WithoutCancel(ctx)
 	rt, err := m.runtime(ctx, id)
 	if err != nil {
 		return err
 	}
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
+	// 同一条消息因网络超时被重发时直接视为成功
+	if in.ClientID != "" && m.recent.Has(id+"\x00"+in.ClientID) {
+		return nil
+	}
 	if in.Delegate == rt.sess.Kind {
 		in.Delegate = ""
 	}
@@ -259,23 +270,34 @@ func (m *Manager) Send(ctx context.Context, id string, in Input) error {
 	if busy {
 		if in.Mode == "steer" && rt.proc != nil && rt.dproc == nil {
 			if d, _ := m.d.Registry.Get(rt.sess.Kind); d.SupportsSteer() {
-				m.emitUser(ctx, rt, in, false)
+				if err := m.emitUser(ctx, rt, in, false); err != nil {
+					return err
+				}
 				return rt.proc.Steer(ctx, agent.Message{Text: in.Text, Attachments: in.Attachments})
 			}
 		}
+		if err := m.emitUser(ctx, rt, in, true); err != nil {
+			return err
+		}
 		rt.queue = append(rt.queue, in)
-		m.emitUser(ctx, rt, in, true)
 		return nil
 	}
 	// 3、空闲
-	m.emitUser(ctx, rt, in, false)
+	if err := m.emitUser(ctx, rt, in, false); err != nil {
+		return err
+	}
 	m.startTurn(ctx, rt, in)
 	return nil
 }
 
 /** emitUser：记录用户消息事件 */
-func (m *Manager) emitUser(ctx context.Context, rt *runtime, in Input, queued bool) {
-	m.emit(ctx, rt.id, "msg.user", map[string]any{"text": in.Text, "attachments": in.Attachments, "queued": queued, "mode": in.Mode, "delegate": in.Delegate, "clientId": in.ClientID})
+func (m *Manager) emitUser(ctx context.Context, rt *runtime, in Input, queued bool) error {
+	if err := m.emit(ctx, rt.id, "msg.user", map[string]any{"text": in.Text, "attachments": in.Attachments, "queued": queued, "mode": in.Mode, "delegate": in.Delegate, "clientId": in.ClientID}); err != nil {
+		return err
+	}
+	// 记录成功后才登记编号，失败时手机重发会重新处理
+	m.recent.Add(rt.id + "\x00" + in.ClientID)
+	return nil
 }
 
 /**
@@ -741,26 +763,29 @@ func (m *Manager) setStateDirect(ctx context.Context, id, st string) {
  * 处理流程：
  * 1、追加事件得到序号
  * 2、按事件类型更新会话摘要
- * 3、广播给在线连接
+ * 3、广播给在线连接（与写库在同一把会话锁内，推送顺序与序号一致）
  */
-func (m *Manager) emit(ctx context.Context, id, typ string, data map[string]any) {
+func (m *Manager) emit(ctx context.Context, id, typ string, data map[string]any) error {
 	if m.closed.Load() {
-		return
+		return ErrClosed
 	}
-	// 1、写库
-	e, err := m.d.Store.AppendEvent(ctx, id, typ, data)
+	// 已被接受的操作必须记录完整，不随手机断开连接而取消
+	ctx = context.WithoutCancel(ctx)
+	// 1、3、写库并在同一把会话锁内按序号广播
+	_, err := m.d.Store.AppendEventThen(ctx, id, typ, data, func(e store.Event) {
+		if m.d.Hub != nil {
+			m.d.Hub.Publish(hub.Message{Session: id, Seq: e.Seq, Type: e.Type, Data: e.Data, CreatedAt: e.CreatedAt})
+		}
+	})
 	if err != nil {
 		slog.Warn("写入事件失败", "session", id, "type", typ, "err", err)
-		return
+		return err
 	}
 	// 2、摘要
 	if pv, ok := previewFor(typ, data); ok {
 		m.d.Store.UpdateSession(ctx, id, store.SessionPatch{Preview: &pv})
 	}
-	// 3、广播
-	if m.d.Hub != nil {
-		m.d.Hub.Publish(hub.Message{Session: id, Seq: e.Seq, Type: e.Type, Data: e.Data, CreatedAt: e.CreatedAt})
-	}
+	return nil
 }
 
 /** notify：没有在线连接时发推送，内容不含正文 */

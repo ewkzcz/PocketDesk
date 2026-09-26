@@ -18,6 +18,7 @@ import 'package:pocketdesk/core/pairing_service.dart';
 import 'package:pocketdesk/core/sessions_store.dart';
 import 'package:pocketdesk/core/transfer_manager.dart';
 import 'package:pocketdesk/core/vault.dart';
+import 'package:pocketdesk/data/chat.dart';
 import 'package:pocketdesk/data/local_db.dart';
 import 'package:pocketdesk/data/models.dart';
 import 'package:pocketdesk/net/api.dart';
@@ -240,6 +241,100 @@ void main() {
     await ch.sink.close();
     await api.closeTerminal(s.id);
   }, skip: _bin.isEmpty);
+
+  test('网络波动：连接反复被切断时消息不丢、不重、不乱序', () async {
+    // 1、在手机与电脑之间放一个会定时切断全部连接的转发器
+    final proxy = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final pipes = <Socket>[];
+    proxy.listen((client) async {
+      try {
+        final upstream = await Socket.connect('127.0.0.1', _port);
+        pipes.addAll([client, upstream]);
+        client.listen(upstream.add, onDone: upstream.destroy, onError: (_) => upstream.destroy());
+        upstream.listen(client.add, onDone: client.destroy, onError: (_) => client.destroy());
+      } catch (_) {
+        client.destroy();
+      }
+    });
+    var chaos = true;
+    var cuts = 0;
+    var failures = 0;
+    final killer = Timer.periodic(const Duration(milliseconds: 400), (_) {
+      if (!chaos || pipes.isEmpty) return;
+      cuts++;
+      for (final s in List.of(pipes)) {
+        s.destroy();
+      }
+      pipes.clear();
+    });
+    // 2、通过转发器连接，事件交给会话仓库
+    final token = (await vault.token(host.id))!;
+    late SessionsStore store;
+    final flaky = HostConnection(
+      host: PairedHost(id: host.id, name: host.name, addresses: ['127.0.0.1'], port: proxy.port, fingerprint: host.fingerprint),
+      token: token,
+      cursors: () => store.cursors(),
+    );
+    store = SessionsStore(db: db, hostId: 'chaos', api: () => flaky.api);
+    await store.init();
+    flaky.events.listen(store.onEvent);
+    var reconnects = 0;
+    flaky.addListener(() {
+      if (flaky.link == LinkState.connecting) reconnects++;
+    });
+    Future<T> retry<T>(Future<T> Function() f) async {
+      for (var i = 0;; i++) {
+        try {
+          return await f();
+        } on ApiException {
+          failures++;
+          if (i > 200) rethrow;
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        } catch (_) {
+          if (i > 200) rethrow;
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+      }
+    }
+
+    await until(() => flaky.connect(), max: const Duration(seconds: 30));
+    await retry(store.refresh);
+    final log = await retry(() => store.log('assistant'));
+    final base = log.lastSeq;
+    // 3、4 路并发各发 10 条，失败时用同一编号重发（与手机界面一致）
+    final texts = [for (var i = 0; i < 40; i++) '波动-$i'];
+    var next = 0;
+    await Future.wait([
+      for (var w = 0; w < 4; w++)
+        () async {
+          while (next < texts.length) {
+            final t = texts[next++];
+            await retry(() => flaky.api.assistantText(t, clientId: 'chaos-$t'));
+            await Future<void>.delayed(const Duration(milliseconds: 300));
+          }
+        }(),
+    ]);
+    // 5、停止切断，等待手机补齐
+    chaos = false;
+    killer.cancel();
+    final remote = await conn.api.events('assistant', after: base, limit: 5000);
+    await until(() => log.lastSeq >= remote.last.seq, max: const Duration(seconds: 60));
+    // 每条消息恰好一次，顺序与电脑端一致
+    final serverTexts = remote.where((e) => e.type == 'msg.user').map((e) => e.data['text']).toList();
+    final phoneTexts = log.items.whereType<UserItem>().map((u) => u.text).where((t) => t.startsWith('波动-')).toList();
+    expect(serverTexts.where((t) => texts.contains(t)).length, 40, reason: '电脑端重复或缺少消息');
+    expect(phoneTexts, serverTexts.where((t) => texts.contains(t)).toList(), reason: '手机端与电脑端不一致');
+    expect(phoneTexts.toSet(), texts.toSet());
+    // 确认波动真实发生：连接被多次切断、请求失败后重发、事件通道重连
+    printOnFailure('切断 $cuts 次，请求失败重发 $failures 次，事件通道重连 $reconnects 次');
+    expect(cuts, greaterThan(5));
+    expect(failures, greaterThan(0));
+    expect(reconnects, greaterThan(2));
+    // ignore: avoid_print
+    print('网络波动测试：切断 $cuts 次，请求失败重发 $failures 次，事件通道重连 $reconnects 次，40 条消息无丢失无重复');
+    flaky.dispose();
+    await proxy.close();
+  }, skip: _bin.isEmpty, timeout: const Timeout(Duration(minutes: 3)));
 
   test('文件传输助手：发文字后收到事件', () async {
     await conn.api.assistantText('联调消息', clientId: 'c1');
