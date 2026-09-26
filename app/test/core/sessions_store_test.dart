@@ -161,6 +161,42 @@ void main() {
     expect(store.cursors()['a'], 3000);
   });
 
+  test('网络波动：乱序、缺口、重复都能补齐且不重复', () async {
+    server.events['a'] = [for (var i = 1; i <= 3; i++) ev('a', i, 'msg.user', {'text': 'q$i'})];
+    final log = await store.log('a');
+    expect(log.lastSeq, 3);
+    // 电脑上又产生了 4~6，手机先收到 6（4、5 在路上丢了或乱序）
+    server.events['a']!.addAll([for (var i = 4; i <= 6; i++) ev('a', i, 'msg.user', {'text': 'q$i'})]);
+    store.onEvent(PdEvent.fromJson(ev('a', 6, 'msg.user', {'text': 'q6'})));
+    store.onEvent(PdEvent.fromJson(ev('a', 5, 'msg.user', {'text': 'q5'})));
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    // 重复到达
+    store.onEvent(PdEvent.fromJson(ev('a', 6, 'msg.user', {'text': 'q6'})));
+    store.onEvent(PdEvent.fromJson(ev('a', 4, 'msg.user', {'text': 'q4'})));
+    final texts = log.items.map((i) => (i as UserItem).text).toList();
+    expect(texts, ['q1', 'q2', 'q3', 'q4', 'q5', 'q6']);
+    expect(store.cursors()['a'], 6);
+    // 之后连续的事件正常追加
+    store.onEvent(PdEvent.fromJson(ev('a', 7, 'msg.user', {'text': 'q7'})));
+    expect((log.items.last as UserItem).text, 'q7');
+  });
+
+  test('未打开的会话：重复补发不重复计未读，有缺口时不写入缓存', () async {
+    store.onEvent(PdEvent.fromJson(ev('b', 1, 'msg.done', {'id': 'x', 'text': 'a'})));
+    store.onEvent(PdEvent.fromJson(ev('b', 1, 'msg.done', {'id': 'x', 'text': 'a'})));
+    expect(store.unread('b'), 1);
+    store.onEvent(PdEvent.fromJson(ev('b', 3, 'msg.done', {'id': 'y', 'text': 'c'})));
+    expect(store.unread('b'), 2);
+    expect(store.cursors()['b'], 1);
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    expect((await db.cachedEvents('h', 'b')).map((e) => e.seq), [1]);
+    // 重连后补发 2、3：只推进游标，不重复计未读
+    store.onEvent(PdEvent.fromJson(ev('b', 2, 'msg.done', {'id': 'z', 'text': 'b'})));
+    store.onEvent(PdEvent.fromJson(ev('b', 3, 'msg.done', {'id': 'y', 'text': 'c'})));
+    expect(store.unread('b'), 2);
+    expect(store.cursors()['b'], 3);
+  });
+
   test('已打开的会话忽略重复事件', () async {
     server.events['a'] = [ev('a', 1, 'msg.user', {'text': 'x'})];
     final log = await store.log('a');
