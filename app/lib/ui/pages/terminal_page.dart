@@ -357,7 +357,7 @@ class _TerminalPageState extends State<TerminalPage> {
       backgroundColor: c.termBg,
       appBar: PdBar(
         title: s == null ? '终端' : sessionTitle(s),
-        subtitle: status.isEmpty ? host : '$host · $status',
+        subtitle: [if (s == null || !sessionTitle(s).contains(host)) host, if (status.isNotEmpty) status].where((x) => x.isNotEmpty).join(' · '),
         dark: true,
         actions: [PdIconButton(icon: LucideIcons.ellipsis300, tooltip: '更多', color: Colors.white, onTap: _menu)],
       ),
