@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Pocketdesk</string>
+	<string>PocketDesk</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -25,6 +25,26 @@
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>扫描电脑上的配对二维码，或拍照发送给电脑</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>按住说话时录入语音，转成文字后发送</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>把你说的话转成文字放进输入框</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>打开 App、进入会话或终端时验证身份</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>选择图片或视频发送给电脑</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>在局域网中查找并连接你的电脑</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_pocketdesk._tcp</string>
+	</array>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
