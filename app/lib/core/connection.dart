@@ -14,6 +14,7 @@ import '../net/api.dart';
 import '../net/events.dart';
 import '../net/pinning.dart';
 import '../transfer/tus.dart';
+import 'safe_notifier.dart';
 
 /** isTailscale：是否为 Tailscale 地址（100.64.0.0/10 或 fd7a:115c:a1e0::/48） */
 bool isTailscale(String ip) {
@@ -44,7 +45,7 @@ typedef ApiFactory = PdApi Function(Uri base, String token);
 /**
  * HostConnection：与一台电脑的连接
  */
-class HostConnection extends ChangeNotifier {
+class HostConnection extends ChangeNotifier with SafeNotifier {
   HostConnection({
     required this.host,
     required this.token,
@@ -150,12 +151,14 @@ class HostConnection extends ChangeNotifier {
    * connect：选择地址并建立事件通道，失败时 15 秒后再试
    */
   Future<bool> connect() async {
+    if (disposed) return false;
     if (probing) return hasApi;
     probing = true;
     lastError = '';
     notifyListeners();
     try {
       final p = await probeAll();
+      if (disposed) return false;
       if (p == null) {
         if (lastError.isEmpty) lastError = '电脑不在线';
         _scheduleReprobe();
@@ -203,7 +206,9 @@ class HostConnection extends ChangeNotifier {
   void _scheduleReprobe() {
     _reprobe?.cancel();
     _reprobe = Timer(const Duration(seconds: 15), () async {
+      if (disposed) return;
       final p = await probeAll();
+      if (disposed) return;
       if (p != null && p.address != address) {
         _use(p);
         notifyListeners();
@@ -215,8 +220,9 @@ class HostConnection extends ChangeNotifier {
 
   /** networkChanged：网络切换后立即重新探测并重连 */
   Future<void> networkChanged() async {
+    if (disposed) return;
     final p = await probeAll();
-    if (p != null) {
+    if (p != null && !disposed) {
       _use(p);
       _events?.reconnectNow();
       notifyListeners();
@@ -225,7 +231,7 @@ class HostConnection extends ChangeNotifier {
 
   /** refreshStatus：重新读取电脑信息（功能开关、Agent） */
   Future<void> refreshStatus() async {
-    if (_api == null) return;
+    if (_api == null || disposed) return;
     try {
       status = await api.host();
       notifyListeners();

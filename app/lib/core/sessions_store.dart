@@ -12,9 +12,10 @@ import '../data/local_db.dart';
 import '../data/models.dart';
 import '../net/api.dart';
 import 'app_log.dart';
+import 'safe_notifier.dart';
 
 /** SessionsStore：一台电脑的会话数据 */
-class SessionsStore extends ChangeNotifier {
+class SessionsStore extends ChangeNotifier with SafeNotifier {
   SessionsStore({required this.db, required this.hostId, required this.api});
 
   final LocalDb db;

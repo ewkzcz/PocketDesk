@@ -17,6 +17,7 @@ import '../transfer/runners.dart';
 import '../transfer/task.dart';
 import '../transfer/tus.dart';
 import 'connection.dart';
+import 'safe_notifier.dart';
 
 /** FileSaver：下载完成后保存到手机的位置 */
 abstract class FileSaver {
@@ -60,7 +61,7 @@ class QueueOptions {
 /**
  * TransferManager：一台电脑的传输队列
  */
-class TransferManager extends ChangeNotifier {
+class TransferManager extends ChangeNotifier with SafeNotifier {
   TransferManager({required this.db, required this.hostId, required this.conn, required this.saver, required this.tempDir, required this.options});
 
   final LocalDb db;
@@ -177,6 +178,7 @@ class TransferManager extends ChangeNotifier {
    * 2、普通任务不超过并发上限，小于 8MB 的任务额外占用一个快速通道
    */
   void pump() {
+    if (disposed) return;
     // 1、暂停条件
     final reason = blockedReason;
     if (reason.isNotEmpty) {
@@ -270,7 +272,7 @@ class TransferManager extends ChangeNotifier {
     _retryTimers[t.id]?.cancel();
     _retryTimers[t.id] = Timer(wait, () {
       _retryTimers.remove(t.id);
-      if (t.status == TaskStatus.waiting) {
+      if (!disposed && t.status == TaskStatus.waiting) {
         t.status = TaskStatus.queued;
         pump();
       }
