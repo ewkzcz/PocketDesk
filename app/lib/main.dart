@@ -103,13 +103,16 @@ ShareSource _shareSource() {
  * PocketDeskApp：根组件
  */
 class PocketDeskApp extends StatelessWidget {
-  const PocketDeskApp({super.key, required this.settings, required this.app, required this.gate, required this.pairing, this.share});
+  const PocketDeskApp({super.key, required this.settings, required this.app, required this.gate, required this.pairing, this.share, this.home});
 
   final AppSettings settings;
   final AppState app;
   final AuthGate gate;
   final PairingService pairing;
   final ShareSource? share;
+
+  /** 首页，默认为主框架（测试时可单独显示某个页面） */
+  final Widget? home;
 
   @override
   Widget build(BuildContext context) {
@@ -130,7 +133,7 @@ class PocketDeskApp extends StatelessWidget {
           locale: const Locale('zh', 'CN'),
           supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
           localizationsDelegates: GlobalMaterialLocalizations.delegates,
-          home: HomeShell(share: share),
+          home: home ?? HomeShell(share: share),
         ),
       ),
     );
