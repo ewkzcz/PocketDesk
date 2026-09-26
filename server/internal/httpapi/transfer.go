@@ -72,17 +72,20 @@ func (s *Server) EnsureAssistant(ctx context.Context) error {
 }
 
 /** emit：向会话追加事件、更新摘要并推送 */
-func (s *Server) emit(ctx context.Context, sid, typ string, data map[string]any, preview string) {
+func (s *Server) emit(ctx context.Context, sid, typ string, data map[string]any, preview string) error {
+	// 已被接受的操作必须记录完整，不随手机断开连接而取消
+	ctx = context.WithoutCancel(ctx)
 	_, err := s.Store.AppendEventThen(ctx, sid, typ, data, func(e store.Event) {
 		s.Hub.Publish(hub.Message{Session: sid, Seq: e.Seq, Type: e.Type, Data: e.Data, CreatedAt: e.CreatedAt})
 	})
 	if err != nil {
 		slog.Warn("写入事件失败", "session", sid, "err", err)
-		return
+		return err
 	}
 	if preview != "" {
 		s.Store.UpdateSession(ctx, sid, store.SessionPatch{Preview: &preview})
 	}
+	return nil
 }
 
 /** filePreview：文件消息的列表摘要 */
@@ -252,8 +255,12 @@ func (s *Server) assistantText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 3、事件
+	if err := s.emit(r.Context(), AssistantID, "msg.user", map[string]any{"text": in.Text, "clientId": in.ClientID, "file": map[string]string{"name": name, "relPath": date + "/" + name}}, "你："+firstLine(in.Text)); err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	// 记录成功后才登记编号，失败时手机重发会重新处理
 	s.recentText.Add(in.ClientID)
-	s.emit(r.Context(), AssistantID, "msg.user", map[string]any{"text": in.Text, "clientId": in.ClientID, "file": map[string]string{"name": name, "relPath": date + "/" + name}}, "你："+firstLine(in.Text))
 	s.audit(r, "assistant.text", map[string]any{"file": date + "/" + name})
 	writeJSON(w, 200, map[string]string{"name": name})
 }
