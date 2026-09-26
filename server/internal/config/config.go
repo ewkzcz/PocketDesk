@@ -50,7 +50,18 @@ type Config struct {
 	Render            Render              `json:"render"`
 	Notify            Notify              `json:"notify"`
 	Agents            map[string][]string `json:"agents"`
+	Models            map[string][]string `json:"models"`
 	TerminalIdleHours int                 `json:"terminalIdleHours"`
+}
+
+/** DefaultModels：/model 指令弹出的可选模型，可在配置文件中改写 */
+func DefaultModels() map[string][]string {
+	return map[string][]string{
+		"claude": {"sonnet", "opus", "haiku"},
+		"codex":  {"gpt-5-codex", "gpt-5"},
+		"pi":     {},
+		"dsh":    {"deepseek-chat", "deepseek-reasoner"},
+	}
 }
 
 /** DefaultAgents：各 Agent 的默认启动命令，可在配置文件中改写 */
@@ -127,6 +138,7 @@ func Default() Config {
 		},
 		Render:            Render{PageSize: "mobile"},
 		Agents:            DefaultAgents(),
+		Models:            DefaultModels(),
 		TerminalIdleHours: 24,
 	}
 }
@@ -199,6 +211,14 @@ func normalize(c Config) Config {
 			c.Agents[k] = v
 		}
 	}
+	if c.Models == nil {
+		c.Models = map[string][]string{}
+	}
+	for k, v := range d.Models {
+		if _, ok := c.Models[k]; !ok {
+			c.Models[k] = v
+		}
+	}
 	if c.Notify.Kind != "ntfy" && c.Notify.Kind != "bark" {
 		c.Notify.Kind = ""
 	}
@@ -219,6 +239,11 @@ func clone(c Config) Config {
 		agents[k] = append([]string(nil), v...)
 	}
 	c.Agents = agents
+	models := make(map[string][]string, len(c.Models))
+	for k, v := range c.Models {
+		models[k] = append([]string{}, v...)
+	}
+	c.Models = models
 	return c
 }
 
