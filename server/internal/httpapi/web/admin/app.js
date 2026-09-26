@@ -95,7 +95,7 @@
 
   /* ---------- 菜单面板 ---------- */
   function trayView() {
-    var devs = state.devices.filter(function (d) { return !d.revoked; });
+    var devs = (state.devices || []).filter(function (d) { return !d.revoked; });
     var rows = devs.map(function (d) {
       return '<div class="pd-trow pd-trow-static"><div class="pd-tile">' + icon('smartphone', 16) + '</div>' +
         '<div class="pd-trow-main"><div class="pd-trow-name">' + esc(d.name) + '</div>' +
@@ -178,10 +178,10 @@
   }
 
   function overviewView() {
-    var addrs = state.addresses.map(function (a) {
+    var addrs = (state.addresses || []).map(function (a) {
       return '<div><span class="pd-mono">' + esc(a.ip) + '</span> <span class="pd-tag' + (a.kind === 'tailscale' ? '' : ' pd-tag-ok') + '">' + (a.kind === 'tailscale' ? 'Tailscale' : '局域网') + '</span></div>';
     }).join('') || '<span class="pd-muted">未检测到局域网或 Tailscale 地址</span>';
-    var agents = state.agents.map(function (a) {
+    var agents = (state.agents || []).map(function (a) {
       return '<div class="pd-agent"><div class="pd-avatar" style="background:' + AGENT_COLORS[a.kind] + '">' + AGENT_SHORT[a.kind] + '</div>' +
         '<div style="min-width:0"><div>' + esc(a.label) + '</div><div class="pd-muted" style="font-size:12px">' + (a.installed ? esc(a.version || '已安装') : '未安装') + '</div></div></div>';
     }).join('');
@@ -209,7 +209,7 @@
       return '<div class="pd-warn">' + icon('alert-triangle', 16) + '<div>' + esc(w.warning) + '</div></div>';
     }).join('');
     return head('工作区', '手机上可访问的电脑文件夹', '<button class="pd-btn pd-btn-primary" data-act="ws-add">' + icon('plus', 16) + '添加工作区</button>') +
-      '<div class="pd-card">' + (rows ? '<table class="pd-table"><tr><th>名称</th><th>路径</th><th>权限</th><th style="width:100px">操作</th></tr>' + rows + '</table>' : '<div class="pd-empty">还没有工作区，添加后手机才能浏览电脑上的文件</div>') + '</div>' + warns;
+      '<div class="pd-card">' + (rows ? '<table class="pd-table"><tr><th>名称</th><th>路径</th><th class="pd-col-tag">权限</th><th style="width:100px">操作</th></tr>' + rows + '</table>' : '<div class="pd-empty">还没有工作区，添加后手机才能浏览电脑上的文件</div>') + '</div>' + warns;
   }
 
   function devicesView() {
@@ -268,6 +268,13 @@
       '</dl></div><div style="margin-top:16px"><button class="pd-btn pd-btn-danger" data-act="quit">' + icon('log-out', 16) + '退出服务</button></div>';
   }
 
+  /** fmtTime：固定为中文 24 小时制，不随浏览器语言变化 */
+  function fmtTime(ms) {
+    var d = new Date(ms);
+    var p = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+
   /** loadAudit：安全页的操作记录 */
   function loadAudit() {
     var el = document.getElementById('audit');
@@ -277,8 +284,10 @@
       state.devices.forEach(function (d) { names[d.id] = d.name; });
       if (!list.length) { el.innerHTML = '<div class="pd-empty">暂无记录</div>'; return; }
       el.innerHTML = '<table class="pd-table pd-audit"><tr><th>时间</th><th>设备</th><th>操作</th><th class="pd-hide-s">详情</th></tr>' + list.slice(0, 100).map(function (a) {
-        return '<tr><td style="white-space:nowrap">' + new Date(a.createdAt).toLocaleString() + '</td><td>' + esc(names[a.deviceId] || '电脑') + '</td><td>' + esc(a.action) + '</td>' +
-          '<td class="pd-hide-s pd-path">' + esc(JSON.stringify(a.detail)).slice(0, 160) + '</td></tr>';
+        var detail = JSON.stringify(a.detail) || '';
+        if (detail.length > 160) { detail = detail.slice(0, 160) + '…'; }
+        return '<tr><td class="pd-nowrap">' + fmtTime(a.createdAt) + '</td><td class="pd-nowrap">' + esc(names[a.deviceId] || '电脑') + '</td><td class="pd-nowrap">' + esc(a.action) + '</td>' +
+          '<td class="pd-hide-s pd-path">' + esc(detail) + '</td></tr>';
       }).join('') + '</table>';
     });
   }
@@ -404,6 +413,8 @@
 
   window.addEventListener('hashchange', function () {
     var r = route();
+    // 切换页面时关闭普通弹窗，保留配对请求确认
+    if (modalRoot.innerHTML && !modalRoot.querySelector('[data-act="req"]')) { closeModal(); }
     if (r.page === 'pair') { startPair(); } else { clearInterval(pairTimer); render(); }
     if (r.section === 'security') { setTimeout(loadAudit, 0); }
   });

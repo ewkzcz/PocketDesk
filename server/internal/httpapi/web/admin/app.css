@@ -86,7 +86,7 @@ button, input, select { font: inherit; color: inherit; }
 .pd-switch input:focus-visible + span { outline: 2px solid var(--pd-accent); outline-offset: 2px; }
 
 /* 标签 */
-.pd-tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; background: var(--pd-chip); color: var(--pd-text-2); }
+.pd-tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; line-height: 18px; white-space: nowrap; background: var(--pd-chip); color: var(--pd-text-2); }
 .pd-tag-ok { background: var(--pd-accent-soft); color: var(--pd-accent); }
 .pd-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--pd-accent); display: inline-block; }
 .pd-dot-off { background: var(--pd-text-4); }
@@ -150,6 +150,8 @@ button, input, select { font: inherit; color: inherit; }
 .pd-table td { padding: 12px; border-bottom: 1px solid var(--pd-divider); vertical-align: middle; }
 .pd-table tr:last-child td { border-bottom: 0; }
 .pd-table .pd-path { color: var(--pd-text-3); font: 12px/1.4 var(--pd-mono); word-break: break-all; }
+.pd-table .pd-col-tag { width: 72px; white-space: nowrap; }
+.pd-table .pd-nowrap { white-space: nowrap; }
 .pd-actions { display: flex; gap: 4px; align-items: center; white-space: nowrap; }
 .pd-actions .pd-sepdot { color: var(--pd-text-4); }
 .pd-empty { padding: 28px 16px; text-align: center; color: var(--pd-text-3); }
