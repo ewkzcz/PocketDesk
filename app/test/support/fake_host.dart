@@ -55,6 +55,9 @@ class FakeHost {
   /** 配对：正确的配对码、证书指纹与已发出的令牌 */
   String pairCode = 'K7M29QXA';
   String fingerprint = 'ab' * 32;
+
+  /** 电脑上报的地址（如后来装好的 Tailscale 地址） */
+  List<Map<String, String>> hostAddresses = [];
   final tokens = <String>[];
 
   /** 离线模拟：为 true 时 /api 请求直接断开 */
@@ -257,7 +260,7 @@ class FakeHost {
         res.write(jsonEncode({'code': 'unauthorized', 'message': '请先配对'}));
         return;
       }
-      res.write(jsonEncode({'name': '测试电脑', 'version': '1.0.0', 'os': 'linux', 'fingerprint': fingerprint, 'agents': [], 'features': {}, 'addresses': []}));
+      res.write(jsonEncode({'name': '测试电脑', 'version': '1.0.0', 'os': 'linux', 'fingerprint': fingerprint, 'agents': [], 'features': {}, 'addresses': hostAddresses}));
       return;
     }
     if (path == '/api/pair') {

@@ -155,11 +155,41 @@ class ComputersPage extends StatelessWidget {
                 PdCell(
                   icon: LucideIcons.laptop300,
                   title: h.name,
-                  subtitle: h.addresses.map((a) => '$a${isTailscale(a) ? '（Tailscale）' : ''}').join('，'),
+                  subtitle: '${h.addresses.length} 个连接地址',
                   arrow: false,
                   trailing: h.id == current?.id ? Icon(LucideIcons.check300, color: c.accent, size: 20) : null,
                   onTap: () => app.switchHost(h.id),
                 ),
+            ],
+          ),
+        if (current != null)
+          PdGroup(
+            header: '连接地址（按局域网优先、延迟最低自动选择）',
+            footer: '不在同一网络时：电脑和手机都安装并登录同一个 Tailscale 账号，连接后会自动记住电脑的 Tailscale 地址；也可以手动添加 Tailscale 名称或自建隧道的地址。',
+            children: [
+              for (final a in app.scope?.conn.host.addresses ?? current.addresses)
+                PdCell(
+                  title: a,
+                  value: [
+                    if (app.scope?.conn.online == true && app.scope?.conn.address == a) '正在使用',
+                    isTailscale(a) ? 'Tailscale' : '局域网',
+                  ].join(' · '),
+                  arrow: false,
+                  onTap: () async {
+                    final i = await actionSheet(context, const [SheetAction('删除这个地址', danger: true)], title: a);
+                    if (i == 0 && !await app.removeAddress(a) && context.mounted) toast(context, '至少需要保留一个地址');
+                  },
+                ),
+              PdCell(
+                icon: LucideIcons.plus300,
+                title: '添加连接地址',
+                onTap: () async {
+                  final v = await inputDialog(context, title: '添加连接地址', hint: '例如 100.101.102.103 或 my-pc.tail1234.ts.net');
+                  if (v == null || v.trim().isEmpty) return;
+                  final ok = await app.addAddress(v.trim());
+                  if (context.mounted) toast(context, ok ? '已添加，正在尝试连接' : '这个地址已经存在');
+                },
+              ),
             ],
           ),
         if (current != null)

@@ -251,10 +251,19 @@ class HostConnection extends ChangeNotifier with SafeNotifier {
     notifyListeners();
   }
 
-  /** addAddress：mDNS 发现电脑的新地址时加入候选 */
-  bool addAddress(String ip) {
-    if (host.addresses.contains(ip)) return false;
-    host = host.copyWith(addresses: [ip, ...host.addresses]);
+  /** addAddress：加入新的候选地址（局域网发现的放最前，其余追加在后），已有时返回 false */
+  bool addAddress(String ip, {bool front = true}) {
+    final a = ip.trim();
+    if (a.isEmpty || host.addresses.contains(a)) return false;
+    host = host.copyWith(addresses: front ? [a, ...host.addresses] : [...host.addresses, a]);
+    return true;
+  }
+
+  /** removeAddress：删除一个候选地址（至少保留一个） */
+  bool removeAddress(String ip) {
+    if (!host.addresses.contains(ip) || host.addresses.length <= 1) return false;
+    host = host.copyWith(addresses: host.addresses.where((a) => a != ip).toList());
+    notifyListeners();
     return true;
   }
 

@@ -151,7 +151,14 @@ void main() {
     await tester.tap(find.text('MacBook Pro'));
     await settle(tester);
     expect(find.text('解除配对'), findsOneWidget);
+    expect(find.text('192.168.1.5'), findsOneWidget);
     await shot(tester, 'flow-computers');
+    await tester.tap(find.text('添加连接地址'));
+    await settle(tester);
+    await tester.enterText(find.byType(TextField).last, '100.100.7.8');
+    await tester.tap(find.text('确定'));
+    await settle(tester);
+    expect(find.text('100.100.7.8'), findsOneWidget);
     await tester.tap(find.bySemanticsLabel('返回').last);
     await settle(tester);
     await tester.tap(find.text('外观'));
