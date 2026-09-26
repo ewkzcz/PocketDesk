@@ -73,7 +73,9 @@ func (s *Server) EnsureAssistant(ctx context.Context) error {
 
 /** emit：向会话追加事件、更新摘要并推送 */
 func (s *Server) emit(ctx context.Context, sid, typ string, data map[string]any, preview string) {
-	e, err := s.Store.AppendEvent(ctx, sid, typ, data)
+	_, err := s.Store.AppendEventThen(ctx, sid, typ, data, func(e store.Event) {
+		s.Hub.Publish(hub.Message{Session: sid, Seq: e.Seq, Type: e.Type, Data: e.Data, CreatedAt: e.CreatedAt})
+	})
 	if err != nil {
 		slog.Warn("写入事件失败", "session", sid, "err", err)
 		return
@@ -81,7 +83,6 @@ func (s *Server) emit(ctx context.Context, sid, typ string, data map[string]any,
 	if preview != "" {
 		s.Store.UpdateSession(ctx, sid, store.SessionPatch{Preview: &preview})
 	}
-	s.Hub.Publish(hub.Message{Session: sid, Seq: e.Seq, Type: e.Type, Data: e.Data, CreatedAt: e.CreatedAt})
 }
 
 /** filePreview：文件消息的列表摘要 */

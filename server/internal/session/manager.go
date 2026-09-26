@@ -741,14 +741,18 @@ func (m *Manager) setStateDirect(ctx context.Context, id, st string) {
  * 处理流程：
  * 1、追加事件得到序号
  * 2、按事件类型更新会话摘要
- * 3、广播给在线连接
+ * 3、广播给在线连接（与写库在同一把会话锁内，推送顺序与序号一致）
  */
 func (m *Manager) emit(ctx context.Context, id, typ string, data map[string]any) {
 	if m.closed.Load() {
 		return
 	}
-	// 1、写库
-	e, err := m.d.Store.AppendEvent(ctx, id, typ, data)
+	// 1、3、写库并在同一把会话锁内按序号广播
+	_, err := m.d.Store.AppendEventThen(ctx, id, typ, data, func(e store.Event) {
+		if m.d.Hub != nil {
+			m.d.Hub.Publish(hub.Message{Session: id, Seq: e.Seq, Type: e.Type, Data: e.Data, CreatedAt: e.CreatedAt})
+		}
+	})
 	if err != nil {
 		slog.Warn("写入事件失败", "session", id, "type", typ, "err", err)
 		return
@@ -756,10 +760,6 @@ func (m *Manager) emit(ctx context.Context, id, typ string, data map[string]any)
 	// 2、摘要
 	if pv, ok := previewFor(typ, data); ok {
 		m.d.Store.UpdateSession(ctx, id, store.SessionPatch{Preview: &pv})
-	}
-	// 3、广播
-	if m.d.Hub != nil {
-		m.d.Hub.Publish(hub.Message{Session: id, Seq: e.Seq, Type: e.Type, Data: e.Data, CreatedAt: e.CreatedAt})
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"sync"
 )
 
 /** Session：一个聊天窗口或终端会话 */
@@ -181,6 +182,22 @@ func (s *Store) AppendEvent(ctx context.Context, sessionID, typ string, data any
 		return err
 	})
 	return ev, err
+}
+
+/**
+ * AppendEventThen：写入事件后在同一把会话锁内执行 then（用于推送）
+ * 同一会话的并发写入会按序号依次推送，手机不会先收到大序号而把小序号当成重复丢弃
+ */
+func (s *Store) AppendEventThen(ctx context.Context, sessionID, typ string, data any, then func(Event)) (Event, error) {
+	v, _ := s.emitLocks.LoadOrStore(sessionID, &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	mu.Lock()
+	defer mu.Unlock()
+	e, err := s.AppendEvent(ctx, sessionID, typ, data)
+	if err == nil && then != nil {
+		then(e)
+	}
+	return e, err
 }
 
 /** EventsAfter：取某序号之后的事件，最多 limit 条 */
