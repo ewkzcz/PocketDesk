@@ -145,6 +145,22 @@ void main() {
     expect((await db.cachedEvents('h', 'a')).first.seq, 2801);
   });
 
+  test('已打开的会话落后太多时，刷新列表后原地换成最近一段', () async {
+    server.events['a'] = [for (var i = 1; i <= 10; i++) ev('a', i, 'msg.user', {'text': 'q$i'})];
+    server.sessions.first['lastSeq'] = 10;
+    await store.refresh();
+    final log = await store.log('a');
+    expect(log.lastSeq, 10);
+    server.events['a'] = [for (var i = 1; i <= 3000; i++) ev('a', i, 'msg.user', {'text': 'q$i'})];
+    server.sessions.first['lastSeq'] = 3000;
+    await store.refresh();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(identical(store.loadedLog('a'), log), isTrue);
+    expect(log.firstSeq, 2801);
+    expect(log.lastSeq, 3000);
+    expect(store.cursors()['a'], 3000);
+  });
+
   test('已打开的会话忽略重复事件', () async {
     server.events['a'] = [ev('a', 1, 'msg.user', {'text': 'x'})];
     final log = await store.log('a');

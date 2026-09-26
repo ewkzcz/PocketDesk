@@ -86,8 +86,25 @@ class SessionsStore extends ChangeNotifier with SafeNotifier {
     loaded = true;
     for (final s in list) {
       unawaited(db.saveSessionCache(hostId, s).catchError(_logDb));
+      // 已打开的会话落后太多时（电脑端不再补发），重新取最近一段
+      final log = _logs[s.id];
+      if (log != null && s.lastSeq - log.lastSeq > _gapLimit) unawaited(_resync(s.id, s.lastSeq));
     }
     notifyListeners();
+  }
+
+  /** _resync：用最近 200 条替换已打开会话的聊天记录 */
+  Future<void> _resync(String id, int remote) async {
+    try {
+      final recent = await api().events(id, before: remote + 1, limit: 200);
+      _logs[id]?.reset(recent);
+      if (recent.isNotEmpty) _cursors[id] = recent.last.seq;
+      await db.clearEvents(hostId, id);
+      await db.cacheEvents(hostId, id, recent);
+      notifyListeners();
+    } catch (e) {
+      _logDb(e);
+    }
   }
 
   /** upsert：新建或更新一个会话 */

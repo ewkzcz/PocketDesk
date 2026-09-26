@@ -173,6 +173,22 @@ class ChatLog {
     if (lastSeq == 0) lastSeq = fresh.last.seq;
   }
 
+  /**
+   * reset：用最近一段事件替换全部内容（与电脑相差太多、改为只取最近一段时），保持对象不变以便界面继续引用
+   */
+  void reset(List<PdEvent> recent) {
+    items.clear();
+    _byKey.clear();
+    usage
+      ..inputTokens = 0
+      ..outputTokens = 0
+      ..costUsd = 0
+      ..turns = 0;
+    lastSeq = 0;
+    firstSeq = 0;
+    prepend(recent);
+  }
+
   /** hasMoreBefore：是否还有更早的事件可以加载 */
   bool get hasMoreBefore => firstSeq > 1;
 
