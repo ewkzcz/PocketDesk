@@ -108,7 +108,7 @@ func Setup(dir string, debug bool, also io.Writer) (*Daily, error) {
 }
 
 /** secretRe：需要去除的令牌、密钥与配对码 */
-var secretRe = regexp.MustCompile(`(?i)(bearer\s+|token[=:"\s]+|key[=:"\s]+|code[=:"\s]+|authorization[=:"\s]+)[A-Za-z0-9._~+/=-]{6,}`)
+var secretRe = regexp.MustCompile(`(?i)((?:authorization[=:"\s]+)?bearer\s+|token[=:"\s]+|key[=:"\s]+|code[=:"\s]+|authorization[=:"\s]+)[A-Za-z0-9._~+/=-]{6,}`)
 
 /** Sanitize：去掉敏感内容 */
 func Sanitize(s string) string {
