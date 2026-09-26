@@ -143,9 +143,11 @@ class LocalDb {
     return {for (final r in rows) r['session_id']! as String: r['unread']! as int};
   }
 
-  /** setUnread：设置未读数 */
-  Future<void> setUnread(String hostId, String sessionId, int n) =>
-      db.update('session_cache', {'unread': n}, where: 'session_id=? AND host_id=?', whereArgs: [sessionId, hostId]);
+  /** setUnread：设置未读数（会话尚未缓存时先建一条占位记录） */
+  Future<void> setUnread(String hostId, String sessionId, int n) => db.rawInsert(
+      "INSERT INTO session_cache (session_id, host_id, title, last_seq, last_preview, unread) VALUES (?, ?, '', 0, '', ?) "
+      'ON CONFLICT(session_id, host_id) DO UPDATE SET unread=excluded.unread',
+      [sessionId, hostId, n]);
 
   /* ---------- 手机上删除的会话 ---------- */
 
