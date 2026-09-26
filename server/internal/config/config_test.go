@@ -59,3 +59,19 @@ func TestDefaultDataDirEnv(t *testing.T) {
 		t.Fatalf("环境变量未生效: %s %v", d, err)
 	}
 }
+
+func TestAgentsDefaultsFilled(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.json")
+	os.WriteFile(p, []byte(`{"agents":{"dsh":["deepseek","--acp"]},"notify":{"kind":"weird"}}`), 0o600)
+	s, err := Open(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := s.Get()
+	if c.Agents["dsh"][0] != "deepseek" || c.Agents["claude"][0] != "claude" {
+		t.Fatalf("Agent 命令合并异常: %v", c.Agents)
+	}
+	if c.Notify.Kind != "" {
+		t.Fatal("非法推送类型应清空")
+	}
+}

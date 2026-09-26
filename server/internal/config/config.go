@@ -33,16 +33,34 @@ type Render struct {
 	Browser  string `json:"browser"`
 }
 
+/** Notify：后台推送设置 */
+type Notify struct {
+	Kind  string `json:"kind"`
+	URL   string `json:"url"`
+	Topic string `json:"topic"`
+}
+
 /** Config：服务端全部可持久化配置 */
 type Config struct {
-	HostName          string   `json:"hostName"`
-	Port              int      `json:"port"`
-	AdminPort         int      `json:"adminPort"`
-	Features          Features `json:"features"`
-	Transfer          Transfer `json:"transfer"`
-	Render            Render   `json:"render"`
-	TerminalIdleHours int      `json:"terminalIdleHours"`
-	ListenPublic      bool     `json:"-"`
+	HostName          string              `json:"hostName"`
+	Port              int                 `json:"port"`
+	AdminPort         int                 `json:"adminPort"`
+	Features          Features            `json:"features"`
+	Transfer          Transfer            `json:"transfer"`
+	Render            Render              `json:"render"`
+	Notify            Notify              `json:"notify"`
+	Agents            map[string][]string `json:"agents"`
+	TerminalIdleHours int                 `json:"terminalIdleHours"`
+}
+
+/** DefaultAgents：各 Agent 的默认启动命令，可在配置文件中改写 */
+func DefaultAgents() map[string][]string {
+	return map[string][]string{
+		"claude": {"claude"},
+		"codex":  {"codex"},
+		"pi":     {"pi"},
+		"dsh":    {"dsh", "acp"},
+	}
 }
 
 /** Store：带锁的配置存取器，修改后立即写回磁盘 */
@@ -108,6 +126,7 @@ func Default() Config {
 			UploadExpireDays: 7,
 		},
 		Render:            Render{PageSize: "mobile"},
+		Agents:            DefaultAgents(),
 		TerminalIdleHours: 24,
 	}
 }
@@ -171,6 +190,17 @@ func normalize(c Config) Config {
 	}
 	if c.TerminalIdleHours <= 0 {
 		c.TerminalIdleHours = d.TerminalIdleHours
+	}
+	if c.Agents == nil {
+		c.Agents = map[string][]string{}
+	}
+	for k, v := range d.Agents {
+		if len(c.Agents[k]) == 0 {
+			c.Agents[k] = v
+		}
+	}
+	if c.Notify.Kind != "ntfy" && c.Notify.Kind != "bark" {
+		c.Notify.Kind = ""
 	}
 	return c
 }
