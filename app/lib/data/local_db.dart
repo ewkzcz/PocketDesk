@@ -73,10 +73,11 @@ class LocalDb {
         .toList();
   }
 
-  /** deleteHost：删除电脑及其缓存 */
+  /** deleteHost：删除电脑及其缓存与传输记录 */
   Future<void> deleteHost(String id) async {
     await db.transaction((t) async {
-      for (final table in ['hosts', 'session_cache', 'event_cache', 'reading_pos', 'drafts', 'hidden_sessions']) {
+      await t.rawDelete('DELETE FROM transfer_parts WHERE transfer_id IN (SELECT id FROM transfers WHERE host_id=?)', [id]);
+      for (final table in ['transfers', 'hosts', 'session_cache', 'event_cache', 'reading_pos', 'drafts', 'hidden_sessions']) {
         await t.delete(table, where: table == 'hosts' ? 'id=?' : 'host_id=?', whereArgs: [id]);
       }
     });
