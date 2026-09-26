@@ -31,6 +31,24 @@ const _keyLabels = {
   _Key.home: 'Home', _Key.end: 'End', _Key.pgUp: 'PgUp', _Key.pgDn: 'PgDn', _Key.pipe: '|', _Key.tilde: '~', _Key.slash: '/',
 };
 
+/**
+ * ctrlChar：按下 Ctrl 时字符对应的控制码（与常见终端一致），没有对应控制码时原样返回
+ */
+String ctrlChar(String s) {
+  final code = s.toUpperCase().codeUnitAt(0);
+  if (code >= 0x40 && code <= 0x5F) return String.fromCharCode(code & 0x1F);
+  return switch (s) {
+    ' ' || '2' => '\x00',
+    '3' => '\x1b',
+    '4' => '\x1c',
+    '5' => '\x1d',
+    '6' => '\x1e',
+    '7' || '/' || '-' => '\x1f',
+    '8' || '?' => '\x7f',
+    _ => s,
+  };
+}
+
 /** 终端连接状态 */
 enum _Link { connecting, online, offline, exited }
 
@@ -197,10 +215,7 @@ class _TerminalPageState extends State<TerminalPage> {
   void _onOutput(String data) {
     var s = data;
     if ((_ctrlOn || _altOn) && s.length == 1) {
-      if (_ctrlOn) {
-        final code = s.toUpperCase().codeUnitAt(0);
-        if (code >= 0x40 && code <= 0x5F) s = String.fromCharCode(code & 0x1F);
-      }
+      if (_ctrlOn) s = ctrlChar(s);
       if (_altOn) s = '\x1b$s';
       setState(() {
         _ctrlOn = false;
