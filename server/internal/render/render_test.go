@@ -43,6 +43,9 @@ func TestConvertFeaturesAndImages(t *testing.T) {
 		t.Fatalf("工作区外图片应被清空: %v", doc.Images)
 	}
 	page := HTML(doc, pageFor("mobile"), "/assets")
+	if !doc.HasCode || !strings.Contains(page, "highlight.min.js") {
+		t.Fatal("有代码块时应加载高亮脚本")
+	}
 	if !strings.Contains(page, `<base href="file://`+filepath.ToSlash(filepath.Join(root, "notes"))+`/">`) || !strings.Contains(page, "size:110mm 190mm") || !strings.Contains(page, "katex.min.js") || !strings.Contains(page, "mermaid.min.js") {
 		t.Fatal("页面组装缺少尺寸或脚本")
 	}

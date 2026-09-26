@@ -1,5 +1,5 @@
 /**
- * Markdown 转 HTML：支持 GFM 表格、任务列表、脚注、代码高亮、数学公式与 mermaid；本地图片限制在工作区内。
+ * Markdown 转 HTML：支持 GFM 表格、任务列表、脚注、数学公式与 mermaid，代码高亮在打印页中完成；本地图片限制在工作区内。
  */
 package render
 
@@ -17,7 +17,6 @@ import (
 
 	"github.com/gohugoio/hugo-goldmark-extensions/passthrough"
 	"github.com/yuin/goldmark"
-	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
@@ -33,6 +32,7 @@ type Doc struct {
 	Title      string
 	HasMath    bool
 	HasMermaid bool
+	HasCode    bool
 	Images     []string
 	BaseDir    string
 }
@@ -43,7 +43,6 @@ func newMarkdown() goldmark.Markdown {
 		goldmark.WithExtensions(
 			extension.GFM,
 			extension.Footnote,
-			highlighting.NewHighlighting(highlighting.WithStyle("github")),
 			&mermaid.Extender{RenderMode: mermaid.RenderModeClient, NoScript: true},
 			passthrough.New(passthrough.Config{
 				InlineDelimiters: []passthrough.Delimiters{{Open: "$", Close: "$"}, {Open: `\(`, Close: `\)`}},
@@ -83,6 +82,8 @@ func Convert(src []byte, root, mdAbs string) (Doc, error) {
 			out.HasMath = true
 		case *mermaid.Block:
 			out.HasMermaid = true
+		case *ast.FencedCodeBlock, *ast.CodeBlock:
+			out.HasCode = true
 		case *ast.Image:
 			dest := string(v.Destination)
 			if isRemote(dest) {
@@ -199,6 +200,10 @@ func HTML(d Doc, page Page, assets string) string {
 		fmt.Fprintf(&b, `<link rel="stylesheet" href="%s"><script src="%s"></script><script src="%s"></script>`,
 			fileURL(filepath.Join(assets, "katex.min.css")), fileURL(filepath.Join(assets, "katex.min.js")), fileURL(filepath.Join(assets, "auto-render.min.js")))
 	}
+	if d.HasCode {
+		fmt.Fprintf(&b, `<link rel="stylesheet" href="%s"><script src="%s"></script>`,
+			fileURL(filepath.Join(assets, "highlight-github.min.css")), fileURL(filepath.Join(assets, "highlight.min.js")))
+	}
 	if d.HasMermaid {
 		fmt.Fprintf(&b, `<script src="%s"></script>`, fileURL(filepath.Join(assets, "mermaid.min.js")))
 	}
@@ -227,7 +232,7 @@ a{color:#1f6feb;text-decoration:none}
 blockquote{margin-left:0;padding:.2em .9em;color:var(--pd-muted);border-left:3px solid var(--pd-line)}
 code{font-family:"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;font-size:.88em;background:var(--pd-code);padding:.1em .35em;border-radius:4px}
 pre{background:var(--pd-code)!important;padding:.7em .8em;border-radius:6px;white-space:pre-wrap!important;word-break:break-all;overflow:visible}
-pre code{background:none;padding:0;font-size:.82em}
+pre code{background:none!important;padding:0!important;font-size:.82em}
 table{border-collapse:collapse;width:100%;font-size:.9em;break-inside:auto}
 th,td{border:1px solid var(--pd-line);padding:.35em .5em;text-align:left;vertical-align:top}
 th{background:var(--pd-code);font-weight:600}
@@ -243,6 +248,7 @@ pre.mermaid{background:none!important;text-align:center;white-space:pre!importan
 const readyJS = `window.__pdReady=false;
 (async function(){
 try{if(window.renderMathInElement){renderMathInElement(document.body,{delimiters:[{left:"$$",right:"$$",display:true},{left:"\\[",right:"\\]",display:true},{left:"$",right:"$",display:false},{left:"\\(",right:"\\)",display:false}],throwOnError:false})}}catch(e){}
+try{if(window.hljs){document.querySelectorAll("pre code").forEach(function(el){if(!el.closest("pre.mermaid")){hljs.highlightElement(el)}})}}catch(e){}
 try{if(window.mermaid){mermaid.initialize({startOnLoad:false,theme:"neutral",securityLevel:"strict"});await mermaid.run({querySelector:"pre.mermaid"})}}catch(e){}
 try{if(document.fonts&&document.fonts.ready){await document.fonts.ready}}catch(e){}
 await Promise.all(Array.from(document.images).map(function(i){return i.complete?1:new Promise(function(r){i.onload=i.onerror=r})}));
