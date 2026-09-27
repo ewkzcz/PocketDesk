@@ -28,7 +28,8 @@ class PdBar extends StatelessWidget implements PreferredSizeWidget {
   Widget build(BuildContext context) {
     final c = context.pd;
     final fg = dark ? Colors.white : c.text;
-    final canPop = Navigator.of(context).canPop();
+    // 按本页是否可返回判断（页面关闭动画期间导航状态会短暂可返回，不能以此为准）
+    final canPop = ModalRoute.of(context)?.impliesAppBarDismissal ?? false;
     final side = actions.length > 1 ? 44.0 * actions.length + 4 : 56.0;
     final lead = leading ?? (canPop ? PdIconButton(icon: LucideIcons.chevronLeft300, color: fg, tooltip: '返回', onTap: () => Navigator.of(context).maybePop()) : null);
     return Material(

@@ -170,6 +170,17 @@ void main() {
     await finish(tester, env);
   });
 
+  testWidgets('从会话返回后首页标题栏不出现返回按钮', (tester) async {
+    final env = await start(tester);
+    expect(find.bySemanticsLabel('返回'), findsNothing);
+    await tester.tap(find.text('文件传输助手'));
+    await settle(tester);
+    await tester.tap(find.bySemanticsLabel('返回').last);
+    await settle(tester);
+    expect(find.bySemanticsLabel('返回'), findsNothing);
+    await finish(tester, env);
+  });
+
   testWidgets('传输页与文件传输助手可直接进入收发目录设置', (tester) async {
     final env = await start(tester);
     await tester.tap(find.text('传输').last);
