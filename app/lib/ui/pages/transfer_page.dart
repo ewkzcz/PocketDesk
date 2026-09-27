@@ -222,7 +222,13 @@ class _TaskCard extends StatelessWidget {
                   child: Text('${formatSize(t.size)} · ${_statusText(t, queuePos)}',
                       maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.time, color: failed ? c.danger : c.text3)),
                 ),
-                if (right.isNotEmpty) Padding(padding: const EdgeInsets.only(left: 8), child: Text(right, style: TextStyle(fontSize: PdFont.time, color: c.text3))),
+                if (right.isNotEmpty)
+                  Flexible(
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: Text(right, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.time, color: c.text3)),
+                    ),
+                  ),
               ]),
             ]),
           ),
