@@ -102,14 +102,17 @@ func (s *Store) DeleteWorkspace(ctx context.Context, id string) error {
 }
 
 /** DefaultWorkspaceName：默认工作目录在列表中的名称 */
-const DefaultWorkspaceName = "默认工作区"
+const DefaultWorkspaceName = "默认"
+
+/** legacyDefaultName：旧版默认工作目录的名称，启动时改为新名称 */
+const legacyDefaultName = "默认工作区"
 
 /**
  * EnsureDefault：把默认工作目录登记为工作区
  *
  * 处理流程：
- * 1、已有同一目录的工作区时直接返回
- * 2、已有「默认工作区」时改为新目录，否则新建
+ * 1、已有同一目录的工作区时直接返回，旧版名称改为新名称
+ * 2、已有默认工作目录时改为新目录，否则新建
  */
 func (s *Store) EnsureDefault(ctx context.Context, root, newID string) (Workspace, error) {
 	list, err := s.Workspaces(ctx)
@@ -119,13 +122,17 @@ func (s *Store) EnsureDefault(ctx context.Context, root, newID string) (Workspac
 	// 1、同一目录
 	for _, w := range list {
 		if filepath.Clean(w.RootPath) == filepath.Clean(root) {
-			return w, nil
+			if w.Name != legacyDefaultName {
+				return w, nil
+			}
+			w.Name = DefaultWorkspaceName
+			return w, s.SaveWorkspace(ctx, w)
 		}
 	}
 	// 2、改目录或新建
 	w := Workspace{ID: newID, Name: DefaultWorkspaceName, RootPath: root}
 	for _, x := range list {
-		if x.Name == DefaultWorkspaceName {
+		if x.Name == DefaultWorkspaceName || x.Name == legacyDefaultName {
 			w.ID, w.ReadOnly = x.ID, x.ReadOnly
 		}
 	}

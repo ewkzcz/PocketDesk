@@ -105,6 +105,27 @@ func TestWorkspaces(t *testing.T) {
 	}
 }
 
+func TestEnsureDefaultRenamesLegacy(t *testing.T) {
+	s, ctx := openTest(t), context.Background()
+	if err := s.SaveWorkspace(ctx, Workspace{ID: "d1", Name: "默认工作区", RootPath: "/old"}); err != nil {
+		t.Fatal(err)
+	}
+	// 同一目录：旧名称改为「默认」
+	w, err := s.EnsureDefault(ctx, "/old", "x")
+	if err != nil || w.ID != "d1" || w.Name != DefaultWorkspaceName {
+		t.Fatalf("改名异常: %+v %v", w, err)
+	}
+	// 换目录：沿用同一条记录
+	w, err = s.EnsureDefault(ctx, "/new", "x")
+	if err != nil || w.ID != "d1" || w.RootPath != "/new" || w.Name != "默认" {
+		t.Fatalf("换目录异常: %+v %v", w, err)
+	}
+	list, _ := s.Workspaces(ctx)
+	if len(list) != 1 {
+		t.Fatalf("不应新增记录: %+v", list)
+	}
+}
+
 func TestEventSeqContinuousUnderConcurrency(t *testing.T) {
 	s, ctx := openTest(t), context.Background()
 	if _, err := s.CreateSession(ctx, Session{ID: "s1", Kind: "claude", WorkspaceID: "w", Cwd: ".", State: "idle"}); err != nil {
