@@ -192,7 +192,8 @@ func (c *ChromePrinter) Print(ctx context.Context, htmlPath string, pg Page) ([]
 	var pdf []byte
 	err = chromedp.Run(tctx,
 		chromedp.Navigate(fileURL(htmlPath)),
-		chromedp.Poll(`window.__pdReady === true`, nil, chromedp.WithPollingTimeout(15*time.Second)),
+		// 按时间间隔轮询：默认按帧轮询，后台标签页不渲染时永远等不到，连超时也不会触发
+		chromedp.Poll(`window.__pdReady === true`, nil, chromedp.WithPollingInterval(50*time.Millisecond), chromedp.WithPollingTimeout(15*time.Second)),
 		// 3、打印
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			var err error

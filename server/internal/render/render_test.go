@@ -212,3 +212,24 @@ func TestRealChromePrint(t *testing.T) {
 		t.Fatalf("常驻浏览器下未命中缓存超过 2 秒: %v", time.Since(start))
 	}
 }
+
+func TestRealChromePrintLateReady(t *testing.T) {
+	exe := FindBrowser(os.Getenv("PD_TEST_BROWSER"))
+	if exe == "" {
+		t.Skip("本机没有浏览器")
+	}
+	cp := NewChromePrinter(func() string { return exe }, time.Minute)
+	defer cp.Close()
+	r, ws := newRenderer(t, cp)
+	// 只有公式时页面要等字体加载完才就绪，晚于开始轮询；按帧轮询在后台标签页里永远等不到
+	os.WriteFile(filepath.Join(ws.RootPath, "m.md"), []byte("# 公式\n\n$$E=mc^2$$\n"), 0o644)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	res, err := r.Render(ctx, ws, "m.md", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(res.PDFPath); !bytes.Contains(b, []byte("KaTeX")) {
+		t.Fatal("PDF 中没有公式字体")
+	}
+}
