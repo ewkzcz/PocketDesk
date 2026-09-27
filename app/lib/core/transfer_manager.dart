@@ -59,6 +59,20 @@ class DownloadsSaver implements FileSaver {
   }
 }
 
+/** phoneSaveLocation：电脑发来的文件在手机上的保存位置（给人看的说明） */
+Future<String> phoneSaveLocation(Directory fallback, {MethodChannel channel = const MethodChannel('pocketdesk/downloads')}) async {
+  if (Platform.isAndroid) {
+    try {
+      if (await channel.invokeMethod<bool>('supported') ?? false) return '下载 / PocketDesk / 日期文件夹';
+    } on PlatformException {
+      // 取不到时按 App 目录显示
+    }
+    return '${fallback.path} / 日期文件夹';
+  }
+  if (Platform.isIOS) return '「文件」App → 我的 iPhone → PocketDesk / 日期文件夹';
+  return '${fallback.path} / 日期文件夹';
+}
+
 /** NetState：网络与电量条件 */
 class NetState {
   const NetState({this.wifi = true, this.online = true, this.lowBattery = false, this.powerSave = false});

@@ -68,8 +68,9 @@ class UiServer {
     ],
   };
 
-  final workspaces = [
-    {'id': 'w1', 'name': 'payments', 'rootPath': '/Users/me/payments', 'readOnly': false},
+  final workspaces = <Map<String, dynamic>>[
+    {'id': 'computer', 'name': '此电脑', 'rootPath': '/', 'readOnly': false, 'system': true, 'home': 'Users/me'},
+    {'id': 'w1', 'name': 'payments', 'rootPath': '/Users/me/payments', 'readOnly': false, 'isDefault': true},
     {'id': 'w2', 'name': 'notes', 'rootPath': '/Users/me/notes', 'readOnly': true},
   ];
 
@@ -96,6 +97,9 @@ class UiServer {
 
   /** 1×1 像素 PNG */
   static final pngBytes = base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
+
+  /** 电脑上的收发目录 */
+  final dirs = <String, String>{'inboxDir': '/Users/me/PocketDesk/Inbox', 'outboxDir': '/Users/me/PocketDesk/Outbox', 'defaultWorkspace': '/Users/me/payments'};
 
   /** 读取工作区列表时模拟连不上电脑 */
   bool workspacesDown = false;
@@ -152,9 +156,20 @@ class UiServer {
       sessions.add(s);
       return _json(s, 201);
     }
+    if (p == '/api/ws' && req.method == 'POST') {
+      final b = (jsonDecode(req.body) as Map).cast<String, dynamic>();
+      final w = {'id': 'w${workspaces.length + 1}', 'name': (b['path'] as String).split('/').last, 'rootPath': b['path'], 'readOnly': false};
+      workspaces.add(w);
+      return _json(w, 201);
+    }
     if (p == '/api/ws') {
       if (workspacesDown) throw const SocketException('网络中断');
       return _json(workspaces);
+    }
+    if (p == '/api/dirs' && req.method == 'GET') return _json(dirs);
+    if (p == '/api/dirs' && req.method == 'PUT') {
+      (jsonDecode(req.body) as Map).forEach((k, v) => dirs[k as String] = v as String);
+      return _json(dirs);
     }
     if (p == '/api/outbox') return _json(outbox);
     if (p.endsWith('/list')) return _json({'entries': entries(q['path'] ?? '.'), 'readOnly': p.contains('/w2/')});

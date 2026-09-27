@@ -103,6 +103,49 @@ void main() {
     await finish(tester, env);
   });
 
+  testWidgets('新建会话可选电脑上任意文件夹作为工作目录', (tester) async {
+    final env = await start(tester);
+    await tester.tap(find.bySemanticsLabel('新建'));
+    await settle(tester);
+    await tester.tap(find.text('新建 Codex 会话'));
+    await settle(tester);
+    // 默认工作目录排第一，最后是选择其他文件夹
+    expect(find.textContaining('默认工作目录'), findsOneWidget);
+    await tester.tap(find.text('选择其他文件夹…'));
+    await settle(tester);
+    // 从个人文件夹开始，路径可点回上一级
+    expect(find.text('/ me'), findsOneWidget);
+    await tester.tap(find.text('在这里打开'));
+    await settle(tester);
+    final body = env.server.bodies['POST /api/sessions'] as Map;
+    expect(body['workspaceId'], 'computer');
+    expect(body['cwd'], 'Users/me');
+    await finish(tester, env);
+  });
+
+  testWidgets('工作空间用文件夹选择器添加，传输设置显示收发目录', (tester) async {
+    final env = await start(tester);
+    await tester.tap(find.text('我').last);
+    await settle(tester);
+    await tester.tap(find.text('工作空间'));
+    await settle(tester);
+    expect(find.text('payments（默认）'), findsOneWidget);
+    await tester.tap(find.text('添加工作空间').last);
+    await settle(tester);
+    await tester.tap(find.text('添加这个文件夹'));
+    await settle(tester);
+    expect((env.server.bodies['POST /api/ws'] as Map)['path'], '/Users/me');
+    expect(find.text('me'), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('返回').last);
+    await settle(tester);
+    await tester.tap(find.text('传输设置'));
+    await settle(tester);
+    await tester.dragUntilVisible(find.text('手机保存位置'), find.byType(ListView).last, const Offset(0, -200));
+    expect(find.text('/Users/me/PocketDesk/Inbox'), findsOneWidget);
+    expect(find.text('/Users/me/PocketDesk/Outbox'), findsOneWidget);
+    await finish(tester, env);
+  });
+
   testWidgets('搜索过滤会话', (tester) async {
     final env = await start(tester);
     await tester.enterText(find.byType(TextField).first, '周报');

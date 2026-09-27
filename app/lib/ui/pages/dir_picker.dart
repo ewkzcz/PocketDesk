@@ -1,5 +1,6 @@
 /**
- * 选择目录：在工作区内逐级浏览文件夹，点「选择此目录」返回相对路径（移动文件、切换会话工作目录时使用）。
+ * 选择目录：在工作区内逐级浏览文件夹，点「选择此目录」返回相对路径（移动文件、切换会话工作目录、选择工作空间时使用）；
+ * 点路径中的任一级可直接跳回，可在当前位置新建文件夹。
  */
 library;
 
@@ -75,22 +76,55 @@ class _DirPickerState extends State<DirPicker> {
     _load();
   }
 
+  /** _mkdir：在当前位置新建文件夹并进入 */
+  Future<void> _mkdir() async {
+    final name = await inputDialog(context, title: '新建文件夹', hint: '文件夹名称');
+    if (name == null || name.trim().isEmpty || !mounted) return;
+    try {
+      final created = await context.read<AppState>().scope!.conn.api.op(widget.ws.id, 'mkdir', _path.isEmpty ? '.' : _path, name: name.trim());
+      _go(created);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.pd;
     final parts = _path.isEmpty ? <String>[] : _path.split('/');
+    final start = widget.start == '.' ? '' : widget.start;
     return PopScope(
-      canPop: _path.isEmpty,
+      // 回到打开时的位置后，返回键直接关闭；更上层用路径跳转
+      canPop: _path.isEmpty || _path == start,
       onPopInvokedWithResult: (did, _) {
         if (!did) _go(parts.sublist(0, parts.length - 1).join('/'));
       },
       child: Scaffold(
-        appBar: PdBar(title: widget.title),
+        appBar: PdBar(title: widget.title, actions: [
+          if (!widget.files && !widget.ws.readOnly) PdIconButton(icon: LucideIcons.folderPlus300, tooltip: '新建文件夹', onTap: _mkdir),
+        ]),
         body: Column(children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: PdSize.gutter, vertical: 10),
-            child: Text([widget.ws.name, ...parts].join(' / '), maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.summary, color: c.text3)),
+          SizedBox(
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              reverse: true,
+              padding: const EdgeInsets.symmetric(horizontal: PdSize.gutter - 6),
+              children: [
+                for (var i = parts.length; i >= 0; i--)
+                  InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: i == parts.length ? null : () => _go(parts.sublist(0, i).join('/')),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+                      child: Text(
+                        i == 0 ? widget.ws.name : '/ ${parts[i - 1]}',
+                        style: TextStyle(fontSize: PdFont.summary, color: i == parts.length ? c.text : c.info),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
           Expanded(
             child: _loading

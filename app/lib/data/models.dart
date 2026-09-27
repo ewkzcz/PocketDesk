@@ -126,16 +126,42 @@ class PairedHost {
 
 /** Workspace：电脑上授权的工作区 */
 class Workspace {
-  const Workspace({required this.id, required this.name, required this.rootPath, required this.readOnly});
+  const Workspace({required this.id, required this.name, required this.rootPath, required this.readOnly, this.isDefault = false, this.system = false, this.home = ''});
 
   final String id;
   final String name;
   final String rootPath;
   final bool readOnly;
 
+  /** isDefault：默认工作目录 */
+  final bool isDefault;
+
+  /** system：内置的「此电脑」，可访问电脑上的任意文件夹 */
+  final bool system;
+
+  /** home：「此电脑」中个人文件夹的相对路径，打开时定位到这里 */
+  final String home;
+
   /** fromJson：解析 */
-  factory Workspace.fromJson(Map<String, dynamic> j) =>
-      Workspace(id: _s(j['id']), name: _s(j['name']), rootPath: _s(j['rootPath']), readOnly: _b(j['readOnly']));
+  factory Workspace.fromJson(Map<String, dynamic> j) => Workspace(
+      id: _s(j['id']),
+      name: _s(j['name']),
+      rootPath: _s(j['rootPath']),
+      readOnly: _b(j['readOnly']),
+      isDefault: _b(j['isDefault']),
+      system: _b(j['system']),
+      home: _s(j['home']));
+
+  /** absPath：工作区内相对路径对应的电脑上的完整路径 */
+  String absPath(String rel) {
+    final r = rel == '.' ? '' : rel;
+    if (r.isEmpty) return rootPath;
+    final win = rootPath.contains('\\');
+    final sep = win ? '\\' : '/';
+    final root = rootPath.endsWith(sep) ? rootPath : rootPath + sep;
+    return root + (win ? r.replaceAll('/', sep) : r);
+  }
+
 }
 
 /** FileEntry：目录中的一项 */

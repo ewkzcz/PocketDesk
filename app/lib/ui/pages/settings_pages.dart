@@ -1,5 +1,5 @@
 /**
- * 设置页：传输设置、安全设置、已配对电脑管理、关于。
+ * 设置页：传输设置（含文件保存位置）、安全设置、已配对电脑管理、关于。
  */
 library;
 
@@ -11,10 +11,13 @@ import '../../core/app_state.dart';
 import '../../core/auth_gate.dart';
 import '../../core/connection.dart';
 import '../../core/settings.dart';
+import '../../core/transfer_manager.dart';
+import '../../net/api.dart';
 import '../share.dart';
 import '../tokens.dart';
 import '../widgets.dart';
 import 'pair_page.dart';
+import 'places.dart';
 
 /**
  * TransferSettingsPage：传输设置
@@ -70,7 +73,68 @@ class TransferSettingsPage extends StatelessWidget {
             PdCell(title: '自动接收电脑发来的文件', trailing: Switch(value: s.autoReceive, onChanged: (v) => s.autoReceive = v)),
           ],
         ),
+        const _SaveLocations(),
       ]),
+    );
+  }
+}
+
+/**
+ * _SaveLocations：文件保存位置——电脑上的收件、发件目录（可用文件夹选择器更换，立即生效）与手机上的保存位置
+ */
+class _SaveLocations extends StatefulWidget {
+  const _SaveLocations();
+
+  @override
+  State<_SaveLocations> createState() => _SaveLocationsState();
+}
+
+class _SaveLocationsState extends State<_SaveLocations> {
+  ({String inbox, String outbox, String defaultWorkspace})? _dirs;
+  String _phone = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final app = context.read<AppState>();
+    final phone = await phoneSaveLocation(app.paths.received);
+    if (mounted) setState(() => _phone = phone);
+    try {
+      final d = await app.scope?.conn.api.dirs();
+      if (mounted && d != null) setState(() => _dirs = d);
+    } on ApiException {
+      // 电脑不在线时只显示手机上的位置
+    }
+  }
+
+  /** _change：用文件夹选择器更换收件或发件目录 */
+  Future<void> _change({required bool inbox}) async {
+    final p = await pickComputerFolder(context, title: inbox ? '电脑收件目录' : '电脑发件目录', action: '使用这个文件夹');
+    if (p == null || !mounted) return;
+    try {
+      await context.read<AppState>().scope!.conn.api.setDirs(inbox: inbox ? p : null, outbox: inbox ? null : p);
+      if (mounted) toast(context, '已更换');
+      await _load();
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = _dirs;
+    return PdGroup(
+      header: '文件保存位置',
+      footer: '手机发的文件存到电脑收件目录下的日期文件夹；放进电脑发件目录的文件会自动发到手机。',
+      children: [
+        PdCell(icon: LucideIcons.monitorDown300, title: '电脑收件目录', subtitle: d?.inbox ?? '电脑不在线', onTap: d == null ? null : () => _change(inbox: true)),
+        PdCell(icon: LucideIcons.monitorUp300, title: '电脑发件目录', subtitle: d?.outbox ?? '电脑不在线', onTap: d == null ? null : () => _change(inbox: false)),
+        PdCell(icon: LucideIcons.smartphone300, title: '手机保存位置', subtitle: _phone, arrow: false),
+      ],
     );
   }
 }

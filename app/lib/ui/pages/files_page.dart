@@ -95,11 +95,14 @@ class _FilesPageState extends State<FilesPage> {
     try {
       final list = await scope.conn.api.workspaces();
       if (!mounted || scope != _scope) return;
+      // 默认工作目录在最前，「此电脑」放最后；初次打开默认工作目录
+      final sorted = [...list.where((w) => w.isDefault), ...list.where((w) => !w.isDefault && !w.system), ...list.where((w) => w.system)];
       setState(() {
-        _workspaces = list;
-        _ws = list.where((w) => w.id == _ws?.id).firstOrNull ?? list.firstOrNull;
+        _workspaces = sorted;
+        _ws = sorted.where((w) => w.id == _ws?.id).firstOrNull ?? sorted.firstOrNull;
       });
       if (_ws != null) {
+        if (_ws!.system && _path.isEmpty) _path = _ws!.home;
         await _load();
       } else {
         setState(() => _loading = false);
@@ -333,7 +336,8 @@ class _FilesPageState extends State<FilesPage> {
                     onTap: () {
                       if (on) return;
                       setState(() => _ws = w);
-                      _cd('');
+                      // 此电脑从个人文件夹开始，可以一级级返回到根目录
+                      _cd(w.system ? w.home : '');
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14),
