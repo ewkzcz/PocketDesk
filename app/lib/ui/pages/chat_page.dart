@@ -586,19 +586,33 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  /** _previewOnComputer：通过「此电脑」读取文件并在 App 内预览 */
+  /**
+   * _previewOnComputer：通过「此电脑」读取文件并在 App 内预览
+   *
+   * 处理流程：
+   * 1、较早的消息没有完整路径时，用当前收件目录拼出位置
+   * 2、换算为「此电脑」中的相对路径后按类型打开
+   */
   Future<void> _previewOnComputer(FileItem f) async {
-    if (f.path.isEmpty) {
-      toast(context, f.relPath.isEmpty ? '已发送到电脑' : '已保存到电脑收件目录：${f.relPath}');
+    if (f.path.isEmpty && f.relPath.isEmpty) {
+      toast(context, '已发送到电脑');
       return;
     }
     try {
+      // 1、完整路径
+      var abs = f.path;
+      if (abs.isEmpty) {
+        final inbox = (await _api.dirs()).inbox;
+        final sep = inbox.contains('\\') ? '\\' : '/';
+        abs = '$inbox$sep${f.relPath.replaceAll('/', sep)}';
+      }
+      // 2、打开
       final list = await _api.workspaces();
       final pc = list.where((w) => w.system).firstOrNull;
-      final rel = pc?.relOf(f.path) ?? '';
+      final rel = pc?.relOf(abs) ?? '';
       if (!mounted) return;
       if (pc == null || rel.isEmpty) {
-        toast(context, '已保存到电脑：${f.path}');
+        toast(context, '已保存到电脑：$abs');
         return;
       }
       await openWorkspaceFile(context, ws: pc, entry: FileEntry(name: f.name, path: rel, isDir: false, size: f.size, modTime: 0), siblings: const []);

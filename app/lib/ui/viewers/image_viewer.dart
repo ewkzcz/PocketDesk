@@ -48,7 +48,7 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
         final e = widget.images[i];
         final dest = cacheFileFor(app, widget.ws.id, e.path);
         if (await dest.exists() && await dest.length() == e.size) return dest;
-        return (await fetchToFile(app.scope!, app.scope!.conn.api.fileUrl(widget.ws.id, e.path), dest)).file;
+        return (await fetchWsFile(app.scope!, widget.ws.id, e.path, dest)).file;
       }();
 
   @override

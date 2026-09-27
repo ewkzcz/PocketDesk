@@ -65,6 +65,7 @@ class UiServer {
       {'seq': 1, 'type': 'file', 'data': {'direction': 'up', 'name': '截图.png', 'size': 1258291, 'relPath': '20261001/截图.png', 'path': '/Users/me/PocketDesk/Inbox/20261001/截图.png'}},
       {'seq': 2, 'type': 'file', 'data': {'direction': 'down', 'name': '周报.pdf', 'size': 348160, 'outboxId': 'o9'}},
       {'seq': 3, 'type': 'msg.user', 'data': {'text': '这是今天的会议纪要链接'}},
+      {'seq': 4, 'type': 'file', 'data': {'direction': 'up', 'name': '旧图.png', 'size': 2048, 'relPath': '20260901/旧图.png'}},
     ],
   };
 

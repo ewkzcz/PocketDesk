@@ -74,9 +74,10 @@ class _OfficeViewerPageState extends State<OfficeViewerPage> {
     try {
       final bytes = widget.load != null
           ? await widget.load!()
-          : await (await fetchToFile(
+          : await (await fetchWsFile(
               scope,
-              scope.conn.api.fileUrl(widget.ws.id, widget.entry.path),
+              widget.ws.id,
+              widget.entry.path,
               cacheFileFor(app, widget.ws.id, widget.entry.path, sub: 'office'),
               onProgress: (got, total) {
                 if (mounted && total > 0) setState(() => _progress = got / total);
@@ -100,14 +101,14 @@ class _OfficeViewerPageState extends State<OfficeViewerPage> {
         () async {
           final app = context.read<AppState>();
           try {
-            final f = await fetchToFile(app.scope!, app.scope!.conn.api.fileUrl(widget.ws.id, widget.entry.path), cacheFileFor(app, widget.ws.id, widget.entry.path, sub: 'office'));
+            final f = await fetchWsFile(app.scope!, widget.ws.id, widget.entry.path, cacheFileFor(app, widget.ws.id, widget.entry.path, sub: 'office'));
             await shareFile(f.file.path, title: widget.entry.name);
           } on ApiException catch (e) {
             if (mounted) toast(context, e.message);
           }
         },
       ),
-      (
+      if (!isPhoneWs(widget.ws.id)) (
         const SheetAction('发给会话', icon: LucideIcons.send300),
         () async {
           final scope = context.read<AppState>().scope!;

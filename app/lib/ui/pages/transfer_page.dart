@@ -4,10 +4,10 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:open_filex/open_filex.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_state.dart';
@@ -19,6 +19,8 @@ import '../file_kinds.dart';
 import '../format.dart';
 import '../tokens.dart';
 import '../widgets.dart';
+import '../viewers/fetch.dart';
+import '../viewers/open_file.dart';
 
 /**
  * TransferPage：传输
@@ -238,10 +240,17 @@ class _TaskCard extends StatelessWidget {
   }
 }
 
-/** openLocal：用手机上的其他 App 打开文件 */
+/** openLocal：用 App 内查看器打开手机上的文件，App 内不支持的格式交给其他应用 */
 Future<void> openLocal(BuildContext context, String path) async {
-  final r = await OpenFilex.open(path);
-  if (r.type != ResultType.done && context.mounted) toast(context, r.type == ResultType.noAppToOpen ? '手机上没有能打开这个文件的应用' : '无法打开文件');
+  final file = File(path);
+  if (!await file.exists()) {
+    if (context.mounted) toast(context, '文件已不在手机上');
+    return;
+  }
+  final name = file.path.split(Platform.pathSeparator).last;
+  final size = await file.length();
+  if (!context.mounted) return;
+  await openWorkspaceFile(context, ws: phoneWorkspace(file.parent.path), entry: FileEntry(name: name, path: name, isDir: false, size: size, modTime: 0), siblings: const [], readOnly: true);
 }
 
 /**

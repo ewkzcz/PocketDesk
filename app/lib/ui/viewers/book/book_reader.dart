@@ -121,7 +121,7 @@ class _BookReaderPageState extends State<BookReaderPage> {
     try {
       final bytes = widget.load != null
           ? await widget.load!()
-          : await (await fetchToFile(scope, scope.conn.api.fileUrl(widget.ws.id, widget.entry.path), cacheFileFor(app, widget.ws.id, widget.entry.path, sub: 'book'), onProgress: (got, total) {
+          : await (await fetchWsFile(scope, widget.ws.id, widget.entry.path, cacheFileFor(app, widget.ws.id, widget.entry.path, sub: 'book'), onProgress: (got, total) {
               if (mounted && total > 0) setState(() => _progress = got / total);
             }))
               .file

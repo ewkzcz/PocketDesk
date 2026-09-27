@@ -86,7 +86,7 @@ class _MarkdownReaderPageState extends State<MarkdownReaderPage> {
     final scope = context.read<AppState>().scope!;
     setState(() => _error = '');
     try {
-      final r = await scope.conn.api.readFile(widget.ws.id, widget.entry.path);
+      final r = await readWsFile(scope, widget.ws.id, widget.entry.path);
       final offset = await scope.sessions.db.offset(scope.host.id, widget.ws.id, widget.entry.path);
       if (!mounted) return;
       setState(() => _text = utf8.decode(r.bytes, allowMalformed: true));
@@ -229,7 +229,7 @@ class _MarkdownReaderPageState extends State<MarkdownReaderPage> {
         if (mounted) await _open();
       }),
       (const SheetAction('分享', icon: LucideIcons.share2300), _share),
-      (const SheetAction('发给会话', icon: LucideIcons.send300), _sendToSession),
+      if (!isPhoneWs(widget.ws.id)) (const SheetAction('发给会话', icon: LucideIcons.send300), _sendToSession),
     ];
     final i = await actionSheet(context, [for (final x in items) x.$1]);
     if (i != null && mounted) await items[i].$2();
@@ -240,7 +240,7 @@ class _MarkdownReaderPageState extends State<MarkdownReaderPage> {
     final app = context.read<AppState>();
     final scope = app.scope!;
     try {
-      final f = await fetchToFile(scope, scope.conn.api.fileUrl(widget.ws.id, widget.entry.path), cacheFileFor(app, widget.ws.id, widget.entry.path));
+      final f = await fetchWsFile(scope, widget.ws.id, widget.entry.path, cacheFileFor(app, widget.ws.id, widget.entry.path));
       await shareFile(f.file.path, title: widget.entry.name);
     } on ApiException catch (e) {
       if (mounted) toast(context, e.message);
@@ -397,7 +397,7 @@ class _MdImageState extends State<_MdImage> {
   Future<Uint8List?> _load() async {
     if (_remote || widget.url.startsWith('data:')) return null;
     try {
-      final r = await context.read<AppState>().scope!.conn.api.readFile(widget.ws.id, _path);
+      final r = await readWsFile(context.read<AppState>().scope!, widget.ws.id, _path);
       return Uint8List.fromList(r.bytes);
     } on ApiException {
       return null;

@@ -3,6 +3,7 @@
  */
 library;
 
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:fast_gbk/fast_gbk.dart';
@@ -15,7 +16,9 @@ import 'package:pocketdesk/data/models.dart';
 import 'package:pocketdesk/ui/pages/diff_page.dart';
 import 'package:pocketdesk/ui/pages/pair_page.dart';
 import 'package:pocketdesk/ui/pages/terminal_page.dart';
+import 'package:pocketdesk/ui/pages/transfer_page.dart' show openLocal;
 import 'package:pocketdesk/ui/viewers/book/book_reader.dart';
+import 'package:pocketdesk/ui/viewers/fetch.dart' show isPhoneWs;
 import 'package:pocketdesk/ui/viewers/image_viewer.dart';
 import 'package:pocketdesk/ui/viewers/office/office_viewer.dart';
 import 'package:pocketdesk/ui/viewers/text_viewer.dart';
@@ -164,6 +167,33 @@ void main() {
     final viewer = tester.widget<ImageViewerPage>(find.byType(ImageViewerPage));
     expect(viewer.ws.id, 'computer');
     expect(viewer.images.single.path, 'Users/me/PocketDesk/Inbox/20261001/截图.png');
+    await finish(tester, env);
+  });
+
+  testWidgets('文件传输助手：较早的消息没有完整路径时按收件目录找到文件', (tester) async {
+    final env = await start(tester);
+    await tester.tap(find.text('文件传输助手'));
+    await settle(tester);
+    await tester.tap(find.text('旧图.png'));
+    await settle(tester);
+    final viewer = tester.widget<ImageViewerPage>(find.byType(ImageViewerPage));
+    expect(viewer.ws.id, 'computer');
+    expect(viewer.images.single.path, 'Users/me/PocketDesk/Inbox/20260901/旧图.png');
+    await finish(tester, env);
+  });
+
+  testWidgets('手机上收到的文件在 App 内查看', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('pd-local');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    File('${dir.path}/照片.png').writeAsBytesSync(UiServer.pngBytes);
+    final env = await start(tester, page: Builder(builder: (context) => Scaffold(body: Center(child: TextButton(onPressed: () => openLocal(context, '${dir.path}/照片.png'), child: const Text('打开'))))));
+    await tester.tap(find.text('打开'));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+    await settle(tester);
+    final viewer = tester.widget<ImageViewerPage>(find.byType(ImageViewerPage));
+    expect(isPhoneWs(viewer.ws.id), isTrue);
+    expect(viewer.ws.rootPath, dir.path);
+    expect(viewer.images.single.path, '照片.png');
     await finish(tester, env);
   });
 

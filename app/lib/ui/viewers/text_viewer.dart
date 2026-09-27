@@ -18,6 +18,7 @@ import '../../net/api.dart';
 import '../file_kinds.dart';
 import '../tokens.dart';
 import '../widgets.dart';
+import 'fetch.dart';
 import 'save.dart';
 
 /** 最多高亮的字节数，更大的文件只显示纯文本，保证滚动流畅 */
@@ -102,7 +103,7 @@ class _TextViewerPageState extends State<TextViewerPage> {
       _error = '';
     });
     try {
-      final r = await context.read<AppState>().scope!.conn.api.readFile(widget.ws.id, _path);
+      final r = await readWsFile(context.read<AppState>().scope!, widget.ws.id, _path);
       if (!mounted) return;
       final text = utf8.decode(r.bytes, allowMalformed: true);
       setState(() {

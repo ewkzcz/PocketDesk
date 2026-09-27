@@ -45,6 +45,7 @@ const officeViewLimit = 60 * 1024 * 1024;
  */
 Future<void> openWorkspaceFile(BuildContext context, {required Workspace ws, required FileEntry entry, required List<FileEntry> siblings, bool readOnly = false}) async {
   final nav = Navigator.of(context);
+  readOnly = readOnly || isPhoneWs(ws.id);
   switch (viewKindOf(entry.name)) {
     // 1、阅读器
     case ViewKind.markdown || ViewKind.pdf:
@@ -65,7 +66,12 @@ Future<void> openWorkspaceFile(BuildContext context, {required Workspace ws, req
       await nav.push(MaterialPageRoute<void>(builder: (_) => TextViewerPage(ws: ws, path: entry.path, readOnly: readOnly)));
     // 4、其他
     default:
-      await openExternally(context, ws: ws, entry: entry, readOnly: readOnly);
+      if (isPhoneWs(ws.id)) {
+        final r = await OpenFilex.open(cacheFileFor(context.read<AppState>(), ws.id, entry.path).path);
+        if (r.type != ResultType.done && context.mounted) toast(context, r.type == ResultType.noAppToOpen ? '手机上没有能打开这个文件的应用' : '无法打开文件');
+      } else {
+        await openExternally(context, ws: ws, entry: entry, readOnly: readOnly);
+      }
   }
 }
 
@@ -125,7 +131,7 @@ Future<void> openExternally(BuildContext context, {required Workspace ws, requir
   ));
   final Fetched f;
   try {
-    f = await fetchToFile(scope, scope.conn.api.fileUrl(ws.id, entry.path), dest, onProgress: (got, total) {
+    f = await fetchWsFile(scope, ws.id, entry.path, dest, onProgress: (got, total) {
       if (total > 0) progress.value = got / total;
     });
   } on ApiException catch (e) {

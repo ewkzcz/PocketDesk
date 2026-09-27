@@ -76,14 +76,13 @@ class _PdfReaderPageState extends State<PdfReaderPage> {
   Future<void> _open() async {
     final app = context.read<AppState>();
     final scope = app.scope!;
-    final api = scope.conn.api;
     setState(() {
       _error = '';
       _progress = 0;
       _step = '正在下载…';
     });
     try {
-      final f = await fetchToFile(scope, api.fileUrl(widget.ws.id, widget.entry.path), cacheFileFor(app, widget.ws.id, widget.entry.path, sub: 'pdf'), onProgress: (got, total) {
+      final f = await fetchWsFile(scope, widget.ws.id, widget.entry.path, cacheFileFor(app, widget.ws.id, widget.entry.path, sub: 'pdf'), onProgress: (got, total) {
         if (mounted && total > 0) setState(() => _progress = got / total);
       });
       final file = f.file;
@@ -127,7 +126,7 @@ class _PdfReaderPageState extends State<PdfReaderPage> {
         final f = _file;
         if (f != null) await shareFile(f.path, title: widget.entry.name);
       }),
-      (const SheetAction('发给会话', icon: LucideIcons.send300), _sendToSession),
+      if (!isPhoneWs(widget.ws.id)) (const SheetAction('发给会话', icon: LucideIcons.send300), _sendToSession),
     ];
     final i = await actionSheet(context, [for (final x in items) x.$1]);
     if (i != null && mounted) await items[i].$2();
