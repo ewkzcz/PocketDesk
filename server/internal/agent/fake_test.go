@@ -158,9 +158,10 @@ func fakeACP() {
 		case "session/prompt":
 			promptID = id
 			out(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"update": map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": "先看看"}}}})
-			out(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"update": map[string]any{"sessionUpdate": "tool_call", "toolCallId": "tc1", "title": "rm -rf tmp", "kind": "execute", "status": "pending"}}})
+			out(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"update": map[string]any{"sessionUpdate": "tool_call", "toolCallId": "tc1", "title": "bash", "kind": "other", "status": "in_progress", "rawInput": map[string]any{"command": "rm -rf tmp"}}}})
+			// 与真实 DSH 一致：审批请求只带工具调用编号
 			out(map[string]any{"jsonrpc": "2.0", "id": permID, "method": "session/request_permission", "params": map[string]any{
-				"toolCall": map[string]any{"toolCallId": "tc1", "title": "rm -rf tmp", "kind": "execute"},
+				"toolCall": map[string]any{"toolCallId": "tc1"},
 				"options":  []any{map[string]any{"optionId": "yes", "kind": "allow_once"}, map[string]any{"optionId": "always", "kind": "allow_always"}, map[string]any{"optionId": "no", "kind": "reject_once"}},
 			}})
 		case "session/cancel":

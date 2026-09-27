@@ -200,8 +200,11 @@ func TestACPDriverApproval(t *testing.T) {
 	defer p.Close()
 	p.Send(context.Background(), Message{Text: "clean"})
 	evs := collect(t, p)
-	if len(ap.reqs) != 1 || ap.reqs[0].Kind != "command" {
-		t.Fatalf("审批请求 %+v", ap.reqs)
+	if len(ap.reqs) != 1 || ap.reqs[0].Kind != "command" || ap.reqs[0].Summary != "rm -rf tmp" || ap.reqs[0].Input["command"] != "rm -rf tmp" {
+		t.Fatalf("审批请求应按编号补全命令 %+v", ap.reqs)
+	}
+	if st, _ := find(evs, EvToolStart); st.Data["kind"] != "command" || st.Data["summary"] != "rm -rf tmp" {
+		t.Fatalf("工具开始应识别为执行命令 %+v", st.Data)
 	}
 	end, _ := find(evs, EvToolEnd)
 	if end.Data["output"] != "always" {

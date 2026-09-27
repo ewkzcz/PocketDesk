@@ -53,6 +53,14 @@ type acpProc struct {
 	buf       strings.Builder
 	turnCtx   context.Context
 	cancel    context.CancelFunc
+	tools     map[string]acpTool
+}
+
+/** acpTool：已开始的工具调用，审批请求只带编号时据此补全内容 */
+type acpTool struct {
+	title string
+	kind  string
+	input map[string]any
 }
 
 /**
@@ -67,7 +75,7 @@ func (d ACPDriver) Start(ctx context.Context, opt Options) (Process, error) {
 	if len(opt.Command) == 0 {
 		return nil, errors.New("未配置启动命令")
 	}
-	a := &acpProc{opt: opt, pending: map[string]chan rpcMsg{}}
+	a := &acpProc{opt: opt, pending: map[string]chan rpcMsg{}, tools: map[string]acpTool{}}
 	// 1、启动
 	p, err := startLineProc(append([]string{}, opt.Command...), opt.Cwd, append(EnvPath(), opt.Env...), func(lp *lineProc, line []byte) {
 		a.dispatch(line)
@@ -235,6 +243,19 @@ func (a *acpProc) handleRequest(m rpcMsg) {
 	a.flush()
 	a.mu.Lock()
 	ctx := a.turnCtx
+	// 请求里只带编号时（如 DSH），用之前工具开始时记下的标题、类别和参数补全
+	tc := p.ToolCall
+	if t, ok := a.tools[tc.ToolCallID]; ok {
+		if tc.Title == "" {
+			tc.Title = t.title
+		}
+		if tc.Kind == "" {
+			tc.Kind = t.kind
+		}
+		if tc.RawInput == nil {
+			tc.RawInput = t.input
+		}
+	}
 	a.mu.Unlock()
 	if ctx == nil {
 		ctx = context.Background()
@@ -243,7 +264,7 @@ func (a *acpProc) handleRequest(m rpcMsg) {
 		a.reply(m.ID, map[string]any{"outcome": map[string]any{"outcome": "cancelled"}}, nil)
 		return
 	}
-	d, err := a.opt.Approver.RequestApproval(ctx, ApprovalRequest{Tool: p.ToolCall.Title, Kind: acpKind(p.ToolCall.Kind), Summary: p.ToolCall.Title, Input: p.ToolCall.RawInput})
+	d, err := a.opt.Approver.RequestApproval(ctx, ApprovalRequest{Tool: tc.Title, Kind: acpToolKind(tc.Kind, tc.RawInput), Summary: acpSummary(tc.Title, tc.RawInput), Input: tc.RawInput})
 	if err != nil {
 		a.reply(m.ID, map[string]any{"outcome": map[string]any{"outcome": "cancelled"}}, nil)
 		return
@@ -302,8 +323,12 @@ func (a *acpProc) update(raw json.RawMessage) []Event {
 		return []Event{ev(EvThinking, "id", id, "text", chunkText(u.Content), "delta", true)}
 	case "tool_call":
 		out := a.flushEvents()
-		out = append(out, ev(EvToolStart, "id", u.ToolCallID, "name", u.Title, "kind", acpKind(u.Kind), "summary", u.Title, "input", u.RawInput))
-		if acpKind(u.Kind) == "edit" {
+		kind := acpToolKind(u.Kind, u.RawInput)
+		a.mu.Lock()
+		a.tools[u.ToolCallID] = acpTool{title: u.Title, kind: u.Kind, input: u.RawInput}
+		a.mu.Unlock()
+		out = append(out, ev(EvToolStart, "id", u.ToolCallID, "name", u.Title, "kind", kind, "summary", acpSummary(u.Title, u.RawInput), "input", u.RawInput))
+		if kind == "edit" {
 			for _, l := range u.Locations {
 				out = append(out, ev(EvFileWrite, "path", l.Path))
 			}
@@ -313,7 +338,24 @@ func (a *acpProc) update(raw json.RawMessage) []Event {
 		}
 		return out
 	case "tool_call_update":
+		a.mu.Lock()
+		if t, ok := a.tools[u.ToolCallID]; ok {
+			if u.Title != "" {
+				t.title = u.Title
+			}
+			if u.Kind != "" {
+				t.kind = u.Kind
+			}
+			if u.RawInput != nil {
+				t.input = u.RawInput
+			}
+			a.tools[u.ToolCallID] = t
+		}
+		a.mu.Unlock()
 		if u.Status == "completed" || u.Status == "failed" {
+			a.mu.Lock()
+			delete(a.tools, u.ToolCallID)
+			a.mu.Unlock()
 			return []Event{ev(EvToolEnd, "id", u.ToolCallID, "output", Truncate(toolContentText(u.Content), 8000), "isError", u.Status == "failed")}
 		}
 	}
@@ -409,6 +451,25 @@ func toolContentText(raw json.RawMessage) string {
 		b.WriteByte('\n')
 	}
 	return strings.TrimSpace(b.String())
+}
+
+/** acpToolKind：类别未标明但参数带命令时按执行命令处理 */
+func acpToolKind(k string, input map[string]any) string {
+	kind := acpKind(k)
+	if kind == "other" {
+		if c, _ := input["command"].(string); c != "" {
+			return "command"
+		}
+	}
+	return kind
+}
+
+/** acpSummary：一行摘要，执行命令时显示完整命令 */
+func acpSummary(title string, input map[string]any) string {
+	if c, _ := input["command"].(string); c != "" {
+		return c
+	}
+	return title
 }
 
 /** acpKind：ACP 工具类别映射为统一类别 */
