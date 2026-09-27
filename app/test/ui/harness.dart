@@ -91,6 +91,12 @@ class UiServer {
     {'id': 'o1', 'name': '白板照片.jpg', 'size': 2411724, 'sha256': '', 'createdAt': 1},
   ];
 
+  /** Markdown 文档：标题、表格、任务列表、代码、公式与相对路径图片 */
+  static final markdownDoc = '# 周报\n\n本周完成 **配对** 与 `传输`。\n\n| 项目 | 状态 |\n|---|---|\n| 扫码配对 | 完成 |\n\n- [x] 真机测试\n- [ ] 上架\n\n```go\nfunc main() {}\n```\n\n行内公式 \$a^2+b^2=c^2\$\n\n\$\$E=mc^2\$\$\n\n![白板](img/board.png)\n\n## 下周计划\n\n${'继续推进真机验证与兼容性测试。' * 40}\n';
+
+  /** 1×1 像素 PNG */
+  static final pngBytes = base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
+
   final calls = <String>[];
   final bodies = <String, Object?>{};
 
@@ -140,7 +146,12 @@ class UiServer {
     if (p == '/api/ws') return _json(workspaces);
     if (p == '/api/outbox') return _json(outbox);
     if (p.endsWith('/list')) return _json({'entries': entries(q['path'] ?? '.'), 'readOnly': p.contains('/w2/')});
-    if (p.endsWith('/file') && req.method == 'GET') return http.Response.bytes(utf8.encode('package main\n\nfunc main() {\n\tprintln("你好")\n}\n'), 200, headers: {'etag': '"e1"'});
+    if (p.endsWith('/file') && req.method == 'GET') {
+      final path = q['path'] ?? '';
+      if (path.endsWith('.md')) return http.Response.bytes(utf8.encode(markdownDoc), 200, headers: {'etag': '"m1"'});
+      if (path.endsWith('.png')) return http.Response.bytes(pngBytes, 200, headers: {'etag': '"p1"'});
+      return http.Response.bytes(utf8.encode('package main\n\nfunc main() {\n\tprintln("你好")\n}\n'), 200, headers: {'etag': '"e1"'});
+    }
     if (p.endsWith('/file') && req.method == 'PUT') return http.Response('', 204, headers: {'etag': '"e2"'});
     final ev = RegExp(r'^/api/sessions/(\w+)/events$').firstMatch(p);
     if (ev != null) {

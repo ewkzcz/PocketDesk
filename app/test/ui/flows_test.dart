@@ -4,6 +4,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketdesk/core/discovery.dart';
 import 'package:pocketdesk/data/models.dart';
@@ -97,6 +98,44 @@ void main() {
     await settle(tester);
     expect(find.text('DSH · 周报生成'), findsOneWidget);
     expect(find.text('Claude Code · 重构支付模块'), findsNothing);
+    await finish(tester, env);
+  });
+
+  testWidgets('Markdown 在手机上直接排版：表格、任务列表、公式、图片，记住阅读位置', (tester) async {
+    final env = await start(tester);
+    await tester.tap(find.text('文件').last);
+    await settle(tester);
+    await tester.tap(find.text('README.md'));
+    await settle(tester);
+    expect(find.text('周报'), findsOneWidget);
+    expect(find.text('扫码配对'), findsOneWidget);
+    expect(find.byType(Math), findsNWidgets(2));
+    expect(find.byType(Checkbox).evaluate().isNotEmpty || find.byIcon(Icons.check_box).evaluate().isNotEmpty, isTrue);
+    // 不再请求电脑转换 PDF，图片按 md 所在目录从工作区读取
+    expect(env.server.calls.where((c) => c.contains('/render')), isEmpty);
+    final reader = find.byKey(const ValueKey('md-reader'));
+    await tester.dragUntilVisible(find.byType(Image), reader, const Offset(0, -200));
+    expect(find.byType(Image), findsWidgets);
+    await shot(tester, 'flow-md-reader');
+    // 菜单
+    await tester.tap(find.bySemanticsLabel('更多').last);
+    await settle(tester);
+    for (final t in ['刷新', '查看或编辑源文件', '分享', '发给会话']) {
+      expect(find.text(t), findsOneWidget);
+    }
+    await tester.tapAt(const Offset(10, 10));
+    await settle(tester);
+    // 滚动后退出，再次打开回到原位置
+    await tester.drag(find.byKey(const ValueKey('md-reader')), const Offset(0, -150));
+    await settle(tester);
+    final before = tester.widget<ListView>(find.byKey(const ValueKey('md-reader'))).controller!.offset;
+    expect(before, greaterThan(0));
+    await tester.pump(const Duration(seconds: 1));
+    await tester.tap(find.bySemanticsLabel('返回').last);
+    await settle(tester);
+    await tester.tap(find.text('README.md'));
+    await settle(tester);
+    expect(tester.widget<ListView>(find.byKey(const ValueKey('md-reader'))).controller!.offset, closeTo(before, 1));
     await finish(tester, env);
   });
 
