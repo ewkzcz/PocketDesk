@@ -41,6 +41,7 @@ func (s *Server) AdminHandler() http.Handler {
 	mux.HandleFunc("POST /admin/api/workspaces", s.adminSaveWorkspace)
 	mux.HandleFunc("DELETE /admin/api/workspaces/{id}", s.adminDeleteWorkspace)
 	mux.HandleFunc("DELETE /admin/api/devices/{id}", s.adminRevokeDevice)
+	mux.HandleFunc("POST /admin/api/devices/{id}/remove", s.adminRemoveDevice)
 	mux.HandleFunc("PATCH /admin/api/config", s.adminConfig)
 	mux.HandleFunc("POST /admin/api/send", s.adminSend)
 	mux.HandleFunc("GET /admin/api/assistant/events", s.adminAssistantEvents)
@@ -301,6 +302,16 @@ func (s *Server) adminRevokeDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Store.Audit(r.Context(), r.PathValue("id"), "device.revoke", map[string]string{"by": "host"})
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+/** adminRemoveDevice：从列表中删除已吊销的设备 */
+func (s *Server) adminRemoveDevice(w http.ResponseWriter, r *http.Request) {
+	if err := s.Store.DeleteRevokedDevice(r.Context(), r.PathValue("id")); err != nil {
+		writeErr(w, r, errf(400, "not_revoked", "只能删除已吊销的设备"))
+		return
+	}
+	s.Store.Audit(r.Context(), r.PathValue("id"), "device.remove", map[string]string{"by": "host"})
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 

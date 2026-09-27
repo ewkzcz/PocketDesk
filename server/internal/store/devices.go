@@ -69,6 +69,18 @@ func (s *Store) TouchDevice(ctx context.Context, id string) error {
 	return err
 }
 
+/** DeleteRevokedDevice：删除已吊销的设备记录（未吊销的不能直接删除） */
+func (s *Store) DeleteRevokedDevice(ctx context.Context, id string) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM devices WHERE id=? AND revoked=1`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 /** RevokeDevice：吊销设备令牌 */
 func (s *Store) RevokeDevice(ctx context.Context, id string) error {
 	res, err := s.db.ExecContext(ctx, `UPDATE devices SET revoked=1 WHERE id=?`, id)

@@ -343,9 +343,21 @@ func TestEndToEnd(t *testing.T) {
 		} `json:"devices"`
 	}
 	e.adminDo("GET", "/admin/api/state", nil, &st)
+	if code := e.adminDo("POST", "/admin/api/devices/"+st.Devices[0].ID+"/remove", nil, nil); code != 400 {
+		t.Fatal("未吊销的设备不能直接删除")
+	}
 	e.adminDo("DELETE", "/admin/api/devices/"+st.Devices[0].ID, nil, nil)
 	if res, _ := e.do("GET", "/api/host", nil, nil); res.StatusCode != 401 {
 		t.Fatal("吊销后应无法访问")
+	}
+	// 吊销后可以从列表中删除
+	if code := e.adminDo("POST", "/admin/api/devices/"+st.Devices[0].ID+"/remove", nil, nil); code != 200 {
+		t.Fatalf("删除已吊销设备 %d", code)
+	}
+	st.Devices = nil
+	e.adminDo("GET", "/admin/api/state", nil, &st)
+	if len(st.Devices) != 0 {
+		t.Fatal("删除后仍在列表中")
 	}
 }
 
