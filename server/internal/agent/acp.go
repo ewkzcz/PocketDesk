@@ -24,29 +24,11 @@ func (d ACPDriver) Kind() string { return d.Name }
 /** SupportsSteer：ACP 没有插话语义 */
 func (ACPDriver) SupportsSteer() bool { return false }
 
-/** rpcMsg：JSON-RPC 消息 */
-type rpcMsg struct {
-	JSONRPC string           `json:"jsonrpc"`
-	ID      *json.RawMessage `json:"id,omitempty"`
-	Method  string           `json:"method,omitempty"`
-	Params  json.RawMessage  `json:"params,omitempty"`
-	Result  json.RawMessage  `json:"result,omitempty"`
-	Error   *rpcError        `json:"error,omitempty"`
-}
-
-/** rpcError：JSON-RPC 错误 */
-type rpcError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
 /** acpProc：一个 ACP 会话 */
 type acpProc struct {
-	*lineProc
+	*rpcConn
 	opt       Options
 	mu        sync.Mutex
-	nextID    int
-	pending   map[string]chan rpcMsg
 	sessionID string
 	loading   bool
 	msgSeq    int
@@ -75,7 +57,7 @@ func (d ACPDriver) Start(ctx context.Context, opt Options) (Process, error) {
 	if len(opt.Command) == 0 {
 		return nil, errors.New("未配置启动命令")
 	}
-	a := &acpProc{opt: opt, pending: map[string]chan rpcMsg{}, tools: map[string]acpTool{}}
+	a := &acpProc{rpcConn: newRPCConn(), opt: opt, tools: map[string]acpTool{}}
 	// 1、启动
 	p, err := startLineProc(append([]string{}, opt.Command...), opt.Cwd, append(EnvPath(), opt.Env...), func(lp *lineProc, line []byte) {
 		a.dispatch(line)
@@ -83,7 +65,7 @@ func (d ACPDriver) Start(ctx context.Context, opt Options) (Process, error) {
 	if err != nil {
 		return nil, err
 	}
-	a.lineProc = p
+	a.attach(p)
 	hctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	// 2、握手
@@ -126,44 +108,6 @@ func (d ACPDriver) Start(ctx context.Context, opt Options) (Process, error) {
 	return a, nil
 }
 
-/** call：发请求并等待响应 */
-func (a *acpProc) call(ctx context.Context, method string, params any, out any) error {
-	a.mu.Lock()
-	a.nextID++
-	id := fmt.Sprint(a.nextID)
-	ch := make(chan rpcMsg, 1)
-	a.pending[id] = ch
-	a.mu.Unlock()
-	raw := json.RawMessage(id)
-	pb, _ := json.Marshal(params)
-	if err := a.writeJSON(rpcMsg{JSONRPC: "2.0", ID: &raw, Method: method, Params: pb}); err != nil {
-		return err
-	}
-	select {
-	case m := <-ch:
-		if m.Error != nil {
-			return errors.New(m.Error.Message)
-		}
-		if out != nil && len(m.Result) > 0 {
-			return json.Unmarshal(m.Result, out)
-		}
-		return nil
-	case <-a.Done():
-		return errors.New("进程已退出")
-	case <-ctx.Done():
-		a.mu.Lock()
-		delete(a.pending, id)
-		a.mu.Unlock()
-		return ctx.Err()
-	}
-}
-
-/** notify：发通知 */
-func (a *acpProc) notify(method string, params any) error {
-	pb, _ := json.Marshal(params)
-	return a.writeJSON(rpcMsg{JSONRPC: "2.0", Method: method, Params: pb})
-}
-
 /**
  * dispatch：分发一行消息
  *
@@ -180,13 +124,7 @@ func (a *acpProc) dispatch(line []byte) {
 	switch {
 	// 1、响应
 	case m.ID != nil && m.Method == "":
-		a.mu.Lock()
-		ch, ok := a.pending[string(*m.ID)]
-		delete(a.pending, string(*m.ID))
-		a.mu.Unlock()
-		if ok {
-			ch <- m
-		}
+		a.resolve(m)
 	// 2、请求
 	case m.ID != nil:
 		go a.handleRequest(m)
@@ -201,15 +139,6 @@ func (a *acpProc) dispatch(line []byte) {
 			}
 		}
 	}
-}
-
-/** reply：回复对方请求 */
-func (a *acpProc) reply(id *json.RawMessage, result any, rerr *rpcError) {
-	var rb json.RawMessage
-	if result != nil {
-		rb, _ = json.Marshal(result)
-	}
-	a.writeJSON(rpcMsg{JSONRPC: "2.0", ID: id, Result: rb, Error: rerr})
 }
 
 /**
