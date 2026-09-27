@@ -97,6 +97,9 @@ class UiServer {
   /** 1×1 像素 PNG */
   static final pngBytes = base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
 
+  /** 读取工作区列表时模拟连不上电脑 */
+  bool workspacesDown = false;
+
   final calls = <String>[];
   final bodies = <String, Object?>{};
 
@@ -143,7 +146,10 @@ class UiServer {
       });
     }
     if (p == '/api/sessions' && req.method == 'GET') return _json(sessions);
-    if (p == '/api/ws') return _json(workspaces);
+    if (p == '/api/ws') {
+      if (workspacesDown) throw const SocketException('网络中断');
+      return _json(workspaces);
+    }
     if (p == '/api/outbox') return _json(outbox);
     if (p.endsWith('/list')) return _json({'entries': entries(q['path'] ?? '.'), 'readOnly': p.contains('/w2/')});
     if (p.endsWith('/file') && req.method == 'GET') {
@@ -270,12 +276,13 @@ class UiEnv {
   /**
    * create：创建并连接（在 runAsync 中调用）
    */
-  static Future<UiEnv> create({ThemeMode theme = ThemeMode.light, bool paired = true, bool biometric = false}) async {
+  static Future<UiEnv> create({ThemeMode theme = ThemeMode.light, bool paired = true, bool biometric = false, void Function(UiServer s)? setup}) async {
     SharedPreferences.setMockInitialValues({'theme': theme.name, 'biometric': biometric, 'host': paired ? 'h1' : '', 'autoReceive': false});
     final settings = AppSettings(await SharedPreferences.getInstance());
     final db = await openTestDb();
     final vault = MemoryVault();
     final server = UiServer();
+    setup?.call(server);
     if (paired) {
       await db.saveHost(const PairedHost(id: 'h1', name: 'MacBook Pro', addresses: ['192.168.1.5'], port: 8443, fingerprint: 'abababababababababababababababababababababababababababababababab'));
       await vault.saveToken('h1', 'tk');

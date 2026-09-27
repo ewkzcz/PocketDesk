@@ -6,6 +6,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocketdesk/net/events.dart' show LinkState;
 import 'package:pocketdesk/core/discovery.dart';
 import 'package:pocketdesk/data/models.dart';
 import 'package:pocketdesk/ui/pages/diff_page.dart';
@@ -21,9 +22,9 @@ const _ws = Workspace(id: 'w1', name: 'payments', rootPath: '/p', readOnly: fals
 void main() {
   setUpAll(loadFonts);
 
-  Future<UiEnv> start(WidgetTester tester, {bool biometric = false, ThemeMode theme = ThemeMode.light, Widget? page}) async {
+  Future<UiEnv> start(WidgetTester tester, {bool biometric = false, ThemeMode theme = ThemeMode.light, Widget? page, void Function(UiServer s)? setup}) async {
     setSize(tester, const Size(390, 844));
-    final env = (await tester.runAsync(() => UiEnv.create(biometric: biometric, theme: theme)))!;
+    final env = (await tester.runAsync(() => UiEnv.create(biometric: biometric, theme: theme, setup: setup)))!;
     await tester.pumpWidget(page == null ? env.widget() : pageHost(env, page));
     await settle(tester);
     return env;
@@ -111,7 +112,7 @@ void main() {
     expect(find.text('扫码配对'), findsOneWidget);
     expect(find.byType(Math), findsNWidgets(2));
     expect(find.byType(Checkbox).evaluate().isNotEmpty || find.byIcon(Icons.check_box).evaluate().isNotEmpty, isTrue);
-    // 不再请求电脑转换 PDF，图片按 md 所在目录从工作区读取
+    // 在手机上排版，不请求电脑转换；图片按 md 所在目录从工作区读取
     expect(env.server.calls.where((c) => c.contains('/render')), isEmpty);
     final reader = find.byKey(const ValueKey('md-reader'));
     await tester.dragUntilVisible(find.byType(Image), reader, const Offset(0, -200));
@@ -136,6 +137,24 @@ void main() {
     await tester.tap(find.text('README.md'));
     await settle(tester);
     expect(tester.widget<ListView>(find.byKey(const ValueKey('md-reader'))).controller!.offset, closeTo(before, 1));
+    await finish(tester, env);
+  });
+
+  testWidgets('文件页加载失败后，电脑重新在线时自动刷新', (tester) async {
+    // App 启动时电脑还没连上，文件页加载失败
+    final env = await start(tester, setup: (s) => s.workspacesDown = true);
+    final conn = env.app.scope!.conn;
+    conn.link = LinkState.offline;
+    // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+    conn.notifyListeners();
+    await tester.tap(find.text('文件').last);
+    await settle(tester);
+    expect(find.text('README.md'), findsNothing);
+    // 电脑恢复在线，不用点重试
+    env.server.workspacesDown = false;
+    conn.debugOnline('192.168.1.5', env.server.status);
+    await settle(tester);
+    expect(find.text('README.md'), findsOneWidget);
     await finish(tester, env);
   });
 

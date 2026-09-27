@@ -51,12 +51,16 @@ class _FilesPageState extends State<FilesPage> {
   List<FileEntry>? _results;
   HostScope? _scope;
   int _req = 0;
+  bool _wasOnline = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final scope = context.watch<AppState>().scope;
     if (scope != _scope) {
+      _scope?.conn.removeListener(_onLink);
+      scope?.conn.addListener(_onLink);
+      _wasOnline = scope?.conn.online ?? false;
       _scope = scope;
       _ws = null;
       _path = '';
@@ -68,8 +72,16 @@ class _FilesPageState extends State<FilesPage> {
 
   @override
   void dispose() {
+    _scope?.conn.removeListener(_onLink);
     _filter.dispose();
     super.dispose();
+  }
+
+  /** _onLink：连接恢复在线时，之前加载失败或还没有数据就自动重新加载 */
+  void _onLink() {
+    final online = _scope?.conn.online ?? false;
+    if (online && !_wasOnline && !_loading && (_error.isNotEmpty || _workspaces.isEmpty)) unawaited(_loadWorkspaces());
+    _wasOnline = online;
   }
 
   /** _loadWorkspaces：读取工作区列表 */
