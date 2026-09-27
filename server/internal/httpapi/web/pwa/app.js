@@ -80,6 +80,7 @@
 
   function avatar(kind) {
     var a = AGENT[kind] || AGENT.claude;
+    if (!a.icon) { return '<img class="pd-avatar" src="/pwa/avatars/' + (AGENT[kind] ? kind : 'claude') + '.svg" alt="' + a.label + '">'; }
     return '<div class="pd-avatar" style="background:' + a.color + '">' + (a.icon ? icon(a.icon, 22) : a.short) + '</div>';
   }
 

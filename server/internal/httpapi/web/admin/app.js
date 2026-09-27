@@ -10,8 +10,6 @@
   var shownRequests = {};
   var app = document.getElementById('app');
   var modalRoot = document.getElementById('modal-root');
-  var AGENT_COLORS = { claude: '#D97757', codex: '#10A37F', pi: '#6B5BFF', dsh: '#4D6BFE' };
-  var AGENT_SHORT = { claude: 'CC', codex: 'CX', pi: 'Pi', dsh: 'DS' };
   var SECTIONS = [
     ['overview', '概览', 'layout-grid'],
     ['workspaces', '工作区', 'folder'],
@@ -155,7 +153,7 @@
       return '<div><span class="pd-mono">' + esc(a.ip) + '</span> <span class="pd-tag' + (a.kind === 'tailscale' ? '' : ' pd-tag-ok') + '">' + (a.kind === 'tailscale' ? 'Tailscale' : '局域网') + '</span></div>';
     }).join('') || '<span class="pd-muted">未检测到局域网或 Tailscale 地址</span>';
     var agents = (state.agents || []).map(function (a) {
-      return '<div class="pd-agent"><div class="pd-avatar" style="background:' + AGENT_COLORS[a.kind] + '">' + AGENT_SHORT[a.kind] + '</div>' +
+      return '<div class="pd-agent"><img class="pd-avatar" src="/admin/avatars/' + esc(a.kind) + '.svg" alt="">' +
         '<div style="min-width:0"><div>' + esc(a.label) + '</div><div class="pd-muted" style="font-size:12px">' + (a.installed ? esc(a.version || '已安装') : '未安装') + '</div></div></div>';
     }).join('');
     var online = state.devices.filter(function (d) { return d.online; }).length;
