@@ -1,5 +1,5 @@
 /**
- * 桌面端文件传输助手：查看记录、发文字、发文件（含粘贴的图片）给手机，预览或下载记录里的文件。
+ * 桌面端文件传输助手：查看记录、发文字、发文件（含粘贴的图片）给手机，预览、下载或在电脑上打开记录里的文件。
  */
 package httpapi
 
@@ -9,7 +9,9 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -98,20 +100,11 @@ func (s *Server) adminAssistantFiles(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, sent)
 }
 
-/**
- * adminAssistantFile：记录里某条文件消息对应的电脑上的文件，只允许读取记录中出现过的路径
- *
- * 处理流程：
- * 1、按序号取事件，取出文件路径
- * 2、dl=1 时作为附件下载，否则按类型直接显示
- */
-func (s *Server) adminAssistantFile(w http.ResponseWriter, r *http.Request) {
-	// 1、路径
-	seq, _ := strconv.ParseInt(r.URL.Query().Get("seq"), 10, 64)
+/** assistantPath：记录里某条文件消息对应的电脑上的文件，只认记录中出现过的路径 */
+func (s *Server) assistantPath(r *http.Request, seq int64) (string, string, error) {
 	evs, err := s.Store.EventsAfter(r.Context(), AssistantID, seq-1, 1)
 	if err != nil || len(evs) == 0 || evs[0].Seq != seq {
-		writeErr(w, r, errf(404, "not_found", "记录不存在"))
-		return
+		return "", "", errf(404, "not_found", "记录不存在")
 	}
 	var d struct {
 		Name string `json:"name"`
@@ -127,7 +120,20 @@ func (s *Server) adminAssistantFile(w http.ResponseWriter, r *http.Request) {
 		p, name = d.File.Path, d.File.Name
 	}
 	if p == "" {
-		writeErr(w, r, errf(404, "not_found", "文件不在电脑上"))
+		return "", "", errf(404, "not_found", "文件不在电脑上")
+	}
+	if info, err := os.Stat(p); err != nil || info.IsDir() {
+		return "", "", errf(404, "not_found", "文件已被移动或删除")
+	}
+	return p, name, nil
+}
+
+/** adminAssistantFile：预览或下载记录里的文件，dl=1 时作为附件下载 */
+func (s *Server) adminAssistantFile(w http.ResponseWriter, r *http.Request) {
+	seq, _ := strconv.ParseInt(r.URL.Query().Get("seq"), 10, 64)
+	p, name, err := s.assistantPath(r, seq)
+	if err != nil {
+		writeErr(w, r, err)
 		return
 	}
 	f, err := os.Open(p)
@@ -136,13 +142,46 @@ func (s *Server) adminAssistantFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
-	info, err := f.Stat()
-	if err != nil || info.IsDir() {
-		writeErr(w, r, errf(404, "not_found", "文件已被移动或删除"))
+	info, _ := f.Stat()
+	serveUserFile(w, r, name, info.ModTime(), f)
+}
+
+/** adminAssistantOpen：在电脑上用默认程序打开记录里的文件，reveal 为真时在文件管理器中显示 */
+func (s *Server) adminAssistantOpen(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Seq    int64 `json:"seq"`
+		Reveal bool  `json:"reveal"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		writeErr(w, r, err)
 		return
 	}
-	// 2、输出
-	serveUserFile(w, r, name, info.ModTime(), f)
+	p, _, err := s.assistantPath(r, in.Seq)
+	if err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	var cmd *exec.Cmd
+	switch {
+	case runtime.GOOS == "darwin" && in.Reveal:
+		cmd = exec.Command("open", "-R", p)
+	case runtime.GOOS == "darwin":
+		cmd = exec.Command("open", p)
+	case runtime.GOOS == "windows" && in.Reveal:
+		cmd = exec.Command("explorer", "/select,", p)
+	case runtime.GOOS == "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", p)
+	case in.Reveal:
+		cmd = exec.Command("xdg-open", filepath.Dir(p))
+	default:
+		cmd = exec.Command("xdg-open", p)
+	}
+	if err := cmd.Start(); err != nil {
+		writeErr(w, r, errf(500, "open_failed", "无法打开文件"))
+		return
+	}
+	go cmd.Wait()
+	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
 /** serveUserFile：输出用户文件；放在沙箱里，网页、SVG 等文件里的脚本不能以管理页身份运行 */
