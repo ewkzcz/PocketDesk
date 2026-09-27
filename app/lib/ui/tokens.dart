@@ -253,6 +253,7 @@ abstract final class PdFileColors {
   static const Color archive = Color(0xFF8B5CF6);
   static const Color image = Color(0xFFF08A3C);
   static const Color media = Color(0xFFE0569B);
+  static const Color book = Color(0xFFB7791F);
 }
 
 /** PdAgentColors：各类会话头像底色（浅色深色通用） */

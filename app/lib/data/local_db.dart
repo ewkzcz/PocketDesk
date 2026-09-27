@@ -221,6 +221,17 @@ class LocalDb {
     return rows.isEmpty ? 0 : (rows.first['offset']! as num).toDouble();
   }
 
+  /** saveBookPos：记住小说读到的章节与章内位置 */
+  Future<void> saveBookPos(String hostId, String ws, String rel, int chapter, int offset) => db.insert('reading_pos',
+      {'host_id': hostId, 'ws_id': ws, 'rel_path': rel, 'page': chapter, 'offset': offset}, conflictAlgorithm: ConflictAlgorithm.replace);
+
+  /** bookPos：读取小说阅读位置，没有记录时从头开始 */
+  Future<({int chapter, int offset})> bookPos(String hostId, String ws, String rel) async {
+    final rows = await db.query('reading_pos', where: 'host_id=? AND ws_id=? AND rel_path=?', whereArgs: [hostId, ws, rel]);
+    if (rows.isEmpty) return (chapter: 0, offset: 0);
+    return (chapter: rows.first['page']! as int, offset: (rows.first['offset']! as num).toInt());
+  }
+
   /* ---------- 传输队列 ---------- */
 
   /** saveTransfer：保存或更新传输任务 */

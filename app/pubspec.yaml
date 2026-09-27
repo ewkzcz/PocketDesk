@@ -42,6 +42,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   flutter_math_fork: ^0.7.4
+  fast_gbk: ^1.0.0
 
 dev_dependencies:
   flutter_test:

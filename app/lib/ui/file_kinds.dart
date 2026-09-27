@@ -8,8 +8,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'tokens.dart';
 
-/** 查看方式 */
-enum ViewKind { markdown, pdf, image, text, media, other }
+/** 查看方式（book 为 txt，用小说阅读器打开） */
+enum ViewKind { markdown, pdf, image, text, book, media, other }
 
 const _image = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'heic', 'heif', 'svg'};
 const _media = {'mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi', 'mp3', 'm4a', 'aac', 'wav', 'flac', 'ogg', 'opus'};
@@ -37,6 +37,7 @@ ViewKind viewKindOf(String name) {
   final e = extOf(name);
   if (e == 'md' || e == 'markdown') return ViewKind.markdown;
   if (e == 'pdf') return ViewKind.pdf;
+  if (e == 'txt') return ViewKind.book;
   if (_image.contains(e) && e != 'svg') return ViewKind.image;
   if (_media.contains(e)) return ViewKind.media;
   if (_text.contains(e) || _textNames.contains(name.toLowerCase()) || e == 'svg') return ViewKind.text;
@@ -69,7 +70,8 @@ class FileIcon extends StatelessWidget {
     final e = extOf(name);
     if (_archive.contains(e)) return (LucideIcons.fileArchive300, PdFileColors.archive);
     return switch (viewKindOf(name)) {
-      ViewKind.markdown || ViewKind.text => (e == 'md' || e == 'txt' ? LucideIcons.fileText300 : LucideIcons.fileCode300, c.info),
+      ViewKind.markdown || ViewKind.text => (e == 'md' ? LucideIcons.fileText300 : LucideIcons.fileCode300, c.info),
+      ViewKind.book => (LucideIcons.bookOpen300, PdFileColors.book),
       ViewKind.pdf => (LucideIcons.fileText300, c.danger),
       ViewKind.image => (LucideIcons.fileImage300, PdFileColors.image),
       ViewKind.media => (_media.contains(e) && {'mp3', 'm4a', 'aac', 'wav', 'flac', 'ogg', 'opus'}.contains(e) ? LucideIcons.fileAudio300 : LucideIcons.fileVideo300, PdFileColors.media),

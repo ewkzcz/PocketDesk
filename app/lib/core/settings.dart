@@ -83,4 +83,25 @@ class AppSettings extends ChangeNotifier {
     _prefs.setBool(k, v);
     notifyListeners();
   }
+
+  /** readerFontSize：小说阅读字号 */
+  double get readerFontSize => _prefs.getDouble('readerFont') ?? 19;
+  set readerFontSize(double v) {
+    _prefs.setDouble('readerFont', v.clamp(14, 30));
+    notifyListeners();
+  }
+
+  /** readerLineHeight：小说阅读行距倍数 */
+  double get readerLineHeight => _prefs.getDouble('readerLine') ?? 1.85;
+  set readerLineHeight(double v) {
+    _prefs.setDouble('readerLine', v);
+    notifyListeners();
+  }
+
+  /** readerTheme：小说阅读底色（paper 纸张、green 护眼、night 夜间，空为跟随系统） */
+  String get readerTheme => _prefs.getString('readerTheme') ?? '';
+  set readerTheme(String v) {
+    _prefs.setString('readerTheme', v);
+    notifyListeners();
+  }
 }

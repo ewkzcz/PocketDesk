@@ -3,6 +3,9 @@
  */
 library;
 
+import 'dart:typed_data';
+
+import 'package:fast_gbk/fast_gbk.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,6 +15,7 @@ import 'package:pocketdesk/data/models.dart';
 import 'package:pocketdesk/ui/pages/diff_page.dart';
 import 'package:pocketdesk/ui/pages/pair_page.dart';
 import 'package:pocketdesk/ui/pages/terminal_page.dart';
+import 'package:pocketdesk/ui/viewers/book/book_reader.dart';
 import 'package:pocketdesk/ui/viewers/image_viewer.dart';
 import 'package:pocketdesk/ui/viewers/text_viewer.dart';
 
@@ -158,6 +162,57 @@ void main() {
     final viewer = tester.widget<ImageViewerPage>(find.byType(ImageViewerPage));
     expect(viewer.ws.id, 'computer');
     expect(viewer.images.single.path, 'Users/me/PocketDesk/Inbox/20261001/截图.png');
+    await finish(tester, env);
+  });
+
+  testWidgets('txt 用小说阅读器：分页翻页、目录跳章、字号与底色、记住位置', (tester) async {
+    final book = [for (var c = 1; c <= 5; c++) '第${'一二三四五'[c - 1]}章 山雨\n${List.generate(60, (i) => '第 $c 章第 $i 段：少年站在山巅，看着远方翻涌的云海。').join('\n')}'].join('\n');
+    const ws = Workspace(id: 'w1', name: 'payments', rootPath: '/Users/me/payments', readOnly: false);
+    const entry = FileEntry(name: '小说.txt', path: '小说.txt', isDir: false, size: 1000, modTime: 0);
+    final env = await start(tester, page: BookReaderPage(ws: ws, entry: entry, load: () async => Uint8List.fromList(gbk.encode(book))));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+    await settle(tester);
+    // GBK 编码正确解码，第一页显示章节名与页码
+    expect(find.text('第一章 山雨'), findsOneWidget);
+    expect(find.textContaining('1 / '), findsOneWidget);
+    await shot(tester, 'flow-book');
+    // 点右侧翻到第 2 页，点左侧回到第 1 页
+    final size = tester.getSize(find.byType(BookReaderPage));
+    await tester.tapAt(Offset(size.width - 20, size.height / 2));
+    await settle(tester);
+    expect(find.textContaining('2 / '), findsOneWidget);
+    await tester.tapAt(Offset(20, size.height / 2));
+    await settle(tester);
+    expect(find.textContaining('1 / '), findsOneWidget);
+    // 点中间呼出控制栏，打开目录跳到第四章
+    await tester.tapAt(Offset(size.width / 2, size.height / 2));
+    await settle(tester);
+    await tester.tap(find.bySemanticsLabel('目录'));
+    await settle(tester);
+    expect(find.text('共 5 章'), findsOneWidget);
+    await tester.tap(find.descendant(of: find.byType(BottomSheet), matching: find.text('第四章 山雨')));
+    await settle(tester);
+    expect(find.text('第四章 山雨'), findsOneWidget);
+    // 翻几页后放大字号，仍在第四章
+    for (var i = 0; i < 3; i++) {
+      await tester.tapAt(Offset(size.width - 20, size.height / 2));
+      await settle(tester);
+    }
+    await tester.tapAt(Offset(size.width / 2, size.height / 2));
+    await settle(tester);
+    await tester.tap(find.bySemanticsLabel('字号增大'));
+    await settle(tester);
+    expect(find.text('第四章 山雨'), findsOneWidget);
+    expect(env.settings.readerFontSize, 20);
+    // 夜间底色
+    await tester.tap(find.bySemanticsLabel('夜间'));
+    await settle(tester);
+    expect(env.settings.readerTheme, 'night');
+    await tester.pump(const Duration(seconds: 1));
+    final pos = (await tester.runAsync(() => env.app.scope!.sessions.db.bookPos(env.app.scope!.host.id, 'w1', '小说.txt')))!;
+    expect(pos.chapter, 3);
+    expect(pos.offset, greaterThan(0));
     await finish(tester, env);
   });
 

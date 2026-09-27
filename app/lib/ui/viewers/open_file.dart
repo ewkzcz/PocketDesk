@@ -17,6 +17,7 @@ import '../file_kinds.dart';
 import '../tokens.dart';
 import '../widgets.dart';
 import 'fetch.dart';
+import 'book/book_reader.dart';
 import 'image_viewer.dart';
 import 'md_viewer.dart';
 import 'pdf_viewer.dart';
@@ -25,6 +26,9 @@ import 'text_viewer.dart';
 
 /** 在 App 内以文本打开的大小上限 */
 const textViewLimit = 2 * 1024 * 1024;
+
+/** 小说阅读器能打开的 txt 大小上限 */
+const bookViewLimit = 64 * 1024 * 1024;
 
 /**
  * openWorkspaceFile：按类型打开
@@ -47,7 +51,9 @@ Future<void> openWorkspaceFile(BuildContext context, {required Workspace ws, req
       final images = siblings.where((e) => viewKindOf(e.name) == ViewKind.image).toList();
       final i = images.indexWhere((e) => e.path == entry.path);
       await nav.push(MaterialPageRoute<void>(builder: (_) => ImageViewerPage(ws: ws, images: i < 0 ? [entry] : images, index: i < 0 ? 0 : i)));
-    // 3、文本
+    // 3、txt 用小说阅读器，其他文本用文本查看器
+    case ViewKind.book when entry.size <= bookViewLimit:
+      await nav.push(MaterialPageRoute<void>(builder: (_) => BookReaderPage(ws: ws, entry: entry, readOnly: readOnly)));
     case ViewKind.text when entry.size <= textViewLimit:
       await nav.push(MaterialPageRoute<void>(builder: (_) => TextViewerPage(ws: ws, path: entry.path, readOnly: readOnly)));
     // 4、其他
