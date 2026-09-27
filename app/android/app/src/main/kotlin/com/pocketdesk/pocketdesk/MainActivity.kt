@@ -26,6 +26,20 @@ import java.util.concurrent.Executors
 class MainActivity : FlutterFragmentActivity() {
     private val io = Executors.newSingleThreadExecutor()
 
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        // 待审批与新消息靠系统通知提醒，Android 13 起需在前台时申请一次
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 2)
+        }
+        KeepAliveService.start(this)
+    }
+
+    override fun onDestroy() {
+        KeepAliveService.stop(this)
+        super.onDestroy()
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "pocketdesk/downloads").setMethodCallHandler { call, result ->
@@ -97,7 +111,7 @@ class MainActivity : FlutterFragmentActivity() {
      * 每个会话一条通知，number 为该会话未读数，桌面图标角标按通知数字累加
      *
      * 处理流程：
-     * 1、首次使用时创建通知渠道，Android 13 起申请通知权限
+     * 1、首次使用时创建通知渠道，未授权通知时不显示（打开 App 时已申请）
      * 2、点击通知回到 App
      */
     private fun notify(id: Int, title: String, body: String, count: Int) {
@@ -106,10 +120,7 @@ class MainActivity : FlutterFragmentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm.getNotificationChannel(CHANNEL) == null) {
             nm.createNotificationChannel(NotificationChannel(CHANNEL, "消息与待审批", NotificationManager.IMPORTANCE_HIGH).apply { setShowBadge(true) })
         }
-        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 2)
-            return
-        }
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         // 2、通知
         val open = PendingIntent.getActivity(this, id, packageManager.getLaunchIntentForPackage(packageName), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         @Suppress("DEPRECATION")
