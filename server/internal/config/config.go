@@ -116,7 +116,7 @@ func baseDir(home string) string {
  *
  * 处理流程：
  * 1、取主机名作为电脑名称
- * 2、默认工作目录、收件与发件目录都放在 PocketDesk 文件夹下
+ * 2、默认工作目录与发件目录放在 PocketDesk 文件夹下，手机发来的文件直接存到默认工作目录的日期文件夹
  * 3、终端默认关闭，Agent 与文件编辑默认开启
  */
 func Default() Config {
@@ -135,7 +135,7 @@ func Default() Config {
 		AdminPort: 8444,
 		Features:  Features{Agents: true, Terminal: false, FileEdit: true},
 		Transfer: Transfer{
-			InboxDir:         filepath.Join(base, "Inbox"),
+			InboxDir:         filepath.Join(base, "Workspace"),
 			OutboxDir:        filepath.Join(base, "Outbox"),
 			UploadExpireDays: 7,
 		},
@@ -179,7 +179,7 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
-/** moveLegacyDirs：仍在使用旧版默认位置（用户主目录/PocketDesk 下）的目录改到新的默认位置，用户自己选的目录不动 */
+/** moveLegacyDirs：仍在使用旧版默认位置（用户主目录/PocketDesk 下）的目录改到新的默认位置，旧的收件目录改为默认工作目录，用户自己选的目录不动 */
 func moveLegacyDirs(c, d Config) Config {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -187,14 +187,14 @@ func moveLegacyDirs(c, d Config) Config {
 	}
 	old := filepath.Join(home, "PocketDesk")
 	same := func(p, name string) bool { return filepath.Clean(p) == filepath.Join(old, name) }
+	if same(c.DefaultWorkspace, "Workspace") {
+		c.DefaultWorkspace = d.DefaultWorkspace
+	}
 	if same(c.Transfer.InboxDir, "Inbox") {
-		c.Transfer.InboxDir = d.Transfer.InboxDir
+		c.Transfer.InboxDir = c.DefaultWorkspace
 	}
 	if same(c.Transfer.OutboxDir, "Outbox") {
 		c.Transfer.OutboxDir = d.Transfer.OutboxDir
-	}
-	if same(c.DefaultWorkspace, "Workspace") {
-		c.DefaultWorkspace = d.DefaultWorkspace
 	}
 	return c
 }

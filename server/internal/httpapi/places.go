@@ -150,7 +150,7 @@ func (s *Server) removeWorkspace(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
-/** setDefaultWorkspace：更换默认工作目录 */
+/** setDefaultWorkspace：更换默认工作目录，收件目录原本跟随默认工作目录时一起更换 */
 func (s *Server) setDefaultWorkspace(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Path string `json:"path"`
@@ -164,7 +164,12 @@ func (s *Server) setDefaultWorkspace(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, err)
 		return
 	}
-	if _, err := s.Cfg.Update(func(c *config.Config) { c.DefaultWorkspace = p }); err != nil {
+	if _, err := s.Cfg.Update(func(c *config.Config) {
+		if filepath.Clean(c.Transfer.InboxDir) == filepath.Clean(c.DefaultWorkspace) {
+			c.Transfer.InboxDir = p
+		}
+		c.DefaultWorkspace = p
+	}); err != nil {
 		writeErr(w, r, err)
 		return
 	}

@@ -80,12 +80,12 @@ func TestDefaultDirs(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	base := baseDir(home)
-	// 新安装：默认工作目录与收发目录都在 PocketDesk 文件夹下
+	// 新安装：默认工作目录与发件目录在 PocketDesk 文件夹下，收件目录就是默认工作目录
 	d := Default()
-	if d.DefaultWorkspace != filepath.Join(base, "Workspace") || d.Transfer.InboxDir != filepath.Join(base, "Inbox") || d.Transfer.OutboxDir != filepath.Join(base, "Outbox") {
+	if d.DefaultWorkspace != filepath.Join(base, "Workspace") || d.Transfer.InboxDir != d.DefaultWorkspace || d.Transfer.OutboxDir != filepath.Join(base, "Outbox") {
 		t.Fatalf("默认目录异常: %+v", d)
 	}
-	// 旧版默认位置改到新位置，用户自己选的目录保持不变
+	// 旧版默认位置改到新位置，旧收件目录改为默认工作目录，用户自己选的目录保持不变
 	p := filepath.Join(t.TempDir(), "config.json")
 	old := filepath.Join(home, "PocketDesk")
 	raw := `{"transfer":{"inboxDir":"` + filepath.ToSlash(filepath.Join(old, "Inbox")) + `","outboxDir":"/data/out"},"defaultWorkspace":"` + filepath.ToSlash(filepath.Join(old, "Workspace")) + `"}`
@@ -97,7 +97,7 @@ func TestDefaultDirs(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := s.Get()
-	if filepath.Clean(c.Transfer.InboxDir) != filepath.Join(base, "Inbox") || c.DefaultWorkspace != filepath.Join(base, "Workspace") || c.Transfer.OutboxDir != "/data/out" {
+	if c.Transfer.InboxDir != c.DefaultWorkspace || c.DefaultWorkspace != filepath.Join(base, "Workspace") || c.Transfer.OutboxDir != "/data/out" {
 		t.Fatalf("旧目录迁移异常: %+v", c.Transfer)
 	}
 }

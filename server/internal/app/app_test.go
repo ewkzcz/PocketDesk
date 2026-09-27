@@ -29,6 +29,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/ewkzcz/pocketdesk/server/internal/agent"
+	"github.com/ewkzcz/pocketdesk/server/internal/config"
 )
 
 /** echoDriver：内存假 Agent，按提示词回应或请求审批 */
@@ -755,7 +756,8 @@ func placesFlow(t *testing.T, e *env) {
 	if res, _ = e.do("POST", "/api/ws", map[string]string{"path": "relative/dir"}, nil); res.StatusCode != 400 {
 		t.Fatal("相对路径应拒绝")
 	}
-	// 3、默认工作目录：设为新文件夹后排在此电脑之后，且不能移除
+	// 3、默认工作目录：设为新文件夹后排在此电脑之后，且不能移除；收件目录原本跟随默认工作目录时一起更换
+	e.a.Cfg.Update(func(c *config.Config) { c.Transfer.InboxDir = c.DefaultWorkspace })
 	if res, body = e.do("PUT", "/api/ws/default", map[string]string{"path": proj}, nil); res.StatusCode != 200 {
 		t.Fatalf("设默认 %d %s", res.StatusCode, body)
 	}
@@ -781,7 +783,7 @@ func placesFlow(t *testing.T, e *env) {
 	var dirs map[string]string
 	_, body = e.do("GET", "/api/dirs", nil, nil)
 	json.Unmarshal(body, &dirs)
-	if dirs["inboxDir"] == "" || dirs["outboxDir"] == "" || dirs["defaultWorkspace"] != proj {
+	if dirs["inboxDir"] != proj || dirs["outboxDir"] == "" || dirs["defaultWorkspace"] != proj {
 		t.Fatalf("目录 %v", dirs)
 	}
 	newOut := filepath.Join(t.TempDir(), "发件")
