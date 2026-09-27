@@ -532,3 +532,36 @@ func TestModelCache(t *testing.T) {
 		t.Fatalf("缓存期内不应重新查询 %v", got)
 	}
 }
+
+func TestClaudeFinalBlockMatchesStream(t *testing.T) {
+	// 与真实抓包一致：思考块（序号 0）内容被隐藏不产生增量，正文以序号 1 流式输出；
+	// 随后每块单独一条完整消息，正文在完整消息里的序号为 0
+	p := newClaudeParser()
+	lines := []string{
+		`{"type":"stream_event","event":{"type":"message_start","message":{"id":"M"}}}`,
+		`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":""}}}`,
+		`{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"do"}}}`,
+		`{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ne"}}}`,
+		`{"type":"assistant","message":{"id":"M","content":[{"type":"thinking","thinking":""}]}}`,
+		`{"type":"assistant","message":{"id":"M","content":[{"type":"text","text":"done"}]}}`,
+		// 下一次请求：思考与正文都流式，完整消息一次带两块
+		`{"type":"stream_event","event":{"type":"message_start","message":{"id":"N"}}}`,
+		`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"想"}}}`,
+		`{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"好"}}}`,
+		`{"type":"assistant","message":{"id":"N","content":[{"type":"thinking","thinking":"想"},{"type":"text","text":"好"}]}}`,
+	}
+	ids := map[string][]string{}
+	for _, l := range lines {
+		for _, e := range p.parse([]byte(l)) {
+			ids[e.Type] = append(ids[e.Type], e.Data["id"].(string))
+		}
+	}
+	if strings.Join(ids[EvDelta], ",") != "M:1,M:1,N:1" || strings.Join(ids[EvDone], ",") != "M:1,N:1" {
+		t.Fatalf("正文增量 %v 与完整回复 %v 的 ID 应一致", ids[EvDelta], ids[EvDone])
+	}
+	for _, id := range ids[EvThinking] {
+		if id != "N:0" {
+			t.Fatalf("思考块 ID %v", ids[EvThinking])
+		}
+	}
+}

@@ -152,10 +152,37 @@ type claudeParser struct {
 	msgID       string
 	streamed    map[string]bool
 	thinkStream bool
+	// 按「消息 ID|类型」记录流式阶段出现过的内容块，完整消息到达时按顺序对应。
+	// Claude Code 会把一次回复拆成每块一条的完整消息，块在完整消息里的序号与流式阶段不同
+	order map[string][]string
 }
 
 /** newClaudeParser：创建解析器 */
-func newClaudeParser() *claudeParser { return &claudeParser{streamed: map[string]bool{}} }
+func newClaudeParser() *claudeParser {
+	return &claudeParser{streamed: map[string]bool{}, order: map[string][]string{}}
+}
+
+/** noteStream：记录流式内容块，首次出现时排进对应队列 */
+func (p *claudeParser) noteStream(id, kind string) {
+	if !p.streamed[id] {
+		p.streamed[id] = true
+		key := p.msgID + "|" + kind
+		p.order[key] = append(p.order[key], id)
+	}
+}
+
+/** blockID：完整消息中内容块的 ID，优先取流式阶段同类内容块的 ID */
+func (p *claudeParser) blockID(msgID, kind string, i int) string {
+	key := msgID + "|" + kind
+	if q := p.order[key]; len(q) > 0 {
+		p.order[key] = q[1:]
+		if len(q) == 1 {
+			delete(p.order, key)
+		}
+		return q[0]
+	}
+	return fmt.Sprintf("%s:%d", msgID, i)
+}
 
 /** claudeLine：一行输出的通用结构 */
 type claudeLine struct {
@@ -262,14 +289,14 @@ func (p *claudeParser) streamEvent(raw json.RawMessage) []Event {
 		id := fmt.Sprintf("%s:%d", p.msgID, e.Index)
 		switch e.Delta.Type {
 		case "text_delta":
-			p.streamed[id] = true
+			p.noteStream(id, "text")
 			return []Event{ev(EvDelta, "id", id, "text", e.Delta.Text)}
 		case "thinking_delta":
 			// 思考内容被隐藏时增量为空，不产生空白的思考块
 			if e.Delta.Thinking == "" {
 				return nil
 			}
-			p.streamed[id] = true
+			p.noteStream(id, "thinking")
 			return []Event{ev(EvThinking, "id", id, "text", e.Delta.Thinking, "delta", true)}
 		}
 	}
@@ -288,6 +315,9 @@ func (p *claudeParser) assistant(raw json.RawMessage) []Event {
 	var out []Event
 	for i, b := range m.Content {
 		id := fmt.Sprintf("%s:%d", m.ID, i)
+		if b.Type == "text" || b.Type == "thinking" {
+			id = p.blockID(m.ID, b.Type, i)
+		}
 		switch b.Type {
 		case "text":
 			out = append(out, ev(EvDone, "id", id, "text", b.Text))
