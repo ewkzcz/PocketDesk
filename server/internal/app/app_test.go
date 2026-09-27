@@ -327,6 +327,7 @@ func TestEndToEnd(t *testing.T) {
 	t.Run("发往手机", func(t *testing.T) { outboxFlow(t, e) })
 	t.Run("桌面端文件传输助手", func(t *testing.T) { desktopAssistantFlow(t, e) })
 	t.Run("桌面端管理手机文件", func(t *testing.T) { phoneFilesFlow(t, e) })
+	t.Run("桌面端与手机共用会话接口", func(t *testing.T) { desktopSharedFlow(t, e) })
 	t.Run("会话与审批", func(t *testing.T) { sessionFlow(t, e) })
 	t.Run("终端", func(t *testing.T) { terminalFlow(t, e) })
 	t.Run("管理入口防护", func(t *testing.T) { adminGuardFlow(t, e) })
@@ -691,6 +692,46 @@ func phoneFilesFlow(t *testing.T, e *env) {
 	// 其他设备不能取走这次交换的文件
 	if res, _ := e.do("GET", "/api/phone/blob/不存在", nil, nil); res.StatusCode != 404 {
 		t.Fatal("不存在的交换应 404")
+	}
+}
+
+/** desktopSharedFlow：桌面端以「电脑」身份使用与手机相同的会话接口，手机能看到桌面端发的消息 */
+func desktopSharedFlow(t *testing.T, e *env) {
+	var sessions []struct {
+		ID string `json:"id"`
+	}
+	if code := e.adminDo("GET", "/admin/p/api/sessions", nil, &sessions); code != 200 || len(sessions) == 0 {
+		t.Fatalf("桌面端会话列表 %d", code)
+	}
+	if code := e.adminDo("POST", "/admin/p/api/assistant/messages", map[string]string{"text": "桌面端共用接口发的", "clientId": "desk-1"}, nil); code != 200 {
+		t.Fatalf("桌面端发消息 %d", code)
+	}
+	_, body := e.do("GET", "/api/sessions/assistant/events?after=0", nil, nil)
+	if !strings.Contains(string(body), "桌面端共用接口发的") {
+		t.Fatalf("手机端应看到桌面端发的消息 %s", body)
+	}
+	// 未带管理凭证不能访问
+	res, err := http.Get(e.admin + "/admin/p/api/sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != 401 && res.StatusCode != 403 {
+		t.Fatalf("未带凭证应拒绝 %d", res.StatusCode)
+	}
+	// 实时通道：同源页面可连，跨站页面被拒
+	d := websocket.Dialer{}
+	hdr := http.Header{"X-PD-Key": {e.a.AdminKey}, "Origin": {e.admin}}
+	c, _, err := d.Dial(strings.Replace(e.admin, "http", "ws", 1)+"/admin/p/ws", hdr)
+	if err != nil {
+		t.Fatalf("桌面端实时通道 %v", err)
+	}
+	c.WriteJSON(map[string]any{"type": "hello", "cursors": map[string]int64{}})
+	readUntil(t, c, func(m wsMsg) bool { return m.Type == "ready" })
+	c.Close()
+	hdr.Set("Origin", "http://evil.example")
+	if _, _, err := d.Dial(strings.Replace(e.admin, "http", "ws", 1)+"/admin/p/ws", hdr); err == nil {
+		t.Fatal("跨站页面不应连上")
 	}
 }
 

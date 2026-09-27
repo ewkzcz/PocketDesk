@@ -7,6 +7,7 @@ import (
 	"context"
 	"github.com/ewkzcz/pocketdesk/server/internal/idem"
 	"net/http"
+	"strings"
 	"runtime"
 	"sync"
 	"time"
@@ -62,52 +63,65 @@ type Server struct {
 /** Handler：手机端 HTTPS 入口 */
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	a := func(h http.HandlerFunc) http.Handler { return s.auth(h) }
 	// 配对与应急网页
 	mux.HandleFunc("POST /api/pair", s.pair)
 	mux.Handle("GET /{$}", s.pwa())
 	mux.Handle("GET /pwa/", s.pwa())
-	// 电脑与工作区
-	mux.Handle("GET /api/host", a(s.host))
-	mux.Handle("GET /api/ws", a(s.workspaces))
-	mux.Handle("POST /api/ws", a(s.addWorkspace))
-	mux.Handle("PUT /api/ws/default", a(s.setDefaultWorkspace))
-	mux.Handle("DELETE /api/ws/{id}", a(s.removeWorkspace))
-	mux.Handle("GET /api/dirs", a(s.dirs))
-	mux.Handle("PUT /api/dirs", a(s.setDirs))
-	mux.Handle("GET /api/ws/{id}/list", a(s.list))
-	mux.Handle("GET /api/ws/{id}/file", a(s.readFile))
-	mux.Handle("HEAD /api/ws/{id}/file", a(s.readFile))
-	mux.Handle("PUT /api/ws/{id}/file", a(s.saveFile))
-	mux.Handle("POST /api/ws/{id}/ops", a(s.ops))
-	mux.Handle("GET /api/ws/{id}/search", a(s.search))
-	// 传输
+	// 断点续传上传
 	mux.Handle("/files/", s.auth(s.transferGate(s.Tus)))
-	mux.Handle("GET /api/phone/blob/{id}", a(s.phoneBlobGet))
-	mux.Handle("PUT /api/phone/blob/{id}", a(s.phoneBlobPut))
-	mux.Handle("GET /api/outbox", a(s.outboxList))
-	mux.Handle("GET /api/outbox/{id}/file", a(s.outboxFile))
-	mux.Handle("POST /api/outbox/{id}/ack", a(s.outboxAck))
-	mux.Handle("POST /api/assistant/messages", a(s.assistantText))
-	// 会话与审批
-	mux.Handle("GET /api/sessions", a(s.listSessions))
-	mux.Handle("POST /api/sessions", a(s.createSession))
-	mux.Handle("GET /api/sessions/{id}", a(s.getSession))
-	mux.Handle("PATCH /api/sessions/{id}", a(s.patchSession))
-	mux.Handle("DELETE /api/sessions/{id}", a(s.deleteSession))
-	mux.Handle("GET /api/sessions/{id}/events", a(s.events))
-	mux.Handle("POST /api/sessions/{id}/messages", a(s.sendMessage))
-	mux.Handle("POST /api/sessions/{id}/interrupt", a(s.interrupt))
-	mux.Handle("POST /api/sessions/{id}/retry", a(s.retry))
-	mux.Handle("GET /api/sessions/{id}/diff", a(s.diff))
-	mux.Handle("POST /api/approvals/{id}", a(s.decide))
-	mux.Handle("GET /api/agents/{kind}/models", a(s.models))
-	mux.Handle("GET /api/agents/{kind}/history", a(s.history))
-	mux.Handle("POST /api/logs", a(s.exportLogs))
-	// 实时通道
-	mux.Handle("GET /ws", a(s.eventSocket))
-	mux.Handle("GET /term/{id}", a(s.termSocket))
+	s.deviceRoutes(mux, "", func(h http.HandlerFunc) http.Handler { return s.auth(h) })
 	return guard(mux)
+}
+
+/**
+ * deviceRoutes：手机与桌面端共用的接口，两端逻辑保持一致
+ *
+ * 手机以配对令牌访问；桌面端在管理入口下以「电脑」身份访问同一组接口（prefix 为 /admin/p）。
+ */
+func (s *Server) deviceRoutes(mux *http.ServeMux, prefix string, a func(http.HandlerFunc) http.Handler) {
+	h := func(pattern string, fn http.HandlerFunc) {
+		method, path, _ := strings.Cut(pattern, " ")
+		mux.Handle(method+" "+prefix+path, a(fn))
+	}
+	// 电脑与工作区
+	h("GET /api/host", s.host)
+	h("GET /api/ws", s.workspaces)
+	h("POST /api/ws", s.addWorkspace)
+	h("PUT /api/ws/default", s.setDefaultWorkspace)
+	h("DELETE /api/ws/{id}", s.removeWorkspace)
+	h("GET /api/dirs", s.dirs)
+	h("PUT /api/dirs", s.setDirs)
+	h("GET /api/ws/{id}/list", s.list)
+	h("GET /api/ws/{id}/file", s.readFile)
+	h("HEAD /api/ws/{id}/file", s.readFile)
+	h("PUT /api/ws/{id}/file", s.saveFile)
+	h("POST /api/ws/{id}/ops", s.ops)
+	h("GET /api/ws/{id}/search", s.search)
+	// 传输
+	h("GET /api/phone/blob/{id}", s.phoneBlobGet)
+	h("PUT /api/phone/blob/{id}", s.phoneBlobPut)
+	h("GET /api/outbox", s.outboxList)
+	h("GET /api/outbox/{id}/file", s.outboxFile)
+	h("POST /api/outbox/{id}/ack", s.outboxAck)
+	h("POST /api/assistant/messages", s.assistantText)
+	// 会话与审批
+	h("GET /api/sessions", s.listSessions)
+	h("POST /api/sessions", s.createSession)
+	h("GET /api/sessions/{id}", s.getSession)
+	h("PATCH /api/sessions/{id}", s.patchSession)
+	h("DELETE /api/sessions/{id}", s.deleteSession)
+	h("GET /api/sessions/{id}/events", s.events)
+	h("POST /api/sessions/{id}/messages", s.sendMessage)
+	h("POST /api/sessions/{id}/interrupt", s.interrupt)
+	h("POST /api/sessions/{id}/retry", s.retry)
+	h("GET /api/sessions/{id}/diff", s.diff)
+	h("POST /api/approvals/{id}", s.decide)
+	h("GET /api/agents/{kind}/models", s.models)
+	h("GET /api/agents/{kind}/history", s.history)
+	h("POST /api/logs", s.exportLogs)
+	// 实时通道
+	h("GET /ws", s.eventSocket)
+	h("GET /term/{id}", s.termSocket)
 }
 
 /** installedAgents：已安装 Agent，结果缓存 5 分钟 */

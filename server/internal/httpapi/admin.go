@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -57,7 +58,25 @@ func (s *Server) AdminHandler() http.Handler {
 	mux.HandleFunc("POST /admin/api/open", s.adminOpen)
 	mux.HandleFunc("POST /admin/api/transfers/pause", s.adminPause)
 	mux.HandleFunc("POST /admin/api/quit", s.adminQuit)
+	// 桌面端与手机端共用会话、聊天、审批、工作区等接口
+	s.deviceRoutes(mux, "/admin/p", s.asDesktop)
 	return s.adminGuard(mux)
+}
+
+/** desktopDevice：桌面端调用共用接口时的身份 */
+var desktopDevice = store.Device{ID: "desktop", Name: "电脑", Platform: "desktop"}
+
+/** asDesktop：以「电脑」身份调用共用接口；实时通道只接受同源页面 */
+func (s *Server) asDesktop(next http.HandlerFunc) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if o := r.Header.Get("Origin"); o != "" && r.Header.Get("Upgrade") != "" {
+			if u, err := url.Parse(o); err != nil || u.Host != r.Host {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+		}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), deviceKey, desktopDevice)))
+	})
 }
 
 /**
