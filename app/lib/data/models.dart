@@ -201,6 +201,7 @@ class SessionInfo {
     required this.preview,
     required this.updatedAt,
     this.agentSessionId = '',
+    this.autoApprove = false,
   });
 
   final String id;
@@ -216,6 +217,9 @@ class SessionInfo {
   final int updatedAt;
   final String agentSessionId;
 
+  /** autoApprove：免审批会话，电脑上的操作全部自动放行 */
+  final bool autoApprove;
+
   /** fromJson：解析 */
   factory SessionInfo.fromJson(Map<String, dynamic> j) => SessionInfo(
         id: _s(j['id']),
@@ -230,6 +234,7 @@ class SessionInfo {
         preview: _s(j['preview']),
         updatedAt: _i(j['updatedAt']),
         agentSessionId: _s(j['agentSessionId']),
+        autoApprove: _b(j['autoApprove']),
       );
 
   /** copyWith：复制并修改部分字段 */
@@ -247,6 +252,7 @@ class SessionInfo {
         preview: preview ?? this.preview,
         updatedAt: updatedAt ?? this.updatedAt,
         agentSessionId: agentSessionId,
+        autoApprove: autoApprove,
       );
 
   /** isAgent：是否为 AI 编程工具会话 */

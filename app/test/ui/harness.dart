@@ -146,6 +146,12 @@ class UiServer {
       });
     }
     if (p == '/api/sessions' && req.method == 'GET') return _json(sessions);
+    if (p == '/api/sessions' && req.method == 'POST') {
+      final b = (jsonDecode(req.body) as Map).cast<String, dynamic>();
+      final s = {'id': 'new1', 'kind': b['kind'], 'title': '', 'workspaceId': b['workspaceId'], 'cwd': '.', 'model': '', 'state': 'idle', 'pinned': false, 'lastSeq': 0, 'preview': '', 'updatedAt': ago(Duration.zero), 'autoApprove': b['autoApprove'] ?? false};
+      sessions.add(s);
+      return _json(s, 201);
+    }
     if (p == '/api/ws') {
       if (workspacesDown) throw const SocketException('网络中断');
       return _json(workspaces);

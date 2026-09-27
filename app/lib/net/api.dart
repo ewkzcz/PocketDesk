@@ -192,7 +192,7 @@ class PdApi {
   Future<List<SessionInfo>> sessions() async => Json.list(await json('GET', '/api/sessions')).map((e) => SessionInfo.fromJson(Json.map(e))).toList();
 
   /** createSession：新建 Agent 或终端会话 */
-  Future<SessionInfo> createSession(String kind, String ws, String cwd, {String model = '', String agentSessionId = '', int cols = 0, int rows = 0, String command = ''}) async {
+  Future<SessionInfo> createSession(String kind, String ws, String cwd, {String model = '', String agentSessionId = '', int cols = 0, int rows = 0, String command = '', bool autoApprove = false}) async {
     final j = await json('POST', '/api/sessions', body: {
       'kind': kind,
       'workspaceId': ws,
@@ -202,6 +202,7 @@ class PdApi {
       if (cols > 0) 'cols': cols,
       if (rows > 0) 'rows': rows,
       if (command.isNotEmpty) 'command': command,
+      if (autoApprove) 'autoApprove': true,
     });
     return SessionInfo.fromJson(Json.map(j));
   }

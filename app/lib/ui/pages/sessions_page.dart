@@ -56,6 +56,9 @@ class _SessionsPageState extends State<SessionsPage> {
     final items = <(String, IconData, Future<void> Function())>[
       if (scope != null && (status?.features.agents ?? true))
         for (final k in installed) ('新建 ${agentFor(k).label} 会话', LucideIcons.messageSquarePlus300, () => newAgentSession(context, k)),
+      // 免审批：Claude Code 跳过全部权限确认，Codex 不审批也不进沙箱
+      if (scope != null && (status?.features.agents ?? true))
+        for (final k in installed.where((k) => k == 'claude' || k == 'codex')) ('${agentFor(k).label} 免审批', LucideIcons.zap300, () => newAgentSession(context, k, autoApprove: true)),
       // 2、终端与扫码
       if (scope != null && (status?.features.terminal ?? false)) ('新建终端', LucideIcons.terminal300, () => newTerminal(context)),
       ('扫一扫', LucideIcons.scanLine300, () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const PairPage()))),
@@ -244,7 +247,16 @@ class _SessionRow extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(sessionTitle(s), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.listTitle, color: c.text, height: 1.3)),
+                    Row(children: [
+                      Flexible(child: Text(sessionTitle(s), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.listTitle, color: c.text, height: 1.3))),
+                      if (s.autoApprove)
+                        Container(
+                          margin: const EdgeInsets.only(left: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(color: c.warnBg, borderRadius: BorderRadius.circular(4)),
+                          child: Text('免审批', style: TextStyle(fontSize: PdFont.tiny, color: c.warnText, height: 1.3)),
+                        ),
+                    ]),
                     const SizedBox(height: 4),
                     Text(preview.isEmpty ? ' ' : preview,
                         maxLines: 1,

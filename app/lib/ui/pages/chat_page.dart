@@ -663,7 +663,7 @@ class _ChatPageState extends State<ChatPage> {
     if (s.isAssistant) return _scope?.host.name ?? '';
     final ws = _ws?.name ?? '';
     final dir = s.cwd == '.' || s.cwd.isEmpty ? ws : (ws.isEmpty ? s.cwd : '$ws/${s.cwd}');
-    return [dir, s.model].where((x) => x.isNotEmpty).join(' · ');
+    return [dir, s.model, if (s.autoApprove) '免审批'].where((x) => x.isNotEmpty).join(' · ');
   }
 
   @override

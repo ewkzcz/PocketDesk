@@ -42,15 +42,15 @@ Future<Workspace?> pickWorkspace(BuildContext context, {String title = '选择�
 /**
  * newAgentSession：新建 Agent 会话并进入
  */
-Future<void> newAgentSession(BuildContext context, String kind) async {
+Future<void> newAgentSession(BuildContext context, String kind, {bool autoApprove = false}) async {
   final app = context.read<AppState>();
   final scope = app.scope;
   if (scope == null) return;
   if (!await context.read<AuthGate>().ensure('验证身份以新建会话') || !context.mounted) return;
-  final ws = await pickWorkspace(context, title: '在哪个工作区新建 ${agentFor(kind).label} 会话');
+  final ws = await pickWorkspace(context, title: '在哪个工作区新建 ${agentFor(kind).label}${autoApprove ? ' 免审批' : ''} 会话');
   if (ws == null || !context.mounted) return;
   try {
-    final s = await scope.conn.api.createSession(kind, ws.id, '.');
+    final s = await scope.conn.api.createSession(kind, ws.id, '.', autoApprove: autoApprove);
     scope.sessions.upsert(s);
     if (context.mounted) await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ChatPage(sessionId: s.id)));
   } on ApiException catch (e) {

@@ -89,7 +89,17 @@ void main() {
     expect(find.text('新建 DSH 会话'), findsOneWidget);
     expect(find.text('新建终端'), findsOneWidget);
     expect(find.text('扫一扫'), findsOneWidget);
+    expect(find.text('Claude Code 免审批'), findsOneWidget);
+    expect(find.text('Codex 免审批'), findsOneWidget);
+    expect(find.text('DSH 免审批'), findsNothing);
     await shot(tester, 'flow-plus');
+    // 免审批会话：请求带上标记，聊天页顶部标出
+    await tester.tap(find.text('Claude Code 免审批'));
+    await settle(tester);
+    await tester.tap(find.text('payments').last);
+    await settle(tester);
+    expect((env.server.bodies['POST /api/sessions'] as Map)['autoApprove'], isTrue);
+    expect(find.textContaining('免审批'), findsWidgets);
     await finish(tester, env);
   });
 
