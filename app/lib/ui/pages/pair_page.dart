@@ -19,8 +19,8 @@ import '../../data/models.dart';
 import '../tokens.dart';
 import '../widgets.dart';
 
-/** runPairing：显示等待框执行配对，成功后切换到新电脑并返回首页 */
-Future<void> runPairing(BuildContext context, Future<PairedHost> Function() job) async {
+/** runPairing：显示等待框执行配对，成功后切换到新电脑并返回首页；返回是否成功 */
+Future<bool> runPairing(BuildContext context, Future<PairedHost> Function() job) async {
   final nav = Navigator.of(context);
   final app = context.read<AppState>();
   final c = context.pd;
@@ -44,6 +44,7 @@ Future<void> runPairing(BuildContext context, Future<PairedHost> Function() job)
     nav.pop();
     nav.popUntil((r) => r.isFirst);
     if (context.mounted) toast(context, '已连接 ${host.name}');
+    return true;
   } catch (e) {
     nav.pop();
     if (context.mounted) {
@@ -56,6 +57,7 @@ Future<void> runPairing(BuildContext context, Future<PairedHost> Function() job)
         ),
       );
     }
+    return false;
   }
 }
 
@@ -75,6 +77,9 @@ class _PairPageState extends State<PairPage> with SingleTickerProviderStateMixin
   bool _busy = false;
   String _hint = '';
 
+  /** 刚配对失败的二维码：相机重启后会立刻再次识别到它，不再自动提交，避免错误次数累积被电脑端锁定 */
+  String _failed = '';
+
   @override
   void dispose() {
     _line.dispose();
@@ -87,16 +92,22 @@ class _PairPageState extends State<PairPage> with SingleTickerProviderStateMixin
     if (_busy) return;
     final raw = cap.barcodes.map((b) => b.rawValue ?? '').firstWhere((v) => v.isNotEmpty, orElse: () => '');
     if (raw.isEmpty) return;
+    if (raw == _failed) {
+      if (_hint.isEmpty) setState(() => _hint = '这张二维码刚才没有配对成功\n请在电脑上刷新二维码后再扫');
+      return;
+    }
     final t = PairTicket.parse(raw);
     if (t == null) {
       setState(() => _hint = '这不是 PocketDesk 的配对二维码');
       return;
     }
     _busy = true;
+    if (_hint.isNotEmpty) setState(() => _hint = '');
     unawaited(HapticFeedback.mediumImpact());
     await _scanner.stop();
     if (!mounted) return;
-    await runPairing(context, () => context.read<PairingService>().pairTicket(t));
+    final ok = await runPairing(context, () => context.read<PairingService>().pairTicket(t));
+    if (!ok && mounted) setState(() => _failed = raw);
     _busy = false;
     if (mounted) await _scanner.start();
   }
