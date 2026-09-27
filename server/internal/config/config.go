@@ -70,7 +70,7 @@ func DefaultAgents() map[string][]string {
 		"claude": {"claude"},
 		"codex":  {"codex"},
 		"pi":     {"pi"},
-		"dsh":    {"dsh", "acp"},
+		"dsh":    {"dsh", "--profile", "acp"},
 	}
 }
 
