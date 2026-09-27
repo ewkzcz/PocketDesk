@@ -301,8 +301,10 @@ class _LatexNode extends SpanNode {
       child: block
           ? Container(
               width: double.infinity,
+              alignment: Alignment.center,
               margin: const EdgeInsets.symmetric(vertical: 8),
-              child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Center(child: tex)),
+              // 过宽的公式按屏幕宽度缩小
+              child: FittedBox(fit: BoxFit.scaleDown, child: tex),
             )
           : tex,
     );
