@@ -194,6 +194,26 @@ void main() {
     }
     await tester.tapAt(const Offset(10, 10));
     await settle(tester);
+    // 大纲：列出标题，点击跳到对应位置
+    ScrollController ctl() => tester.widget<ListView>(reader).controller!;
+    ctl().jumpTo(0);
+    await settle(tester);
+    await tester.tap(find.bySemanticsLabel('目录'));
+    await settle(tester);
+    expect(find.text('2 节'), findsOneWidget);
+    await tester.tap(find.descendant(of: find.byType(BottomSheet), matching: find.text('下周计划')));
+    await settle(tester);
+    expect(ctl().offset, greaterThan(100));
+    // 翻页：下一页前进约一屏，上一页回退
+    ctl().jumpTo(0);
+    await settle(tester);
+    await tester.tap(find.bySemanticsLabel('下一页'));
+    await settle(tester);
+    final paged = ctl().offset;
+    expect(paged, greaterThan(200));
+    await tester.tap(find.bySemanticsLabel('上一页'));
+    await settle(tester);
+    expect(ctl().offset, lessThan(paged));
     // 滚动后退出，再次打开回到原位置
     await tester.drag(find.byKey(const ValueKey('md-reader')), const Offset(0, -150));
     await settle(tester);

@@ -24,6 +24,7 @@ dependencies:
   pdfx: ^2.11.0
   markdown_widget: ^2.3.2+8
   markdown: ^7.3.1
+  scroll_to_index: ^3.0.1
   lucide_icons_flutter: ^3.1.20
   file_picker: ^13.1.0
   image_picker: ^1.2.3

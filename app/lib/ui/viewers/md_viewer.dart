@@ -1,12 +1,14 @@
 /**
  * Markdown 阅读：在手机上直接排版显示，支持表格、任务列表、代码高亮、数学公式与工作区内的图片；
- * 跟随深浅色主题，记住阅读位置；在日期文件夹内可切换上一篇、下一篇；菜单支持刷新、查看或编辑源文件、分享、发给会话。
+ * 大纲目录快速跳转、按屏翻页、显示阅读进度；跟随深浅色主题，记住阅读位置；在日期文件夹内可切换上一篇、下一篇；
+ * 菜单支持刷新、查看或编辑源文件、分享、发给会话。
  */
 library;
 
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
@@ -14,6 +16,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:markdown/markdown.dart' as m;
 import 'package:markdown_widget/markdown_widget.dart';
 import 'package:provider/provider.dart';
+import 'package:scroll_to_index/scroll_to_index.dart';
 
 import '../../core/app_state.dart';
 import '../../data/models.dart';
@@ -48,10 +51,18 @@ class MarkdownReaderPage extends StatefulWidget {
 }
 
 class _MarkdownReaderPageState extends State<MarkdownReaderPage> {
-  final _scroll = ScrollController();
+  final _scroll = AutoScrollController();
   String? _text;
   String _error = '';
   Timer? _saveTimer;
+
+  /** 排版结果按正文与深浅色缓存，避免每次重绘都重新解析 */
+  List<Widget> _widgets = const [];
+  List<Toc> _toc = const [];
+  Object? _builtFor;
+
+  /** 阅读进度（0–1） */
+  final _progress = ValueNotifier<double>(0);
 
   @override
   void initState() {
@@ -64,6 +75,7 @@ class _MarkdownReaderPageState extends State<MarkdownReaderPage> {
   void dispose() {
     _saveTimer?.cancel();
     _scroll.dispose();
+    _progress.dispose();
     super.dispose();
   }
 
@@ -88,13 +100,121 @@ class _MarkdownReaderPageState extends State<MarkdownReaderPage> {
     }
   }
 
-  /** _onScroll：滚动停下后保存阅读位置 */
+  /** _onScroll：更新进度，滚动停下后保存阅读位置 */
   void _onScroll() {
+    if (_scroll.hasClients && _scroll.position.maxScrollExtent > 0) {
+      _progress.value = (_scroll.offset / _scroll.position.maxScrollExtent).clamp(0, 1);
+    }
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 800), () {
       final scope = context.read<AppState>().scope;
       if (scope != null && _scroll.hasClients) scope.sessions.db.saveOffset(scope.host.id, widget.ws.id, widget.entry.path, _scroll.offset);
     });
+  }
+
+  /** _page：按屏翻页，保留一行左右的重叠，避免漏读 */
+  void _page(int dir) {
+    if (!_scroll.hasClients) return;
+    final pos = _scroll.position;
+    final target = (pos.pixels + dir * (pos.viewportDimension - 48)).clamp(0.0, pos.maxScrollExtent);
+    _scroll.animateTo(target, duration: const Duration(milliseconds: 280), curve: Curves.easeOutCubic);
+  }
+
+  /** _currentHeading：屏幕顶部所在的章节（最后一个已经滚过顶部的标题） */
+  int _currentHeading() {
+    var cur = -1;
+    for (var i = 0; i < _toc.length; i++) {
+      final tag = _scroll.tagMap[_toc[i].widgetIndex];
+      final box = tag?.context.findRenderObject() as RenderBox?;
+      if (box == null || !box.attached) {
+        // 没有构建的标题：在已知标题之前的都算已读过
+        if (cur >= 0 && _toc[i].widgetIndex < _toc[cur].widgetIndex) cur = i;
+        continue;
+      }
+      final top = box.localToGlobal(Offset.zero).dy;
+      if (top <= kToolbarHeight + MediaQuery.paddingOf(context).top + 40) cur = i;
+    }
+    return cur;
+  }
+
+  /** _outline：大纲目录，点标题跳过去 */
+  Future<void> _outline() async {
+    if (_toc.isEmpty) {
+      toast(context, '这篇文档没有标题');
+      return;
+    }
+    final cur = _currentHeading();
+    final c = context.pd;
+    final minLevel = _toc.map(_level).reduce((a, b) => a < b ? a : b);
+    final i = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: c.card,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(14))),
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * 0.7),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Row(children: [
+                Text('目录', style: TextStyle(fontSize: PdFont.listTitle, fontWeight: FontWeight.w600, color: c.text)),
+                const Spacer(),
+                Text('${_toc.length} 节', style: TextStyle(fontSize: PdFont.time, color: c.text3)),
+              ]),
+            ),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _toc.length,
+                itemBuilder: (_, k) {
+                  final on = k == cur;
+                  final lv = _level(_toc[k]) - minLevel;
+                  return InkWell(
+                    onTap: () => Navigator.pop(ctx, k),
+                    child: Container(
+                      padding: EdgeInsets.fromLTRB(20.0 + lv * 16, 11, 20, 11),
+                      color: on ? c.accentSoft : null,
+                      child: Text(
+                        _tocTitle(_toc[k]),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: lv == 0 ? PdFont.item : PdFont.summary, fontWeight: lv == 0 ? FontWeight.w600 : FontWeight.w400, color: on ? c.accent : (lv == 0 ? c.text : c.text2)),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+    if (i != null) await _scroll.scrollToIndex(_toc[i].widgetIndex, preferPosition: AutoScrollPosition.begin, duration: const Duration(milliseconds: 320));
+  }
+
+  /** _level：标题层级 1–6 */
+  static int _level(Toc t) => int.tryParse(t.node.headingConfig.tag.substring(1)) ?? 1;
+
+  /** _tocTitle：标题文字 */
+  static String _tocTitle(Toc t) => t.node.childrenSpan.toPlainText().trim();
+
+  /** _build：排版，正文或深浅色变化时重新生成 */
+  void _build(BuildContext context, String text) {
+    final key = (text, Theme.of(context).brightness);
+    if (key == _builtFor) return;
+    _builtFor = key;
+    final config = MdText.config(context, fontSize: 16).copy(configs: [
+      ImgConfig(builder: (url, attrs) => _MdImage(ws: widget.ws, dir: _dir, url: url, alt: attrs['alt'] ?? '')),
+    ]);
+    var toc = <Toc>[];
+    final widgets = MarkdownGenerator(
+      linesMargin: const EdgeInsets.symmetric(vertical: 4),
+      inlineSyntaxList: [_LatexSyntax()],
+      generators: [_latexGenerator],
+    ).buildWidgets(text, config: config, onTocList: (l) => toc = l);
+    _widgets = [for (var i = 0; i < widgets.length; i++) AutoScrollTag(key: ValueKey(i), controller: _scroll, index: i, child: widgets[i])];
+    _toc = toc;
   }
 
   /** _dir：文档所在目录（相对工作区根） */
@@ -152,36 +272,88 @@ class _MarkdownReaderPageState extends State<MarkdownReaderPage> {
     } else if (text == null) {
       body = Center(child: SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2.5, color: c.accent)));
     } else {
-      final config = MdText.config(context, fontSize: 16).copy(configs: [
-        ImgConfig(builder: (url, attrs) => _MdImage(ws: widget.ws, dir: _dir, url: url, alt: attrs['alt'] ?? '')),
-      ]);
-      final widgets = MarkdownGenerator(
-        linesMargin: const EdgeInsets.symmetric(vertical: 4),
-        inlineSyntaxList: [_LatexSyntax()],
-        generators: [_latexGenerator],
-      ).buildWidgets(text, config: config);
-      body = Container(
-        color: c.card,
-        child: SelectionArea(
-          child: ListView(
-            key: const ValueKey('md-reader'),
-            controller: _scroll,
-            padding: const EdgeInsets.fromLTRB(18, 12, 18, 32),
-            children: widgets,
+      _build(context, text);
+      body = Stack(children: [
+        Container(
+          color: c.card,
+          child: SelectionArea(
+            child: ListView(
+              key: const ValueKey('md-reader'),
+              controller: _scroll,
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 96),
+              children: _widgets,
+            ),
           ),
         ),
-      );
+        // 阅读进度
+        Positioned(
+          left: 0,
+          right: 0,
+          top: 0,
+          child: ValueListenableBuilder<double>(
+            valueListenable: _progress,
+            builder: (_, v, _) => Align(alignment: Alignment.centerLeft, child: FractionallySizedBox(widthFactor: v, child: Container(height: 2, color: c.accent))),
+          ),
+        ),
+        // 翻页
+        Positioned(
+          right: 14,
+          bottom: 16,
+          child: Column(children: [
+            ValueListenableBuilder<double>(
+              valueListenable: _progress,
+              builder: (_, v, _) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Text('${(v * 100).round()}%', style: TextStyle(fontSize: PdFont.tiny, color: c.text3))),
+            ),
+            _PageButton(icon: LucideIcons.chevronUp300, tooltip: '上一页', onTap: () => _page(-1)),
+            const SizedBox(height: 10),
+            _PageButton(icon: LucideIcons.chevronDown300, tooltip: '下一页', onTap: () => _page(1)),
+          ]),
+        ),
+      ]);
     }
     return Scaffold(
       appBar: PdBar(
         title: widget.entry.name,
-        actions: [PdIconButton(icon: LucideIcons.ellipsis300, tooltip: '更多', onTap: text == null ? null : _menu)],
+        actions: [
+          if (text != null) PdIconButton(icon: LucideIcons.listTree300, tooltip: '目录', onTap: _outline),
+          PdIconButton(icon: LucideIcons.ellipsis300, tooltip: '更多', onTap: text == null ? null : _menu),
+        ],
       ),
       body: Column(children: [
         Expanded(child: body),
         if (nav.prev != null || nav.next != null)
           ReaderNavBar(nav: nav, onGo: (e) => openDocument(context, ws: widget.ws, entry: e, siblings: widget.siblings, readOnly: widget.readOnly, replace: true)),
       ]),
+    );
+  }
+}
+
+/** _PageButton：悬浮的翻页按钮，半透明磨砂底 */
+class _PageButton extends StatelessWidget {
+  const _PageButton({required this.icon, required this.tooltip, required this.onTap});
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.pd;
+    return Semantics(
+      button: true,
+      label: tooltip,
+      child: ClipOval(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: Material(
+            color: c.bar.withValues(alpha: 0.72),
+            child: InkWell(
+              onTap: onTap,
+              child: SizedBox(width: 44, height: 44, child: Icon(icon, size: 22, color: c.text2)),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
