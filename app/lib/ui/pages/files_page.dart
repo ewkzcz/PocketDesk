@@ -1,5 +1,5 @@
 /**
- * 文件页：切换工作区、面包屑路径、排序、当前目录过滤与全工作区搜索；点击按类型查看，长按下载、重命名、移动、删除、复制路径、发给会话。
+ * 文件页：切换工作区、面包屑路径、排序、当前目录过滤与全工作区搜索；右上角「+」上传文件、新建文件夹与文件；点击按类型查看，长按下载、重命名、移动、删除、复制路径、发给会话。
  */
 library;
 
@@ -15,6 +15,7 @@ import '../../data/models.dart';
 import '../../net/api.dart';
 import '../file_kinds.dart';
 import '../format.dart';
+import '../pick.dart';
 import '../tokens.dart';
 import '../viewers/open_file.dart';
 import '../widgets.dart';
@@ -200,19 +201,59 @@ class _FilesPageState extends State<FilesPage> {
   Future<void> _more() async {
     final i = await actionSheet(context, [
       SheetAction(_hidden ? '不显示隐藏文件' : '显示隐藏文件', icon: _hidden ? LucideIcons.eyeOff300 : LucideIcons.eye300),
-      if (!_readOnly && _ws != null) const SheetAction('新建文件夹', icon: LucideIcons.folderPlus300),
       const SheetAction('刷新', icon: LucideIcons.refreshCw300),
     ]);
     if (i == null || !mounted) return;
-    if (i == 0) {
-      setState(() => _hidden = !_hidden);
-      await _load();
-    } else if (i == 1 && !_readOnly) {
-      final name = await inputDialog(context, title: '新建文件夹', hint: '文件夹名称');
-      if (name == null || name.trim().isEmpty) return;
-      await _op(() => _scope!.conn.api.op(_ws!.id, 'mkdir', _path.isEmpty ? '.' : _path, name: name.trim()));
-    } else {
-      await _load();
+    if (i == 0) setState(() => _hidden = !_hidden);
+    await _load();
+  }
+
+  /**
+   * _add：上传文件到当前目录、新建文件夹或文件
+   *
+   * 处理流程：
+   * 1、上传：选中的文件直接存到电脑上的当前目录，全部完成后刷新
+   * 2、新建文件：创建空文件后打开编辑
+   */
+  Future<void> _add() async {
+    final ws = _ws!;
+    final scope = _scope!;
+    final i = await actionSheet(context, const [
+      SheetAction('上传文件', icon: LucideIcons.upload300),
+      SheetAction('上传图片或视频', icon: LucideIcons.image300),
+      SheetAction('新建文件夹', icon: LucideIcons.folderPlus300),
+      SheetAction('新建文件', icon: LucideIcons.filePlus300),
+    ], title: '当前目录：${_path.isEmpty ? ws.name : _path.split('/').last}');
+    if (i == null || !mounted) return;
+    final dir = _path.isEmpty ? '.' : _path;
+    switch (i) {
+      // 1、上传
+      case 0 || 1:
+        final files = i == 0 ? await pickFiles(context.read<AppState>().paths.temp) : await pickImages();
+        if (files.isEmpty || !mounted) return;
+        final tasks = [for (final f in files) await scope.transfers.upload(f.path, name: f.name, mime: f.mime, target: 'ws:${ws.id}:$_path')];
+        if (mounted) toast(context, '正在上传 ${tasks.length} 个文件，完成后自动刷新');
+        unawaited(Future.wait(tasks.map(scope.transfers.wait)).then((_) {
+          if (mounted) _load();
+        }));
+      case 2:
+        final name = await inputDialog(context, title: '新建文件夹', hint: '文件夹名称');
+        if (name == null || name.trim().isEmpty) return;
+        await _op(() => scope.conn.api.op(ws.id, 'mkdir', dir, name: name.trim()));
+      // 2、新建文件
+      case 3:
+        final name = (await inputDialog(context, title: '新建文件', initial: '新建文本.txt', hint: '文件名，例如 笔记.md'))?.trim();
+        if (name == null || name.isEmpty || name.contains('/')) return;
+        final path = _path.isEmpty ? name : '$_path/$name';
+        try {
+          await scope.conn.api.saveFile(ws.id, path, const [], create: true);
+        } on ApiException catch (e) {
+          if (mounted) toast(context, e.message);
+          return;
+        }
+        await _load();
+        if (!mounted) return;
+        await openWorkspaceFile(context, ws: ws, entry: FileEntry(name: name, path: path, isDir: false, size: 0, modTime: 0), siblings: const []);
     }
   }
 
@@ -317,7 +358,10 @@ class _FilesPageState extends State<FilesPage> {
         appBar: PdBar(
           title: '文件',
           leading: parts.isNotEmpty ? PdIconButton(icon: LucideIcons.chevronLeft300, tooltip: '上一级', onTap: _up) : null,
-          actions: [PdIconButton(icon: LucideIcons.ellipsis300, tooltip: '更多', onTap: _ws == null ? null : _more)],
+          actions: [
+            if (_ws != null && !_readOnly) PdIconButton(icon: LucideIcons.circlePlus300, tooltip: '上传或新建', onTap: _add),
+            PdIconButton(icon: LucideIcons.ellipsis300, tooltip: '更多', onTap: _ws == null ? null : _more),
+          ],
         ),
         body: Column(children: [
           // 工作区切换

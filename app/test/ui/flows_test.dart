@@ -355,6 +355,29 @@ void main() {
     await finish(tester, env);
   });
 
+  testWidgets('文件页「+」新建文件夹与新建文件', (tester) async {
+    final env = await start(tester);
+    await tester.tap(find.text('文件').last);
+    await settle(tester);
+    await tester.tap(find.bySemanticsLabel('上传或新建').last);
+    await settle(tester);
+    expect(find.text('上传文件'), findsOneWidget);
+    await tester.tap(find.text('新建文件夹'));
+    await settle(tester);
+    await tester.enterText(find.byType(TextField).last, '资料');
+    await tester.tap(find.text('确定'));
+    await settle(tester);
+    expect((env.server.bodies['POST /api/ws/w1/ops'] as Map)['op'], 'mkdir');
+    await tester.tap(find.bySemanticsLabel('上传或新建').last);
+    await settle(tester);
+    await tester.tap(find.text('新建文件'));
+    await settle(tester);
+    await tester.tap(find.text('确定'));
+    await settle(tester);
+    expect(env.server.calls, contains('PUT /api/ws/w1/file'));
+    await finish(tester, env);
+  });
+
   testWidgets('Markdown 在手机上直接排版：表格、任务列表、公式、图片，记住阅读位置', (tester) async {
     final env = await start(tester);
     await tester.tap(find.text('文件').last);
