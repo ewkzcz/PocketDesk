@@ -202,7 +202,7 @@ func (s *Server) dirs(w http.ResponseWriter, r *http.Request) {
  */
 func (s *Server) setDirs(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		InboxDir  *string `json:"inboxDir"`
+		InboxDir *string `json:"inboxDir"`
 	}
 	if err := readJSON(r, &in); err != nil {
 		writeErr(w, r, err)
