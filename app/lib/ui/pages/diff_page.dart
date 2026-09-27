@@ -1,5 +1,5 @@
 /**
- * 改动查看：本会话累计改动的文件清单，点开单个文件看逐行差异；Markdown 文件可直接以 PDF 方式阅读。
+ * 改动查看：本会话累计改动的文件清单，点开单个文件看逐行差异；Markdown 文件可直接用阅读器打开。
  */
 library;
 
@@ -124,8 +124,8 @@ class _DiffFileViewState extends State<DiffFileView> {
     }
   }
 
-  /** _readPdf：Markdown 文件以 PDF 方式阅读（路径相对会话工作目录） */
-  void _readPdf() {
+  /** _read：用阅读器打开 Markdown 文件（路径相对会话工作目录） */
+  void _read() {
     final ws = widget.ws;
     final s = context.read<AppState>().scope?.sessions.byId(widget.sessionId);
     if (ws == null || s == null) {
@@ -146,7 +146,7 @@ class _DiffFileViewState extends State<DiffFileView> {
       appBar: PdBar(
         title: widget.file.path.split('/').last,
         subtitle: widget.file.path,
-        actions: [if (md) PdIconButton(icon: LucideIcons.bookOpen300, tooltip: '以 PDF 阅读', onTap: _readPdf)],
+        actions: [if (md) PdIconButton(icon: LucideIcons.bookOpen300, tooltip: '阅读', onTap: _read)],
       ),
       backgroundColor: c.card,
       body: diff == null

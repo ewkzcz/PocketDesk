@@ -489,13 +489,6 @@ class _FileRow extends StatelessWidget {
                     Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.time, color: c.text3)),
                   ]),
                 ),
-                if (!e.isDir && viewKindOf(e.name) == ViewKind.markdown)
-                  Container(
-                    margin: const EdgeInsets.only(left: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(color: c.chip, borderRadius: BorderRadius.circular(4)),
-                    child: Text('PDF 阅读', style: TextStyle(fontSize: PdFont.tiny, color: c.text2)),
-                  ),
                 if (e.isDir) Icon(LucideIcons.chevronRight300, size: 18, color: c.text4),
               ]),
             ),
