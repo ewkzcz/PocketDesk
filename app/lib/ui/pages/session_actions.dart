@@ -96,5 +96,7 @@ String sessionTitle(SessionInfo s) {
   if (s.isAssistant) return '文件传输助手';
   final label = agentFor(s.kind).label;
   final t = s.title.trim();
-  return t.isEmpty ? (s.isTerminal ? '终端' : '$label · 新会话') : '$label · $t';
+  if (t.isEmpty || t == label) return s.isTerminal ? '终端' : '$label · 新会话';
+  // 电脑端生成的标题已带 Agent 名（如「Claude Code · 重构支付模块」），不再重复
+  return t.startsWith('$label · ') ? t : '$label · $t';
 }
