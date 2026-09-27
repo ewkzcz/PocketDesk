@@ -683,3 +683,22 @@ func TestStreamDeltasCoalesced(t *testing.T) {
 		t.Fatalf("100 个片段应合并为少量事件，实际 %d 条", n)
 	}
 }
+
+func TestAutoApproveSessionSkipsApprovals(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	s, err := f.m.CreateWith(ctx, NewSession{Kind: "claude", WorkspaceID: "w1", Cwd: ".", AutoApprove: true})
+	if err != nil || !s.AutoApprove {
+		t.Fatalf("创建 %+v %v", s, err)
+	}
+	f.m.Send(ctx, s.ID, Input{Text: "approve"})
+	f.waitState(t, s.ID, StateIdle)
+	for _, e := range f.events(t, s.ID) {
+		if e.Type == "approval.request" {
+			t.Fatal("免审批会话不应出现审批卡片")
+		}
+		if e.Type == "msg.done" && !strings.Contains(string(e.Data), "allowed") {
+			t.Fatalf("应自动放行：%s", e.Data)
+		}
+	}
+}

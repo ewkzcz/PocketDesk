@@ -5,6 +5,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -287,5 +288,30 @@ func TestMaintainArchivesOldEvents(t *testing.T) {
 	audit, _ := s.AuditEntries(ctx, 10)
 	if len(audit) != 0 {
 		t.Fatal("过期审计未清理")
+	}
+}
+
+func TestOpenAddsNewColumnsToOldDatabase(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "old.db")
+	// 旧版本的会话表没有 auto_approve 列
+	old, _ := sql.Open("sqlite", "file:"+p)
+	old.Exec(`CREATE TABLE sessions (id TEXT PRIMARY KEY, kind TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', workspace_id TEXT NOT NULL, cwd TEXT NOT NULL, model TEXT NOT NULL DEFAULT '', agent_session_id TEXT NOT NULL DEFAULT '', state TEXT NOT NULL, pinned INTEGER NOT NULL DEFAULT 0, last_seq INTEGER NOT NULL DEFAULT 0, preview TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`)
+	old.Exec(`INSERT INTO sessions VALUES('s1','claude','t','w','.','','','idle',0,0,'',1,1)`)
+	old.Close()
+	for i := 0; i < 2; i++ {
+		s, err := Open(p)
+		if err != nil {
+			t.Fatalf("第 %d 次打开：%v", i+1, err)
+		}
+		got, err := s.Session(context.Background(), "s1")
+		if err != nil || got.AutoApprove {
+			t.Fatalf("旧会话 %+v %v", got, err)
+		}
+		n, _ := s.CreateSession(context.Background(), Session{ID: "s2", Kind: "claude", WorkspaceID: "w", Cwd: ".", State: "idle", AutoApprove: true})
+		if got, _ := s.Session(context.Background(), n.ID); !got.AutoApprove {
+			t.Fatal("免审批标记没有保存")
+		}
+		s.db.Exec(`DELETE FROM sessions WHERE id='s2'`)
+		s.Close()
 	}
 }

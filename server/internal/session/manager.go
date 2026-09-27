@@ -155,6 +155,22 @@ func (m *Manager) Recover(ctx context.Context) error {
  * 3、写库并发出初始状态事件
  */
 func (m *Manager) Create(ctx context.Context, kind, wsID, cwd, model string) (store.Session, error) {
+	return m.CreateWith(ctx, NewSession{Kind: kind, WorkspaceID: wsID, Cwd: cwd, Model: model})
+}
+
+/** NewSession：新建会话的参数 */
+type NewSession struct {
+	Kind        string
+	WorkspaceID string
+	Cwd         string
+	Model       string
+	// AutoApprove：免审批会话
+	AutoApprove bool
+}
+
+/** CreateWith：按参数新建会话 */
+func (m *Manager) CreateWith(ctx context.Context, n NewSession) (store.Session, error) {
+	kind, wsID, cwd, model := n.Kind, n.WorkspaceID, n.Cwd, n.Model
 	// 1、开关与类型
 	if !m.d.Config().Features.Agents {
 		return store.Session{}, ErrDisabled
@@ -168,7 +184,7 @@ func (m *Manager) Create(ctx context.Context, kind, wsID, cwd, model string) (st
 		return store.Session{}, err
 	}
 	// 3、写库
-	s, err := m.d.Store.CreateSession(ctx, store.Session{ID: security.NewID(), Kind: kind, Title: agent.Label(kind), WorkspaceID: wsID, Cwd: rel, Model: model, State: StateIdle})
+	s, err := m.d.Store.CreateSession(ctx, store.Session{ID: security.NewID(), Kind: kind, Title: agent.Label(kind), WorkspaceID: wsID, Cwd: rel, Model: model, State: StateIdle, AutoApprove: n.AutoApprove})
 	if err != nil {
 		return s, err
 	}
@@ -355,8 +371,8 @@ func (m *Manager) startProc(ctx context.Context, rt *runtime, kind, cwd, resume,
 		return nil, ErrUnknownKind
 	}
 	cfg := m.d.Config()
-	opt := agent.Options{Cwd: cwd, Model: model, ResumeID: resume, Command: cfg.Agents[kind], Approver: &sessionApprover{m: m, sid: rt.id}}
-	if kind == agent.KindClaude && m.d.ApproveCmd != nil {
+	opt := agent.Options{Cwd: cwd, Model: model, ResumeID: resume, Command: cfg.Agents[kind], Approver: &sessionApprover{m: m, sid: rt.id, auto: rt.sess.AutoApprove}, AutoApprove: rt.sess.AutoApprove}
+	if kind == agent.KindClaude && m.d.ApproveCmd != nil && !rt.sess.AutoApprove {
 		opt.ApproveCmd = m.d.ApproveCmd(rt.id)
 	}
 	p, err := d.Start(ctx, opt)

@@ -565,3 +565,21 @@ func TestClaudeFinalBlockMatchesStream(t *testing.T) {
 		}
 	}
 }
+
+func TestAutoApproveArgs(t *testing.T) {
+	c := strings.Join(ClaudeArgs(Options{Command: []string{"claude"}, AutoApprove: true, ApproveCmd: []string{"pd", "mcp"}}), " ")
+	if !strings.Contains(c, "--dangerously-skip-permissions") || strings.Contains(c, "--permission-prompt-tool") {
+		t.Fatalf("Claude Code 免审批参数 %s", c)
+	}
+	if c := strings.Join(ClaudeArgs(Options{Command: []string{"claude"}, ApproveCmd: []string{"pd", "mcp"}}), " "); strings.Contains(c, "--dangerously") || !strings.Contains(c, "--permission-prompt-tool") {
+		t.Fatalf("普通会话参数 %s", c)
+	}
+	x := strings.Join(CodexArgs(Options{Command: []string{"codex"}, AutoApprove: true}, ""), " ")
+	if !strings.Contains(x, "--dangerously-bypass-approvals-and-sandbox") || strings.Contains(x, "--sandbox") {
+		t.Fatalf("Codex 免审批参数 %s", x)
+	}
+	app := &codexApp{opt: Options{AutoApprove: true}}
+	if p := app.threadParams(); p["approvalPolicy"] != "never" || p["sandbox"] != "danger-full-access" {
+		t.Fatalf("Codex app-server 免审批参数 %v", p)
+	}
+}

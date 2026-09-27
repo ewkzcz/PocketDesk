@@ -60,7 +60,12 @@ func (d ACPDriver) Start(ctx context.Context, opt Options) (Process, error) {
 	}
 	a := &acpProc{rpcConn: newRPCConn(), opt: opt, tools: map[string]acpTool{}}
 	// 1、启动
-	p, err := startLineProc(append([]string{}, opt.Command...), opt.Cwd, append(EnvPath(), opt.Env...), func(lp *lineProc, line []byte) {
+	env := append(EnvPath(), opt.Env...)
+	if opt.AutoApprove {
+		// DSH 的完全访问模式：不进沙箱，也不再请求审批
+		env = append(env, "DSH_PERMISSION_MODE=danger-full-access")
+	}
+	p, err := startLineProc(append([]string{}, opt.Command...), opt.Cwd, env, func(lp *lineProc, line []byte) {
 		a.dispatch(line)
 	})
 	if err != nil {

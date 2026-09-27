@@ -127,13 +127,18 @@ var migrations = []string{
 	)`,
 }
 
+/** columns：后来新增的列，已有数据库启动时按需补上 */
+var columns = []struct{ table, name, def string }{
+	{"sessions", "auto_approve", "INTEGER NOT NULL DEFAULT 0"},
+}
+
 /**
  * 打开数据库并执行迁移
  *
  * 处理流程：
  * 1、确保数据目录存在
  * 2、打开连接并设置 WAL、忙等待、外键
- * 3、按顺序执行迁移
+ * 3、按顺序执行迁移，再补上缺少的新增列
  */
 func Open(path string) (*Store, error) {
 	// 1、数据目录
@@ -152,6 +157,19 @@ func Open(path string) (*Store, error) {
 		if _, err := db.Exec(m); err != nil {
 			db.Close()
 			return nil, fmt.Errorf("数据库迁移失败: %w", err)
+		}
+	}
+	for _, c := range columns {
+		var n int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?`, c.table, c.name).Scan(&n); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("数据库迁移失败: %w", err)
+		}
+		if n == 0 {
+			if _, err := db.Exec(`ALTER TABLE ` + c.table + ` ADD COLUMN ` + c.name + ` ` + c.def); err != nil {
+				db.Close()
+				return nil, fmt.Errorf("数据库迁移失败: %w", err)
+			}
 		}
 	}
 	return &Store{db: db, now: time.Now}, nil

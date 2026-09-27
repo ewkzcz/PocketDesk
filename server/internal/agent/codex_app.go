@@ -59,9 +59,12 @@ type codexTokens struct {
 	OutputTokens int64 `json:"outputTokens"`
 }
 
-/** threadParams：新建与恢复线程共用的参数；untrusted 表示除只读命令外都要审批 */
+/** threadParams：新建与恢复线程共用的参数；untrusted 表示除只读命令外都要审批，免审批时不审批也不进沙箱 */
 func (c *codexApp) threadParams() map[string]any {
 	p := map[string]any{"cwd": c.opt.Cwd, "approvalPolicy": "untrusted", "sandbox": "workspace-write"}
+	if c.opt.AutoApprove {
+		p["approvalPolicy"], p["sandbox"] = "never", "danger-full-access"
+	}
 	if c.opt.Model != "" {
 		p["model"] = c.opt.Model
 	}

@@ -34,12 +34,16 @@ type pending struct {
 
 /** sessionApprover：把驱动的审批请求绑定到会话 */
 type sessionApprover struct {
-	m   *Manager
-	sid string
+	m    *Manager
+	sid  string
+	auto bool
 }
 
-/** RequestApproval：实现 agent.Approver */
+/** RequestApproval：实现 agent.Approver；免审批会话直接放行 */
 func (a *sessionApprover) RequestApproval(ctx context.Context, req agent.ApprovalRequest) (agent.Decision, error) {
+	if a.auto {
+		return agent.Decision{Allow: true}, nil
+	}
 	return a.m.requestApproval(ctx, a.sid, req)
 }
 

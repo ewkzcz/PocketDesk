@@ -73,7 +73,7 @@ func (PiDriver) Start(_ context.Context, opt Options) (Process, error) {
 	}
 	// 1、启动；有审批方时加载审批扩展
 	args := PiArgs(opt)
-	if opt.Approver != nil {
+	if opt.Approver != nil && !opt.AutoApprove {
 		ext, err := piExtensionPath()
 		if err != nil {
 			return nil, fmt.Errorf("准备审批扩展失败: %w", err)

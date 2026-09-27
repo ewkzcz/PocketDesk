@@ -26,6 +26,8 @@ type Session struct {
 	Preview        string `json:"preview"`
 	CreatedAt      int64  `json:"createdAt"`
 	UpdatedAt      int64  `json:"updatedAt"`
+	// AutoApprove：免审批会话（快捷启动 ccs、cx 等），所有操作自动放行
+	AutoApprove bool `json:"autoApprove"`
 }
 
 /** Event：会话内按序号递增的事件 */
@@ -37,16 +39,16 @@ type Event struct {
 	CreatedAt int64           `json:"createdAt"`
 }
 
-const sessionCols = `id,kind,title,workspace_id,cwd,model,agent_session_id,state,pinned,last_seq,preview,created_at,updated_at`
+const sessionCols = `id,kind,title,workspace_id,cwd,model,agent_session_id,state,pinned,last_seq,preview,created_at,updated_at,auto_approve`
 
 /** CreateSession：新建会话 */
 func (s *Store) CreateSession(ctx context.Context, x Session) (Session, error) {
 	now := s.nowMs()
 	x.CreatedAt, x.UpdatedAt = now, now
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO sessions(`+sessionCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO sessions(`+sessionCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		x.ID, x.Kind, x.Title, x.WorkspaceID, x.Cwd, x.Model, x.AgentSessionID, x.State,
-		boolInt(x.Pinned), x.LastSeq, x.Preview, x.CreatedAt, x.UpdatedAt)
+		boolInt(x.Pinned), x.LastSeq, x.Preview, x.CreatedAt, x.UpdatedAt, boolInt(x.AutoApprove))
 	return x, err
 }
 
@@ -256,12 +258,13 @@ func (s *Store) EventsBefore(ctx context.Context, sessionID string, before int64
 /** scanSession：读取一行会话记录 */
 func scanSession(r scanner) (Session, error) {
 	var x Session
-	var pinned int
+	var pinned, auto int
 	err := r.Scan(&x.ID, &x.Kind, &x.Title, &x.WorkspaceID, &x.Cwd, &x.Model, &x.AgentSessionID,
-		&x.State, &pinned, &x.LastSeq, &x.Preview, &x.CreatedAt, &x.UpdatedAt)
+		&x.State, &pinned, &x.LastSeq, &x.Preview, &x.CreatedAt, &x.UpdatedAt, &auto)
 	if errors.Is(err, sql.ErrNoRows) {
 		return x, ErrNotFound
 	}
 	x.Pinned = pinned == 1
+	x.AutoApprove = auto == 1
 	return x, err
 }

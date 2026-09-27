@@ -33,7 +33,7 @@ func (ClaudeDriver) SupportsSteer() bool { return false }
  * 处理流程：
  * 1、固定使用 stream-json 输入输出与增量消息
  * 2、按需追加模型与续聊参数
- * 3、配置了审批命令时挂上 MCP 审批工具
+ * 3、免审批时跳过全部权限确认；否则配置了审批命令时挂上 MCP 审批工具
  */
 func ClaudeArgs(opt Options) []string {
 	// 1、基础参数
@@ -46,7 +46,10 @@ func ClaudeArgs(opt Options) []string {
 	if opt.ResumeID != "" {
 		args = append(args, "--resume", opt.ResumeID)
 	}
-	// 3、审批工具
+	// 3、审批
+	if opt.AutoApprove {
+		return append(args, "--dangerously-skip-permissions")
+	}
 	if len(opt.ApproveCmd) > 0 {
 		cfg := map[string]any{"mcpServers": map[string]any{"pocketdesk": map[string]any{"command": opt.ApproveCmd[0], "args": opt.ApproveCmd[1:]}}}
 		b, _ := json.Marshal(cfg)

@@ -79,6 +79,8 @@ type Options struct {
 	Command    []string
 	Env        []string
 	ApproveCmd []string
+	// AutoApprove：免审批，所有操作直接放行（Claude Code 跳过权限确认，Codex 不审批不进沙箱）
+	AutoApprove bool
 }
 
 /** Process：一个运行中的 Agent 会话进程 */
