@@ -18,7 +18,6 @@ import (
 	"github.com/ewkzcz/pocketdesk/server/internal/outbox"
 	"github.com/ewkzcz/pocketdesk/server/internal/pairing"
 	"github.com/ewkzcz/pocketdesk/server/internal/power"
-	"github.com/ewkzcz/pocketdesk/server/internal/render"
 	"github.com/ewkzcz/pocketdesk/server/internal/security"
 	"github.com/ewkzcz/pocketdesk/server/internal/session"
 	"github.com/ewkzcz/pocketdesk/server/internal/store"
@@ -41,7 +40,6 @@ type Server struct {
 	Hub      *hub.Hub
 	Tus      *tus.Server
 	Outbox   *outbox.Service
-	Render   *render.Renderer
 	Power    *power.Keeper
 	Version  string
 	DataDir  string
@@ -74,8 +72,6 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("PUT /api/ws/{id}/file", a(s.saveFile))
 	mux.Handle("POST /api/ws/{id}/ops", a(s.ops))
 	mux.Handle("GET /api/ws/{id}/search", a(s.search))
-	mux.Handle("POST /api/ws/{id}/render", a(s.render))
-	mux.Handle("GET /api/ws/{id}/pdf", a(s.pdf))
 	// 传输
 	mux.Handle("/files/", s.auth(s.transferGate(s.Tus)))
 	mux.Handle("GET /api/outbox", a(s.outboxList))

@@ -27,12 +27,6 @@ type Transfer struct {
 	UploadExpireDays int    `json:"uploadExpireDays"`
 }
 
-/** Render：Markdown 转 PDF 的渲染设置 */
-type Render struct {
-	PageSize string `json:"pageSize"`
-	Browser  string `json:"browser"`
-}
-
 /** Notify：后台推送设置 */
 type Notify struct {
 	Kind  string `json:"kind"`
@@ -47,7 +41,6 @@ type Config struct {
 	AdminPort         int                 `json:"adminPort"`
 	Features          Features            `json:"features"`
 	Transfer          Transfer            `json:"transfer"`
-	Render            Render              `json:"render"`
 	Notify            Notify              `json:"notify"`
 	Agents            map[string][]string `json:"agents"`
 	Models            map[string][]string `json:"models"`
@@ -136,7 +129,6 @@ func Default() Config {
 			OutboxDir:        filepath.Join(base, "Outbox"),
 			UploadExpireDays: 7,
 		},
-		Render:            Render{PageSize: "mobile"},
 		Agents:            DefaultAgents(),
 		Models:            DefaultModels(),
 		TerminalIdleHours: 24,
@@ -196,9 +188,6 @@ func normalize(c Config) Config {
 	}
 	if c.Transfer.UploadExpireDays <= 0 {
 		c.Transfer.UploadExpireDays = d.Transfer.UploadExpireDays
-	}
-	if c.Render.PageSize != "a4" {
-		c.Render.PageSize = "mobile"
 	}
 	if c.TerminalIdleHours <= 0 {
 		c.TerminalIdleHours = d.TerminalIdleHours

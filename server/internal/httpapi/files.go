@@ -1,5 +1,5 @@
 /**
- * 工作区文件接口：列目录、读取（支持 Range）、带 If-Match 保存、文件操作、搜索与 Markdown 转 PDF。
+ * 工作区文件接口：列目录、读取（支持 Range）、带 If-Match 保存、文件操作与搜索。
  */
 package httpapi
 
@@ -115,12 +115,8 @@ func (s *Server) writable(ws store.Workspace, rels ...string) error {
 		return workspace.ErrReadOnly
 	}
 	for _, rel := range rels {
-		clean, err := workspace.CleanRel(rel)
-		if err != nil {
+		if _, err := workspace.CleanRel(rel); err != nil {
 			return err
-		}
-		if workspace.IsProtected(clean) {
-			return workspace.ErrProtected
 		}
 	}
 	return nil
@@ -262,50 +258,4 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"entries": res})
-}
-
-/** render：Markdown 转 PDF，返回下载地址与 ETag */
-func (s *Server) render(w http.ResponseWriter, r *http.Request) {
-	ws, err := s.wsOf(r)
-	if err != nil {
-		writeErr(w, r, err)
-		return
-	}
-	rel := r.URL.Query().Get("path")
-	res, err := s.Render.Render(r.Context(), ws, rel, r.URL.Query().Get("force") == "1")
-	if err != nil {
-		writeErr(w, r, err)
-		return
-	}
-	s.audit(r, "file.render", map[string]any{"ws": ws.ID, "path": rel, "cached": res.Cached})
-	writeJSON(w, 200, map[string]any{"etag": res.ETag, "size": res.Size, "cached": res.Cached, "url": "/api/ws/" + url.PathEscape(ws.ID) + "/pdf?path=" + url.QueryEscape(rel)})
-}
-
-/** pdf：下载已转换的 PDF */
-func (s *Server) pdf(w http.ResponseWriter, r *http.Request) {
-	ws, err := s.wsOf(r)
-	if err != nil {
-		writeErr(w, r, err)
-		return
-	}
-	rel := r.URL.Query().Get("path")
-	p, err := s.Render.CachedPDF(r.Context(), ws, rel)
-	if err != nil {
-		writeErr(w, r, err)
-		return
-	}
-	f, err := os.Open(p)
-	if err != nil {
-		writeErr(w, r, err)
-		return
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		writeErr(w, r, err)
-		return
-	}
-	w.Header().Set("Content-Type", "application/pdf")
-	name := path.Base(rel)
-	serveFile(w, r, f, info, name[:len(name)-len(path.Ext(name))]+".pdf")
 }

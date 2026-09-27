@@ -210,10 +210,7 @@ func TestTrashMovesFile(t *testing.T) {
 	}
 }
 
-func TestProtectedAndHidden(t *testing.T) {
-	if !IsProtected(".pocketdesk/cache/pdf/a.pdf") || IsProtected(".pocketdesk/inbox/a") {
-		t.Fatal("缓存目录判断错误")
-	}
+func TestHidden(t *testing.T) {
 	if !IsHidden("a/.b/c") || IsHidden("a/b") {
 		t.Fatal("隐藏判断错误")
 	}

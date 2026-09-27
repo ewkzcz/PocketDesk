@@ -29,7 +29,6 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/ewkzcz/pocketdesk/server/internal/agent"
-	"github.com/ewkzcz/pocketdesk/server/internal/render"
 )
 
 /** echoDriver：内存假 Agent，按提示词回应或请求审批 */
@@ -90,13 +89,6 @@ func (p *echoProc) Close() error {
 	return nil
 }
 
-/** fakePrinter：直接返回固定 PDF */
-type fakePrinter struct{}
-
-func (fakePrinter) Print(context.Context, string, render.Page) ([]byte, error) {
-	return []byte("%PDF-1.4 fake"), nil
-}
-
 /** env：运行中的服务与模拟手机 */
 type env struct {
 	t      *testing.T
@@ -130,7 +122,7 @@ func start(t *testing.T) *env {
 	cfg := map[string]any{"hostName": "TestMac", "port": port, "adminPort": adminPort, "transfer": map[string]any{"inboxDir": filepath.Join(home, "Inbox"), "outboxDir": filepath.Join(home, "Outbox")}}
 	b, _ := json.Marshal(cfg)
 	os.WriteFile(filepath.Join(dir, "config.json"), b, 0o600)
-	a, err := New(Options{DataDir: dir, Version: "test", Registry: agent.NewRegistry(echoDriver{}), ListenAddr: func() []string { return []string{"127.0.0.1"} }, Printer: fakePrinter{}, NoMDNS: true})
+	a, err := New(Options{DataDir: dir, Version: "test", Registry: agent.NewRegistry(echoDriver{}), ListenAddr: func() []string { return []string{"127.0.0.1"} }, NoMDNS: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -350,7 +342,7 @@ func TestEndToEnd(t *testing.T) {
 	}
 }
 
-/** workspaceFlow：列目录、读写、冲突、文件操作、搜索、越界、转 PDF */
+/** workspaceFlow：列目录、读写、冲突、文件操作、搜索、越界 */
 func workspaceFlow(t *testing.T, e *env) {
 	root := e.root
 	os.MkdirAll(filepath.Join(root, "20261002"), 0o755)
@@ -392,9 +384,6 @@ func workspaceFlow(t *testing.T, e *env) {
 	if res, _ = e.do("GET", p+"/file?path=../../etc/passwd", nil, nil); res.StatusCode != 403 {
 		t.Fatalf("越界读取 %d", res.StatusCode)
 	}
-	if res, _ = e.do("PUT", p+"/file?path=.pocketdesk/cache/x&create=1", []byte("x"), nil); res.StatusCode != 403 {
-		t.Fatal("缓存目录应只读")
-	}
 	if res, body = e.do("POST", p+"/ops", map[string]string{"op": "mkdir", "path": ".", "name": "docs"}, nil); res.StatusCode != 200 {
 		t.Fatalf("新建文件夹 %d %s", res.StatusCode, body)
 	}
@@ -418,18 +407,6 @@ func workspaceFlow(t *testing.T, e *env) {
 	_, body = e.do("GET", p+"/search?q=纪要", nil, nil)
 	if !strings.Contains(string(body), "20261001/会议纪要.md") {
 		t.Fatalf("搜索 %s", body)
-	}
-	res, body = e.do("POST", p+"/render?path="+url.QueryEscape("20261001/会议纪要.md"), nil, nil)
-	var rr struct {
-		URL string `json:"url"`
-	}
-	json.Unmarshal(body, &rr)
-	if res.StatusCode != 200 || rr.URL == "" {
-		t.Fatalf("转换 %d %s", res.StatusCode, body)
-	}
-	res, body = e.do("GET", rr.URL, nil, nil)
-	if res.StatusCode != 200 || !bytes.HasPrefix(body, []byte("%PDF")) || res.Header.Get("Content-Type") != "application/pdf" {
-		t.Fatalf("下载 PDF %d", res.StatusCode)
 	}
 	// 只读工作区
 	e.adminDo("POST", "/admin/api/workspaces", map[string]any{"id": ws.ID, "name": "notes", "rootPath": root, "readOnly": true}, nil)

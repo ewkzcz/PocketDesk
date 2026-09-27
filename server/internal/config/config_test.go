@@ -30,7 +30,6 @@ func TestUpdatePersistsAndNormalizes(t *testing.T) {
 	if _, err := s.Update(func(c *Config) {
 		c.Features.Terminal = true
 		c.Port = -1
-		c.Render.PageSize = "a4"
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +38,7 @@ func TestUpdatePersistsAndNormalizes(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := s2.Get()
-	if !c.Features.Terminal || c.Port != 8443 || c.Render.PageSize != "a4" {
+	if !c.Features.Terminal || c.Port != 8443 {
 		t.Fatalf("重新加载后异常: %+v", c)
 	}
 }

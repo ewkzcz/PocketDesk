@@ -282,7 +282,6 @@ func (s *Server) adminConfig(w http.ResponseWriter, r *http.Request) {
 		Features          *config.Features `json:"features"`
 		InboxDir          *string          `json:"inboxDir"`
 		OutboxDir         *string          `json:"outboxDir"`
-		PageSize          *string          `json:"pageSize"`
 		Notify            *config.Notify   `json:"notify"`
 		TerminalIdleHours *int             `json:"terminalIdleHours"`
 	}
@@ -303,9 +302,6 @@ func (s *Server) adminConfig(w http.ResponseWriter, r *http.Request) {
 		}
 		if in.OutboxDir != nil && *in.OutboxDir != c.Transfer.OutboxDir {
 			c.Transfer.OutboxDir, restart = *in.OutboxDir, true
-		}
-		if in.PageSize != nil {
-			c.Render.PageSize = *in.PageSize
 		}
 		if in.Notify != nil {
 			c.Notify = *in.Notify

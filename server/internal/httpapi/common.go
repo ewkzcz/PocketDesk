@@ -17,7 +17,6 @@ import (
 
 	"github.com/ewkzcz/pocketdesk/server/internal/netutil"
 	"github.com/ewkzcz/pocketdesk/server/internal/pairing"
-	"github.com/ewkzcz/pocketdesk/server/internal/render"
 	"github.com/ewkzcz/pocketdesk/server/internal/security"
 	"github.com/ewkzcz/pocketdesk/server/internal/session"
 	"github.com/ewkzcz/pocketdesk/server/internal/store"
@@ -73,7 +72,6 @@ func writeErr(w http.ResponseWriter, r *http.Request, err error) {
 		{workspace.ErrOutside, m{403, "forbidden_path"}},
 		{workspace.ErrBadPath, m{400, "bad_path"}},
 		{workspace.ErrReadOnly, m{403, "read_only"}},
-		{workspace.ErrProtected, m{403, "read_only"}},
 		{workspace.ErrConflict, m{412, "conflict"}},
 		{workspace.ErrNeedIfMatch, m{428, "if_match_required"}},
 		{workspace.ErrExists, m{409, "exists"}},
@@ -89,9 +87,6 @@ func writeErr(w http.ResponseWriter, r *http.Request, err error) {
 		{session.ErrBadAction, m{400, "bad_action"}},
 		{session.ErrNoDiff, m{404, "no_diff"}},
 		{store.ErrAlreadyDecided, m{409, "already_decided"}},
-		{render.ErrNotMarkdown, m{400, "not_markdown"}},
-		{render.ErrTooLarge, m{413, "too_large"}},
-		{render.ErrNoBrowser, m{503, "no_browser"}},
 		{pairing.ErrInvalidCode, m{401, "invalid_code"}},
 		{pairing.ErrLocked, m{429, "locked"}},
 		{pairing.ErrDenied, m{403, "denied"}},

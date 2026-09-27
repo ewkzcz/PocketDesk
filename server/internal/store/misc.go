@@ -1,5 +1,5 @@
 /**
- * 渲染缓存、审计日志、上传记录三张表的读写。
+ * 审计日志、上传记录两张表的读写。
  */
 package store
 
@@ -9,40 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 )
-
-/** RenderEntry：一份 md 转 PDF 的缓存记录 */
-type RenderEntry struct {
-	WsID      string
-	RelPath   string
-	SrcHash   string
-	DepsHash  string
-	CfgVer    string
-	PdfPath   string
-	UpdatedAt int64
-}
-
-/** RenderEntry：查询缓存记录 */
-func (s *Store) RenderEntry(ctx context.Context, wsID, rel string) (RenderEntry, error) {
-	var e RenderEntry
-	err := s.db.QueryRowContext(ctx,
-		`SELECT ws_id,rel_path,src_hash,deps_hash,cfg_ver,pdf_path,updated_at FROM render_cache WHERE ws_id=? AND rel_path=?`, wsID, rel).
-		Scan(&e.WsID, &e.RelPath, &e.SrcHash, &e.DepsHash, &e.CfgVer, &e.PdfPath, &e.UpdatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return e, ErrNotFound
-	}
-	return e, err
-}
-
-/** SaveRenderEntry：写入或覆盖缓存记录 */
-func (s *Store) SaveRenderEntry(ctx context.Context, e RenderEntry) error {
-	e.UpdatedAt = s.nowMs()
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO render_cache(ws_id,rel_path,src_hash,deps_hash,cfg_ver,pdf_path,updated_at) VALUES(?,?,?,?,?,?,?)
-		 ON CONFLICT(ws_id,rel_path) DO UPDATE SET src_hash=excluded.src_hash, deps_hash=excluded.deps_hash,
-		 cfg_ver=excluded.cfg_ver, pdf_path=excluded.pdf_path, updated_at=excluded.updated_at`,
-		e.WsID, e.RelPath, e.SrcHash, e.DepsHash, e.CfgVer, e.PdfPath, e.UpdatedAt)
-	return err
-}
 
 /** AuditEntry：一条操作审计 */
 type AuditEntry struct {

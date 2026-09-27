@@ -17,11 +17,7 @@ var (
 	ErrOutside   = errors.New("路径超出工作区范围")
 	ErrBadPath   = errors.New("路径格式不合法")
 	ErrReadOnly  = errors.New("工作区为只读")
-	ErrProtected = errors.New("该目录对手机只读")
 )
-
-/** cacheDir：手机只读的缓存目录（相对工作区根） */
-const cacheDir = ".pocketdesk/cache"
 
 /**
  * CleanRel：把协议中的相对路径规范化
@@ -113,11 +109,6 @@ func within(root, p string) bool {
 		return false
 	}
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
-}
-
-/** IsProtected：相对路径是否位于手机只读的缓存目录 */
-func IsProtected(rel string) bool {
-	return rel == cacheDir || strings.HasPrefix(rel, cacheDir+"/")
 }
 
 /** IsHidden：任一段以点开头即视为隐藏 */

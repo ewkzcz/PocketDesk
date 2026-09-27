@@ -93,16 +93,6 @@ var migrations = []string{
 		status TEXT NOT NULL,
 		created_at INTEGER NOT NULL
 	)`,
-	`CREATE TABLE IF NOT EXISTS render_cache (
-		ws_id TEXT NOT NULL,
-		rel_path TEXT NOT NULL,
-		src_hash TEXT NOT NULL,
-		deps_hash TEXT NOT NULL,
-		cfg_ver TEXT NOT NULL,
-		pdf_path TEXT NOT NULL,
-		updated_at INTEGER NOT NULL,
-		PRIMARY KEY (ws_id, rel_path)
-	)`,
 	`CREATE TABLE IF NOT EXISTS audit (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		device_id TEXT NOT NULL,

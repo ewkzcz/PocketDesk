@@ -199,13 +199,11 @@
   function transferView() {
     var c = state.config;
     var n = c.notify || {};
-    return head('传输', '文件收发目录、阅读尺寸与后台通知') +
+    return head('传输', '文件收发目录与后台通知') +
       '<div class="pd-h2">目录</div><div class="pd-card"><div class="pd-form-grid">' +
       '<div class="pd-form-row"><div class="pd-field"><label for="inbox">收件目录（手机发来的文件）</label><input class="pd-input pd-mono" id="inbox" value="' + esc(c.transfer.inboxDir) + '"></div><button class="pd-btn" data-act="open-inbox" aria-label="打开收件目录">' + icon('folder-open', 16) + '</button></div>' +
       '<div class="pd-form-row"><div class="pd-field"><label for="outbox">发件目录（放进来的文件会发给手机）</label><input class="pd-input pd-mono" id="outbox" value="' + esc(c.transfer.outboxDir) + '"></div><button class="pd-btn" data-act="open-outbox" aria-label="打开发件目录">' + icon('folder-open', 16) + '</button></div>' +
       '</div><div class="pd-setting"><div><div class="pd-setting-name">暂停所有传输</div><div class="pd-setting-desc">暂停期间手机会自动等待，恢复后继续</div></div>' + toggle('pause-all', state.transfersPaused) + '</div></div>' +
-      '<div class="pd-h2" style="margin-top:24px">Markdown 转 PDF</div><div class="pd-card"><div class="pd-setting"><div><div class="pd-setting-name">页面尺寸</div><div class="pd-setting-desc">手机尺寸宽 110mm，手机上不用缩放即可阅读</div></div>' +
-      '<div class="pd-seg" role="group" aria-label="页面尺寸"><button data-act="page" data-v="mobile" class="' + (c.render.pageSize !== 'a4' ? 'active' : '') + '">手机</button><button data-act="page" data-v="a4" class="' + (c.render.pageSize === 'a4' ? 'active' : '') + '">A4</button></div></div></div>' +
       '<div class="pd-h2" style="margin-top:24px">后台通知</div><div class="pd-card"><div class="pd-form-grid">' +
       '<div class="pd-field"><label for="nkind">推送方式</label><select class="pd-input" id="nkind"><option value="">不推送</option><option value="ntfy"' + (n.kind === 'ntfy' ? ' selected' : '') + '>ntfy</option><option value="bark"' + (n.kind === 'bark' ? ' selected' : '') + '>Bark</option></select></div>' +
       '<div class="pd-field"><label for="nurl">服务地址</label><input class="pd-input" id="nurl" placeholder="https://ntfy.sh" value="' + esc(n.url) + '"></div>' +
@@ -341,9 +339,6 @@
         confirmBox('吊销设备', '吊销后「' + esc(t.dataset.name) + '」将立即断开，需要重新扫码配对。', '吊销', function () {
           api('DELETE', '/admin/api/devices/' + encodeURIComponent(id)).then(function () { toast('已吊销'); load(); }).catch(function (er) { toast(er.message); });
         });
-        break;
-      case 'page':
-        api('PATCH', '/admin/api/config', { pageSize: t.dataset.v }).then(load);
         break;
       case 'save-transfer':
         api('PATCH', '/admin/api/config', {

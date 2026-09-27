@@ -223,17 +223,8 @@ func TestOutbox(t *testing.T) {
 	}
 }
 
-func TestRenderAuditUploads(t *testing.T) {
+func TestAuditUploads(t *testing.T) {
 	s, ctx := openTest(t), context.Background()
-	if _, err := s.RenderEntry(ctx, "w", "a.md"); !errors.Is(err, ErrNotFound) {
-		t.Fatal("空缓存应不存在")
-	}
-	s.SaveRenderEntry(ctx, RenderEntry{WsID: "w", RelPath: "a.md", SrcHash: "1", PdfPath: "p"})
-	s.SaveRenderEntry(ctx, RenderEntry{WsID: "w", RelPath: "a.md", SrcHash: "2", PdfPath: "p"})
-	e, _ := s.RenderEntry(ctx, "w", "a.md")
-	if e.SrcHash != "2" {
-		t.Fatal("缓存覆盖失败")
-	}
 	s.Audit(ctx, "d1", "file.read", map[string]string{"path": "a"})
 	list, _ := s.AuditEntries(ctx, 10)
 	if len(list) != 1 || list[0].Action != "file.read" {

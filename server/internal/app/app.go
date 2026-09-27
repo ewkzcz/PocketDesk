@@ -27,7 +27,6 @@ import (
 	"github.com/ewkzcz/pocketdesk/server/internal/outbox"
 	"github.com/ewkzcz/pocketdesk/server/internal/pairing"
 	"github.com/ewkzcz/pocketdesk/server/internal/power"
-	"github.com/ewkzcz/pocketdesk/server/internal/render"
 	"github.com/ewkzcz/pocketdesk/server/internal/security"
 	"github.com/ewkzcz/pocketdesk/server/internal/session"
 	"github.com/ewkzcz/pocketdesk/server/internal/store"
@@ -42,7 +41,6 @@ type Options struct {
 	Debug      bool
 	Registry   *agent.Registry
 	ListenAddr func() []string
-	Printer    render.Printer
 	NoMDNS     bool
 	Executable string
 }
@@ -60,7 +58,6 @@ type App struct {
 	Identity *security.Identity
 	AdminKey string
 	logs     *logx.Daily
-	chrome   *render.ChromePrinter
 	power    *power.Keeper
 	cancel   context.CancelFunc
 	wg       sync.WaitGroup
@@ -97,7 +94,7 @@ func LoadAdminKey(dataDir string) (string, error) {
  * 处理流程：
  * 1、日志、配置、数据库、证书、管理密钥
  * 2、配对、广播、会话、终端
- * 3、上传、发件箱、PDF 转换、防休眠
+ * 3、上传、发件箱、防休眠
  * 4、接口层并挂好各模块回调
  */
 func New(opt Options) (*App, error) {
@@ -153,7 +150,7 @@ func New(opt Options) (*App, error) {
 			h.PublishGlobal("session.preview", map[string]string{"session": sid, "preview": p})
 		},
 	})
-	// 3、上传、发件箱、转换、防休眠
+	// 3、上传、发件箱、防休眠
 	a.Tus, err = tus.New(st, filepath.Join(opt.DataDir, "uploads"), "/files/", httpapi.UploadResolver(cfg, st))
 	if err != nil {
 		return nil, err
@@ -162,20 +159,11 @@ func New(opt Options) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	printer := opt.Printer
-	if printer == nil {
-		a.chrome = render.NewChromePrinter(func() string { return render.FindBrowser(cfg.Get().Render.Browser) }, 5*time.Minute)
-		printer = a.chrome
-	}
-	rd, err := render.New(st, printer, opt.DataDir, func() string { return cfg.Get().Render.PageSize })
-	if err != nil {
-		return nil, err
-	}
 	a.power = power.New(2 * time.Minute)
 	// 4、接口层
 	a.API = &httpapi.Server{
 		Cfg: cfg, Store: st, Identity: id, Pairing: pm, Sessions: a.Sessions, Terms: a.Terms, Hub: h,
-		Tus: a.Tus, Outbox: a.Outbox, Render: rd, Power: a.power, Version: opt.Version, DataDir: opt.DataDir,
+		Tus: a.Tus, Outbox: a.Outbox, Power: a.power, Version: opt.Version, DataDir: opt.DataDir,
 		AdminKey: key, LogDir: filepath.Join(opt.DataDir, "logs"), Quit: a.Quit,
 	}
 	a.Tus.DeviceOf = httpapi.DeviceID
@@ -315,9 +303,6 @@ func (a *App) Close() error {
 	a.Outbox.Stop()
 	a.Sessions.Shutdown()
 	a.Terms.Shutdown()
-	if a.chrome != nil {
-		a.chrome.Close()
-	}
 	a.power.Close()
 	a.wg.Wait()
 	err := a.Store.Close()
