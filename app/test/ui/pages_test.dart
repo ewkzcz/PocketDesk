@@ -84,10 +84,14 @@ void main() {
         await tester.tap(find.text('Claude Code · 重构支付模块'));
         await settle(tester, 20);
         expect(find.text('需要执行命令'), findsOneWidget);
-        expect(find.text('本轮改动 · 3 个文件'), findsOneWidget);
         expect(find.text('排队中'), findsOneWidget);
         expect(find.text('网络请求超时'), findsOneWidget);
         await shot(tester, '$tag-07-chat');
+        // 小屏上改动卡片在审批卡片上方，先往上滚到它
+        await tester.dragUntilVisible(find.text('本轮改动 · 3 个文件'), find.byType(ListView).first, const Offset(0, 150));
+        expect(find.text('本轮改动 · 3 个文件'), findsOneWidget);
+        await tester.drag(find.byType(ListView).first, const Offset(0, -3000));
+        await settle(tester);
 
         // 扩展面板与指令列表
         await tester.tap(find.bySemanticsLabel('更多').last);

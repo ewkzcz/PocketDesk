@@ -194,7 +194,10 @@ void main() {
     await tester.tap(find.text('↑'));
     // Ctrl 为粘滞键，对下一个按键生效
     await tester.tap(find.text('Ctrl'));
+    // 快捷键栏按需构建，先滚到 / 出现，再让它完整露出，避免点到边缘
     await tester.dragUntilVisible(find.text('/'), find.byType(ListView).first, const Offset(-120, 0));
+    await tester.ensureVisible(find.text('/'));
+    await settle(tester);
     await tester.tap(find.text('/'));
     await tester.tap(find.text('|'));
     await settle(tester);
