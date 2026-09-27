@@ -1,6 +1,6 @@
 /**
  * 真实电脑端联调：启动电脑端程序，用手机端的真实网络代码完成扫码配对（证书固定）、事件通道、文件浏览与冲突保存、
- * 断点上传、电脑发文件自动接收、Markdown 转 PDF、终端与文件传输助手。
+ * 断点上传、电脑发文件自动接收、终端与文件传输助手。
  * 只有设置环境变量 PD_E2E_BIN（电脑端程序路径）时运行。
  */
 @Tags(['e2e'])
@@ -84,8 +84,6 @@ void main() {
           'adminPort': _adminPort,
           'features': {'agents': true, 'terminal': true, 'fileEdit': true},
           'transfer': {'inboxDir': '${home.path}/Inbox', 'outboxDir': '${home.path}/Outbox', 'uploadExpireDays': 7},
-          // 未指定时由电脑端自动查找本机的 Chrome 或 Edge
-          'render': {'pageSize': 'mobile', 'browser': Platform.environment['PD_E2E_BROWSER'] ?? ''},
         })));
     // 2、启动电脑端
     proc = await Process.start(_bin, ['serve'], environment: {'POCKETDESK_HOME': '${home.path}/data'});
@@ -209,23 +207,6 @@ void main() {
     m.dispose();
     await tmp.delete(recursive: true);
   }, skip: _bin.isEmpty, timeout: const Timeout(Duration(minutes: 2)));
-
-  test('Markdown 转 PDF 并下载', () async {
-    final api = conn.api;
-    final ws = (await api.workspaces()).single;
-    final r = await api.render(ws.id, 'README.md');
-    expect(r.etag, isNotEmpty);
-    final c = conn.httpClient();
-    final req = await c.getUrl(api.base.resolve(r.url));
-    api.headers().forEach(req.headers.set);
-    final res = await req.close();
-    final bytes = await res.fold<List<int>>([], (a, b) => a..addAll(b));
-    c.close();
-    expect(res.statusCode, 200);
-    expect(ascii.decode(bytes.take(4).toList()), '%PDF');
-    // 第二次命中缓存
-    expect((await api.render(ws.id, 'README.md')).cached, isTrue);
-  }, skip: _bin.isEmpty, timeout: const Timeout(Duration(minutes: 1)));
 
   test('终端：输入命令并收到输出', () async {
     final api = conn.api;

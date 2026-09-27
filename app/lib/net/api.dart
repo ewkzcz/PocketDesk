@@ -27,16 +27,6 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
-/** RenderResult：Markdown 转 PDF 结果 */
-class RenderResult {
-  const RenderResult({required this.url, required this.etag, required this.cached, required this.size});
-
-  final String url;
-  final String etag;
-  final bool cached;
-  final int size;
-}
-
 /** SaveResult：保存文件结果 */
 class SaveResult {
   const SaveResult(this.etag);
@@ -178,12 +168,6 @@ class PdApi {
   Future<List<FileEntry>> search(String ws, String q) async {
     final j = Json.map(await json('GET', '/api/ws/$ws/search', query: {'q': q}, wait: const Duration(seconds: 30)));
     return Json.list(j['entries']).map((e) => FileEntry.fromJson(Json.map(e))).toList();
-  }
-
-  /** render：Markdown 转 PDF */
-  Future<RenderResult> render(String ws, String path, {bool force = false}) async {
-    final j = Json.map(await json('POST', '/api/ws/$ws/render', query: {'path': path, if (force) 'force': '1'}, wait: const Duration(seconds: 60)));
-    return RenderResult(url: Json.str(j['url']), etag: Json.str(j['etag']), cached: Json.boolean(j['cached']), size: Json.integer(j['size']));
   }
 
   /* ---------- 会话 ---------- */
