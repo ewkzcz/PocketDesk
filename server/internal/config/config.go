@@ -23,7 +23,6 @@ type Features struct {
 /** Transfer：传输相关设置 */
 type Transfer struct {
 	InboxDir         string `json:"inboxDir"`
-	OutboxDir        string `json:"outboxDir"`
 	UploadExpireDays int    `json:"uploadExpireDays"`
 }
 
@@ -116,7 +115,7 @@ func baseDir(home string) string {
  *
  * 处理流程：
  * 1、取主机名作为电脑名称
- * 2、默认工作目录与发件目录放在 PocketDesk 文件夹下，手机发来的文件直接存到默认工作目录的日期文件夹
+ * 2、默认工作目录放在 PocketDesk 文件夹下，两端互传的文件存到默认工作目录的日期文件夹
  * 3、终端默认关闭，Agent 与文件编辑默认开启
  */
 func Default() Config {
@@ -136,7 +135,6 @@ func Default() Config {
 		Features:  Features{Agents: true, Terminal: false, FileEdit: true},
 		Transfer: Transfer{
 			InboxDir:         filepath.Join(base, "Workspace"),
-			OutboxDir:        filepath.Join(base, "Outbox"),
 			UploadExpireDays: 7,
 		},
 		DefaultWorkspace:  filepath.Join(base, "Workspace"),
@@ -193,9 +191,6 @@ func moveLegacyDirs(c, d Config) Config {
 	if same(c.Transfer.InboxDir, "Inbox") {
 		c.Transfer.InboxDir = c.DefaultWorkspace
 	}
-	if same(c.Transfer.OutboxDir, "Outbox") {
-		c.Transfer.OutboxDir = d.Transfer.OutboxDir
-	}
 	return c
 }
 
@@ -213,9 +208,6 @@ func normalize(c Config) Config {
 	}
 	if c.Transfer.InboxDir == "" {
 		c.Transfer.InboxDir = d.Transfer.InboxDir
-	}
-	if c.Transfer.OutboxDir == "" {
-		c.Transfer.OutboxDir = d.Transfer.OutboxDir
 	}
 	if c.Transfer.UploadExpireDays <= 0 {
 		c.Transfer.UploadExpireDays = d.Transfer.UploadExpireDays

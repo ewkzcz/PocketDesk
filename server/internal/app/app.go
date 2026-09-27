@@ -94,7 +94,7 @@ func LoadAdminKey(dataDir string) (string, error) {
  * 处理流程：
  * 1、日志、配置、数据库、证书、管理密钥
  * 2、配对、广播、会话、终端
- * 3、上传、发件箱、防休眠
+ * 3、上传、发往手机的队列、防休眠
  * 4、接口层并挂好各模块回调
  */
 func New(opt Options) (*App, error) {
@@ -150,15 +150,12 @@ func New(opt Options) (*App, error) {
 			h.PublishGlobal("session.preview", map[string]string{"session": sid, "preview": p})
 		},
 	})
-	// 3、上传、发件箱、防休眠
+	// 3、上传、发往手机的队列、防休眠
 	a.Tus, err = tus.New(st, filepath.Join(opt.DataDir, "uploads"), "/files/", httpapi.UploadResolver(cfg, st))
 	if err != nil {
 		return nil, err
 	}
-	a.Outbox, err = outbox.New(st, cfg.Get().Transfer.OutboxDir)
-	if err != nil {
-		return nil, err
-	}
+	a.Outbox = outbox.New(st, func() string { return cfg.Get().Transfer.InboxDir })
 	a.power = power.New(2 * time.Minute)
 	// 4、接口层
 	a.API = &httpapi.Server{
@@ -183,7 +180,7 @@ func (a *App) TLSConfig() *tls.Config {
  *
  * 处理流程：
  * 1、恢复遗留状态，确保文件传输助手存在，首次运行时登记默认工作区
- * 2、启动发件箱监听与定时清理
+ * 2、启动定时清理
  * 3、手机端 HTTPS 按地址监听，管理端口只监听回环
  * 4、局域网广播 mDNS
  */
@@ -197,9 +194,6 @@ func (a *App) Start(ctx context.Context) error {
 	}
 	a.defaultWorkspace(ctx)
 	// 2、后台任务
-	if err := a.Outbox.Start(ctx); err != nil {
-		return err
-	}
 	a.wg.Add(1)
 	go a.maintenance(ctx)
 	// 3、监听
@@ -299,7 +293,6 @@ func (a *App) Close() error {
 		s.Shutdown(ctx)
 	}
 	a.mdns.Close()
-	a.Outbox.Stop()
 	a.Sessions.Shutdown()
 	a.Terms.Shutdown()
 	a.power.Close()

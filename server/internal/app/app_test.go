@@ -120,7 +120,7 @@ func start(t *testing.T) *env {
 	dir := t.TempDir()
 	port, adminPort := freePort(t), freePort(t)
 	home := t.TempDir()
-	cfg := map[string]any{"hostName": "TestMac", "port": port, "adminPort": adminPort, "transfer": map[string]any{"inboxDir": filepath.Join(home, "Inbox"), "outboxDir": filepath.Join(home, "Outbox")}}
+	cfg := map[string]any{"hostName": "TestMac", "port": port, "adminPort": adminPort, "transfer": map[string]any{"inboxDir": filepath.Join(home, "Inbox")}}
 	b, _ := json.Marshal(cfg)
 	os.WriteFile(filepath.Join(dir, "config.json"), b, 0o600)
 	a, err := New(Options{DataDir: dir, Version: "test", Registry: agent.NewRegistry(echoDriver{}), ListenAddr: func() []string { return []string{"127.0.0.1"} }, NoMDNS: true})
@@ -322,7 +322,7 @@ func TestEndToEnd(t *testing.T) {
 	t.Run("工作区文件", func(t *testing.T) { workspaceFlow(t, e) })
 	t.Run("此电脑与位置管理", func(t *testing.T) { placesFlow(t, e) })
 	t.Run("上传与文件传输助手", func(t *testing.T) { uploadFlow(t, e) })
-	t.Run("发件箱", func(t *testing.T) { outboxFlow(t, e) })
+	t.Run("发往手机", func(t *testing.T) { outboxFlow(t, e) })
 	t.Run("会话与审批", func(t *testing.T) { sessionFlow(t, e) })
 	t.Run("终端", func(t *testing.T) { terminalFlow(t, e) })
 	t.Run("管理入口防护", func(t *testing.T) { adminGuardFlow(t, e) })
@@ -474,6 +474,10 @@ func outboxFlow(t *testing.T, e *env) {
 	}
 	if code := e.adminDo("POST", "/admin/api/send", map[string]any{"paths": []string{src}, "to": "测试手机"}, &sent); code != 200 || len(sent) != 1 {
 		t.Fatalf("发送 %d", code)
+	}
+	// 电脑上也留一份：复制到收件目录的日期文件夹
+	if b, _ := os.ReadFile(filepath.Join(e.a.Cfg.Get().Transfer.InboxDir, time.Now().Format("20060102"), "报销单.pdf")); string(b) != "0123456789" {
+		t.Fatal("未复制到收件目录")
 	}
 	_, body := e.do("GET", "/api/outbox", nil, nil)
 	if !strings.Contains(string(body), sent[0].ID) {
@@ -779,29 +783,18 @@ func placesFlow(t *testing.T, e *env) {
 	if res, _ = e.do("DELETE", "/api/ws/"+o.ID, nil, nil); res.StatusCode != 200 {
 		t.Fatal("移除工作区失败")
 	}
-	// 4、收发目录：查看与更换，发件目录立即生效
+	// 4、收件目录：查看与更换
 	var dirs map[string]string
 	_, body = e.do("GET", "/api/dirs", nil, nil)
 	json.Unmarshal(body, &dirs)
-	if dirs["inboxDir"] != proj || dirs["outboxDir"] == "" || dirs["defaultWorkspace"] != proj {
+	if dirs["inboxDir"] != proj || dirs["defaultWorkspace"] != proj {
 		t.Fatalf("目录 %v", dirs)
 	}
-	newOut := filepath.Join(t.TempDir(), "发件")
-	if res, body = e.do("PUT", "/api/dirs", map[string]string{"outboxDir": newOut}, nil); res.StatusCode != 200 || !strings.Contains(string(body), "发件") {
-		t.Fatalf("更换发件目录 %d %s", res.StatusCode, body)
+	if _, ok := dirs["outboxDir"]; ok {
+		t.Fatal("不应再有发件目录")
 	}
-	os.WriteFile(filepath.Join(newOut, "新发件.txt"), []byte("x"), 0o644)
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		_, body = e.do("GET", "/api/outbox", nil, nil)
-		if strings.Contains(string(body), "新发件.txt") {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("新发件目录没有生效 %s", body)
-		}
-		time.Sleep(100 * time.Millisecond)
+	newIn := filepath.Join(t.TempDir(), "收件")
+	if res, body = e.do("PUT", "/api/dirs", map[string]string{"inboxDir": newIn}, nil); res.StatusCode != 200 || !strings.Contains(string(body), "收件") {
+		t.Fatalf("更换收件目录 %d %s", res.StatusCode, body)
 	}
-	// 临时目录随本段测试结束删除，改回原目录供后续流程使用
-	e.do("PUT", "/api/dirs", map[string]string{"outboxDir": dirs["outboxDir"]}, nil)
 }

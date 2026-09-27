@@ -1,6 +1,6 @@
 /**
  * 位置管理（手机端）：工作区列表（含内置「此电脑」与默认工作目录）、用文件夹选择器添加或删除工作区、
- * 更换默认工作目录，查看与更换电脑上的收件、发件目录。
+ * 更换默认工作目录，查看与更换电脑上的收件目录。
  */
 package httpapi
 
@@ -185,32 +185,31 @@ func (s *Server) setDefaultWorkspace(w http.ResponseWriter, r *http.Request) {
 /** dirsView：电脑上的收发目录与默认工作目录 */
 func (s *Server) dirsView() map[string]string {
 	c := s.Cfg.Get()
-	return map[string]string{"inboxDir": c.Transfer.InboxDir, "outboxDir": c.Transfer.OutboxDir, "defaultWorkspace": c.DefaultWorkspace}
+	return map[string]string{"inboxDir": c.Transfer.InboxDir, "defaultWorkspace": c.DefaultWorkspace}
 }
 
-/** dirs：查看电脑上的收件、发件目录与默认工作目录 */
+/** dirs：查看电脑上的收件目录与默认工作目录 */
 func (s *Server) dirs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, s.dirsView())
 }
 
 /**
- * setDirs：更换收件、发件目录，立即生效
+ * setDirs：更换收件目录，立即生效
  *
  * 处理流程：
  * 1、目录不存在时创建
- * 2、写入配置；发件目录改为监听新目录
+ * 2、写入配置
  */
 func (s *Server) setDirs(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		InboxDir  *string `json:"inboxDir"`
-		OutboxDir *string `json:"outboxDir"`
 	}
 	if err := readJSON(r, &in); err != nil {
 		writeErr(w, r, err)
 		return
 	}
 	// 1、目录
-	for _, p := range []*string{in.InboxDir, in.OutboxDir} {
+	for _, p := range []*string{in.InboxDir} {
 		if p == nil {
 			continue
 		}
@@ -229,18 +228,9 @@ func (s *Server) setDirs(w http.ResponseWriter, r *http.Request) {
 		if in.InboxDir != nil {
 			c.Transfer.InboxDir = *in.InboxDir
 		}
-		if in.OutboxDir != nil {
-			c.Transfer.OutboxDir = *in.OutboxDir
-		}
 	}); err != nil {
 		writeErr(w, r, err)
 		return
-	}
-	if in.OutboxDir != nil && s.Outbox != nil {
-		if err := s.Outbox.SetDir(*in.OutboxDir); err != nil {
-			writeErr(w, r, err)
-			return
-		}
 	}
 	s.audit(r, "transfer.dirs", s.dirsView())
 	writeJSON(w, 200, s.dirsView())

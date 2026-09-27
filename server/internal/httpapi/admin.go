@@ -281,7 +281,6 @@ func (s *Server) adminConfig(w http.ResponseWriter, r *http.Request) {
 		HostName          *string          `json:"hostName"`
 		Features          *config.Features `json:"features"`
 		InboxDir          *string          `json:"inboxDir"`
-		OutboxDir         *string          `json:"outboxDir"`
 		Notify            *config.Notify   `json:"notify"`
 		TerminalIdleHours *int             `json:"terminalIdleHours"`
 	}
@@ -289,7 +288,6 @@ func (s *Server) adminConfig(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, err)
 		return
 	}
-	outboxChanged := false
 	cfg, err := s.Cfg.Update(func(c *config.Config) {
 		if in.HostName != nil && strings.TrimSpace(*in.HostName) != "" {
 			c.HostName = strings.TrimSpace(*in.HostName)
@@ -299,9 +297,6 @@ func (s *Server) adminConfig(w http.ResponseWriter, r *http.Request) {
 		}
 		if in.InboxDir != nil {
 			c.Transfer.InboxDir = *in.InboxDir
-		}
-		if in.OutboxDir != nil && *in.OutboxDir != c.Transfer.OutboxDir {
-			c.Transfer.OutboxDir, outboxChanged = *in.OutboxDir, true
 		}
 		if in.Notify != nil {
 			c.Notify = *in.Notify
@@ -313,13 +308,6 @@ func (s *Server) adminConfig(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeErr(w, r, err)
 		return
-	}
-	// 发件目录立即改为监听新目录
-	if outboxChanged && s.Outbox != nil {
-		if err := s.Outbox.SetDir(cfg.Transfer.OutboxDir); err != nil {
-			writeErr(w, r, err)
-			return
-		}
 	}
 	s.Hub.PublishGlobal("host.status", map[string]any{"features": cfg.Features})
 	writeJSON(w, 200, map[string]any{"config": cfg})
@@ -389,7 +377,7 @@ func (s *Server) adminAudit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, list)
 }
 
-/** adminOpen：在系统文件管理器中打开收件、发件或工作区目录 */
+/** adminOpen：在系统文件管理器中打开收件或工作区目录 */
 func (s *Server) adminOpen(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Which string `json:"which"`
@@ -404,8 +392,6 @@ func (s *Server) adminOpen(w http.ResponseWriter, r *http.Request) {
 	switch in.Which {
 	case "inbox":
 		dir = cfg.Transfer.InboxDir
-	case "outbox":
-		dir = cfg.Transfer.OutboxDir
 	case "workspace":
 		ws, err := s.Store.Workspace(r.Context(), in.ID)
 		if err != nil {
