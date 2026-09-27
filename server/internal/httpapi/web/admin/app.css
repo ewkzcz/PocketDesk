@@ -91,27 +91,10 @@ button, input, select { font: inherit; color: inherit; }
 .pd-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--pd-accent); display: inline-block; }
 .pd-dot-off { background: var(--pd-text-4); }
 
-/* ---------- 菜单面板 ---------- */
 .pd-center { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
-.pd-tray { width: 320px; min-height: 480px; background: var(--pd-surface); border: 1px solid var(--pd-border); border-radius: var(--pd-radius); box-shadow: var(--pd-shadow); display: flex; flex-direction: column; overflow: hidden; }
-.pd-tray-head { padding: 14px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--pd-divider); }
-.pd-logo { width: 28px; height: 28px; border-radius: 7px; background: var(--pd-accent); color: #fff; display: flex; align-items: center; justify-content: center; }
-.pd-tray-title { font-size: 15px; font-weight: 600; flex: 1; }
 .pd-status { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--pd-accent); }
-.pd-tray-label { padding: 12px 16px 6px; font-size: 12px; color: var(--pd-text-3); }
-.pd-trow { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px; width: 100%; background: none; border: 0; text-align: left; cursor: pointer; }
-.pd-trow:hover { background: var(--pd-hover); }
-.pd-trow-static { cursor: default; }
-.pd-trow-static:hover { background: none; }
 .pd-tile { width: 30px; height: 30px; border-radius: 8px; background: var(--pd-chip); color: var(--pd-text-2); display: flex; align-items: center; justify-content: center; }
-.pd-trow-main { flex: 1; min-width: 0; }
-.pd-trow-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pd-trow-sub { font-size: 11px; color: var(--pd-text-4); }
-.pd-trow-sub.on { color: var(--pd-accent); }
 .pd-sep { height: 1px; background: var(--pd-divider); margin: 6px 0; }
-.pd-tray-foot { margin-top: auto; border-top: 1px solid var(--pd-divider); padding: 6px 8px; display: flex; justify-content: space-between; }
-.pd-tray-foot .pd-link { display: inline-flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px; }
-.pd-tray-foot .pd-link:hover { background: var(--pd-hover); }
 
 /* ---------- 配对窗口 ---------- */
 .pd-dialog { width: 480px; max-width: 100%; background: var(--pd-surface); border: 1px solid var(--pd-border); border-radius: var(--pd-radius); box-shadow: var(--pd-shadow); display: flex; flex-direction: column; overflow: hidden; }

@@ -1,5 +1,5 @@
 /**
- * 桌面端管理页：#tray 菜单面板、#pair 配对新手机、#settings/分区 设置窗口；定时刷新状态并弹出配对确认。
+ * 桌面端管理页：#pair 配对新手机、#settings/分区 设置窗口；定时刷新状态并弹出配对确认。
  */
 (function () {
   'use strict';
@@ -68,7 +68,6 @@
   /** route：解析地址中的页面 */
   function route() {
     var h = location.hash.replace(/^#/, '');
-    if (h === 'tray') { return { page: 'tray' }; }
     if (h === 'pair') { return { page: 'pair' }; }
     var m = /^settings\/(\w+)/.exec(h);
     return { page: 'settings', section: m ? m[1] : 'overview' };
@@ -87,35 +86,9 @@
   function render() {
     if (!state) { return; }
     var r = route();
-    document.title = r.page === 'pair' ? '配对新手机 · PocketDesk' : r.page === 'tray' ? 'PocketDesk' : 'PocketDesk 设置';
-    if (r.page === 'tray') { app.innerHTML = trayView(); }
-    else if (r.page === 'pair') { app.innerHTML = pairView(); }
+    document.title = r.page === 'pair' ? '配对新手机 · PocketDesk' : 'PocketDesk 设置';
+    if (r.page === 'pair') { app.innerHTML = pairView(); }
     else { app.innerHTML = settingsView(r.section); }
-  }
-
-  /* ---------- 菜单面板 ---------- */
-  function trayView() {
-    var devs = (state.devices || []).filter(function (d) { return !d.revoked; });
-    var rows = devs.map(function (d) {
-      return '<div class="pd-trow pd-trow-static"><div class="pd-tile">' + icon('smartphone', 16) + '</div>' +
-        '<div class="pd-trow-main"><div class="pd-trow-name">' + esc(d.name) + '</div>' +
-        '<div class="pd-trow-sub' + (d.online ? ' on' : '') + '">' + (d.online ? '在线' : ago(d.lastSeen)) + '</div></div></div>';
-    }).join('') || '<div class="pd-trow pd-trow-static pd-muted">还没有配对的手机</div>';
-    return '<div class="pd-center"><div class="pd-tray">' +
-      '<div class="pd-tray-head"><div class="pd-logo">' + icon('monitor', 16) + '</div><div class="pd-tray-title">PocketDesk</div>' +
-      '<div class="pd-status"><span class="pd-dot"></span>运行中</div></div>' +
-      '<div class="pd-tray-label">已配对设备 · ' + devs.length + '</div>' + rows +
-      '<div class="pd-sep"></div>' +
-      trayAction('settings/overview', 'layout-grid', '打开主窗口') +
-      trayAction('pair', 'qr-code', '配对新设备') +
-      '<button class="pd-trow" data-act="open-inbox">' + icon('folder-open', 16) + '<span>打开收件文件夹</span></button>' +
-      '<button class="pd-trow" data-act="pause">' + icon(state.transfersPaused ? 'play' : 'pause', 16) + '<span>' + (state.transfersPaused ? '恢复所有传输' : '暂停所有传输') + '</span></button>' +
-      '<div class="pd-tray-foot"><button class="pd-link" data-go="settings/overview">' + icon('settings', 15) + '设置</button>' +
-      '<button class="pd-link pd-link-danger" data-act="quit">' + icon('log-out', 15) + '退出</button></div>' +
-      '</div></div>';
-  }
-  function trayAction(go, ic, label) {
-    return '<button class="pd-trow" data-go="' + go + '">' + icon(ic, 16) + '<span>' + label + '</span></button>';
   }
 
   /* ---------- 配对窗口 ---------- */
@@ -348,9 +321,6 @@
       case 'pair-refresh': startPair(); break;
       case 'open-inbox': api('POST', '/admin/api/open', { which: 'inbox' }).catch(function (er) { toast(er.message); }); break;
       case 'open-outbox': api('POST', '/admin/api/open', { which: 'outbox' }).catch(function (er) { toast(er.message); }); break;
-      case 'pause':
-        api('POST', '/admin/api/transfers/pause', { paused: !state.transfersPaused }).then(load);
-        break;
       case 'quit':
         confirmBox('退出服务', '退出后手机将无法连接这台电脑，直到服务再次启动。', '退出', function () {
           api('POST', '/admin/api/quit').then(function () { app.innerHTML = '<div class="pd-center"><div class="pd-muted">服务已退出，可以关闭此页面</div></div>'; });
@@ -429,7 +399,7 @@
     api('GET', '/admin/api/state').then(function (s) {
       state = s;
       var r = route();
-      var live = r.page === 'tray' || (r.page === 'settings' && (r.section === 'overview' || r.section === 'devices'));
+      var live = r.page === 'settings' && (r.section === 'overview' || r.section === 'devices');
       if (live && !modalRoot.innerHTML) { render(); }
       checkRequests();
     }).catch(function () {});
