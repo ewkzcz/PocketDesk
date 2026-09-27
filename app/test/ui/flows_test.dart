@@ -170,6 +170,25 @@ void main() {
     await finish(tester, env);
   });
 
+  testWidgets('传输页与文件传输助手可直接进入收发目录设置', (tester) async {
+    final env = await start(tester);
+    await tester.tap(find.text('传输').last);
+    await settle(tester);
+    await tester.tap(find.bySemanticsLabel('收发目录'));
+    await settle(tester);
+    expect(find.text('电脑收件目录'), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('返回').last);
+    await settle(tester);
+    await tester.tap(find.text('消息').last);
+    await settle(tester);
+    await tester.tap(find.text('文件传输助手'));
+    await settle(tester);
+    await tester.tap(find.bySemanticsLabel('收发目录'));
+    await settle(tester);
+    expect(find.text('电脑发件目录'), findsOneWidget);
+    await finish(tester, env);
+  });
+
   testWidgets('文件传输助手：较早的消息没有完整路径时按收件目录找到文件', (tester) async {
     final env = await start(tester);
     await tester.tap(find.text('文件传输助手'));

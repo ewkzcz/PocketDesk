@@ -33,6 +33,7 @@ import 'diff_page.dart';
 import 'dir_picker.dart';
 import 'session_actions.dart';
 import 'session_settings_page.dart';
+import 'settings_pages.dart' show TransferSettingsPage;
 import 'terminal_page.dart';
 import 'transfer_page.dart' show openLocal;
 
@@ -742,6 +743,12 @@ class _ChatPageState extends State<ChatPage> {
                 title: sessionTitle(s),
                 subtitle: _subtitle(s),
                 actions: [
+                  if (s.isAssistant)
+                    PdIconButton(
+                      icon: LucideIcons.folderCog300,
+                      tooltip: '收发目录',
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const TransferSettingsPage())),
+                    ),
                   PdIconButton(
                     icon: LucideIcons.ellipsis300,
                     tooltip: '会话设置',

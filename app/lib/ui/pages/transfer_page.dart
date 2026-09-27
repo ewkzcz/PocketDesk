@@ -21,6 +21,7 @@ import '../tokens.dart';
 import '../widgets.dart';
 import '../viewers/fetch.dart';
 import '../viewers/open_file.dart';
+import 'settings_pages.dart' show TransferSettingsPage;
 
 /**
  * TransferPage：传输
@@ -61,7 +62,9 @@ class _TransferPageState extends State<TransferPage> {
     }
     final m = scope.transfers;
     return Scaffold(
-      appBar: const PdBar(title: '传输'),
+      appBar: PdBar(title: '传输', actions: [
+        PdIconButton(icon: LucideIcons.folderCog300, tooltip: '收发目录', onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const TransferSettingsPage()))),
+      ]),
       body: Column(children: [
         Container(
           decoration: BoxDecoration(color: c.bar, border: Border(bottom: BorderSide(color: c.divider, width: PdSize.divider))),
