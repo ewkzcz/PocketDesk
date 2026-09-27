@@ -128,12 +128,16 @@ func localImage(root, dir, dest string) (string, bool) {
 	if dest == "" || filepath.IsAbs(dest) || strings.HasPrefix(dest, "file:") {
 		return "", false
 	}
-	// dir 已是解析过符号链接的真实路径，先求相对根目录的路径，再交给工作区校验（含 .. 与符号链接越界）
+	// 根目录与 md 所在目录都解析成真实路径，先求相对根目录的路径，再交给工作区校验（含 .. 与符号链接越界）
 	realRoot, err := filepath.EvalSymlinks(root)
 	if err != nil {
 		return "", false
 	}
-	rel, err := filepath.Rel(realRoot, filepath.Join(dir, filepath.FromSlash(dest)))
+	realDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return "", false
+	}
+	rel, err := filepath.Rel(realRoot, filepath.Join(realDir, filepath.FromSlash(dest)))
 	if err != nil {
 		return "", false
 	}
