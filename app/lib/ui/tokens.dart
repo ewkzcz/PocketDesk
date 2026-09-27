@@ -228,12 +228,15 @@ abstract final class PdFont {
 
 /** PdAgent：Agent 头像与标识 */
 class PdAgent {
-  const PdAgent(this.label, this.short, this.color, {this.icon});
+  const PdAgent(this.label, this.short, this.color, {this.icon, this.portrait});
 
   final String label;
   final String short;
   final Color color;
   final IconData? icon;
+
+  /** 形象头像图片（有则优先显示） */
+  final String? portrait;
 }
 
 /** PdMotion：动效时长与曲线（临界阻尼，无回弹） */
