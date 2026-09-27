@@ -220,6 +220,8 @@ class ChatLog {
             queued: Json.boolean(d['queued']),
             delegate: str('delegate'),
             fileName: Json.str(f['name'])));
+      case 'msg.host':
+        add(null, AgentItem(e.seq, e.createdAt, id: 'host-${e.seq}', text: str('text'), streaming: false));
       case 'msg.delta':
         final key = 'm:${str('id')}';
         final cur = _byKey[key];

@@ -142,7 +142,7 @@ class AppState extends ChangeNotifier {
     // 2、创建
     late final SessionsStore sessions;
     final conn = _connections(h, token, () => sessions.cursors());
-    sessions = SessionsStore(db: db, hostId: h.id, api: () => conn.api);
+    sessions = SessionsStore(db: db, hostId: h.id, api: () => conn.api)..onRead = _clearNotify;
     final transfers = TransferManager(
       db: db,
       hostId: h.id,
@@ -165,9 +165,17 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /** _onEvent：分发实时事件 */
+  /** foreground：App 在前台（后台时新消息与待审批弹系统通知） */
+  bool foreground = true;
+
+  /** _onEvent：分发实时事件，后台时未读数增加的会话弹通知 */
   void _onEvent(HostScope s, PdEvent e) {
+    final before = e.session.isEmpty ? 0 : s.sessions.unread(e.session);
     s.sessions.onEvent(e);
+    if (e.session.isNotEmpty && !foreground) {
+      final after = s.sessions.unread(e.session);
+      if (after > before) unawaited(_notify(s, e.session, after));
+    }
     switch (e.type) {
       case 'outbox.new':
         unawaited(s.transfers.pollOutbox());
@@ -176,6 +184,26 @@ class AppState extends ChangeNotifier {
       case 'phone.req':
         unawaited(_phoneReq(s, e.data));
     }
+  }
+
+  /** _notifyId：会话对应的通知编号 */
+  static int _notifyId(String session) => session.hashCode & 0x3fffffff;
+
+  /** _notify：一个会话一条通知，数字为未读数（桌面图标角标） */
+  Future<void> _notify(HostScope s, String id, int count) async {
+    final info = s.sessions.byId(id);
+    final title = info == null ? 'PocketDesk' : (info.isAssistant ? '文件传输助手' : (info.title.trim().isEmpty ? 'PocketDesk' : info.title.trim()));
+    final body = info?.preview ?? '有新消息';
+    try {
+      await phone.device.notify(_notifyId(id), count > 1 ? '$title（$count 条）' : title, body, count);
+    } catch (e) {
+      AppLog.w('notify', '通知失败：$e');
+    }
+  }
+
+  /** _clearNotify：会话已读后清除它的通知 */
+  void _clearNotify(String id) {
+    unawaited(phone.device.cancelNotify(_notifyId(id)).catchError((Object _) {}));
   }
 
   /** _phoneReq：处理电脑桌面端对手机工作空间的请求并应答 */
@@ -281,6 +309,7 @@ class AppState extends ChangeNotifier {
 
   /** onResume：回到前台后立即检查连接 */
   void onResume() {
+    foreground = true;
     final s = scope;
     if (s == null) return;
     unawaited(s.conn.networkChanged());

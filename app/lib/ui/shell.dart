@@ -69,6 +69,7 @@ class HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final gate = context.read<AuthGate>();
     if (state == AppLifecycleState.paused) {
       gate.touch();
+      context.read<AppState>().foreground = false;
     } else if (state == AppLifecycleState.resumed) {
       context.read<AppState>().onResume();
       if (!gate.fresh && gate.enabled()) {

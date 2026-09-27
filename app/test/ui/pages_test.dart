@@ -32,7 +32,7 @@ void main() {
         expect(find.text('PocketDesk'), findsOneWidget);
         expect(find.text('Claude Code · 重构支付模块'), findsOneWidget);
         expect(find.text('文件传输助手'), findsOneWidget);
-        expect(find.text('待确认'), findsWidgets);
+        expect(find.textContaining('[待审批]', findRichText: true), findsWidgets);
         await shot(tester, '$tag-01-sessions');
 
         // 文件页

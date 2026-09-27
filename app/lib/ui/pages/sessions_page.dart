@@ -194,24 +194,22 @@ class _SessionRow extends StatelessWidget {
     // 摘要颜色与前缀跟随状态
     var preview = s.preview;
     var previewColor = c.text3;
+    var tag = '';
     if (s.state == SessionState.running) {
       preview = preview.isEmpty ? '执行中…' : '执行中 · $preview';
       previewColor = c.accent;
     } else if (s.state == SessionState.awaiting) {
-      previewColor = c.danger;
-      if (!preview.startsWith('待确认')) preview = '待确认 · $preview';
+      // 与微信「[有人@我]」一样：红色前缀加正常颜色的摘要
+      tag = '[待审批] ';
+      preview = preview.startsWith('待确认：') ? preview.substring(4) : preview;
     } else if (s.state == SessionState.error) {
       previewColor = c.danger;
     }
     Widget? status;
     if (s.state == SessionState.running) {
       status = SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.6, color: c.accent));
-    } else if (s.state == SessionState.awaiting) {
-      status = const Tag('待确认');
     } else if (s.state == SessionState.error) {
       status = Icon(LucideIcons.circleAlert300, size: 16, color: c.danger);
-    } else if (unread > 0) {
-      status = CountBadge(unread);
     } else if (s.preview.startsWith('已完成')) {
       status = Icon(LucideIcons.check300, size: 16, color: c.accent);
     }
@@ -243,7 +241,12 @@ class _SessionRow extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: PdSize.gutter),
               child: Row(children: [
-                AgentAvatar(s.kind),
+                // 未读数显示在头像右上角；待审批时即使已读也保留红点提醒
+                Stack(clipBehavior: Clip.none, children: [
+                  AgentAvatar(s.kind),
+                  if (unread > 0 || s.state == SessionState.awaiting)
+                    Positioned(top: -6, right: -6, child: unread > 0 ? CountBadge(unread) : const DotBadge()),
+                ]),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -258,7 +261,11 @@ class _SessionRow extends StatelessWidget {
                         ),
                     ]),
                     const SizedBox(height: 4),
-                    Text(preview.isEmpty ? ' ' : preview,
+                    Text.rich(
+                        TextSpan(children: [
+                          if (tag.isNotEmpty) TextSpan(text: tag, style: TextStyle(color: c.danger)),
+                          TextSpan(text: preview.isEmpty && tag.isEmpty ? ' ' : preview),
+                        ]),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(fontSize: PdFont.summary, color: previewColor, height: 1.3, fontFamily: s.isTerminal ? PdFont.mono : null, fontFamilyFallback: s.isTerminal ? PdFont.monoFallback : null)),

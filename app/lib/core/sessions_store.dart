@@ -39,6 +39,9 @@ class SessionsStore extends ChangeNotifier with SafeNotifier {
   final Map<String, List<PdEvent>> _pendingCache = {};
   Timer? _flush;
   String? viewing;
+
+  /** onRead：会话标为已读时回调（清除系统通知） */
+  void Function(String id)? onRead;
   bool loaded = false;
   String query = '';
 
@@ -312,7 +315,7 @@ class SessionsStore extends ChangeNotifier with SafeNotifier {
 
   /** _countsUnread：哪些事件算作新消息 */
   static bool _countsUnread(PdEvent e) => switch (e.type) {
-        'msg.done' || 'approval.request' || 'error' => true,
+        'msg.done' || 'msg.host' || 'approval.request' || 'error' => true,
         'file' => Json.str(e.data['direction']) == 'down',
         _ => false,
       };
@@ -329,6 +332,7 @@ class SessionsStore extends ChangeNotifier with SafeNotifier {
     return switch (e.type) {
       'state' => s.copyWith(state: Json.str(d['state']), updatedAt: at, lastSeq: e.seq),
       'msg.user' => s.copyWith(preview: '你：${one(Json.str(d['text']), 60)}', updatedAt: at, lastSeq: e.seq),
+      'msg.host' => s.copyWith(preview: '电脑：${one(Json.str(d['text']), 60)}', updatedAt: at, lastSeq: e.seq),
       'msg.done' => s.copyWith(preview: one(Json.str(d['text']), 60), updatedAt: at, lastSeq: e.seq),
       'approval.request' => s.copyWith(preview: '待确认：${one(Json.str(d['summary']), 50)}', updatedAt: at, lastSeq: e.seq),
       'error' => s.copyWith(preview: '出错：${one(Json.str(d['message']), 50)}', updatedAt: at, lastSeq: e.seq),
@@ -354,6 +358,7 @@ class SessionsStore extends ChangeNotifier with SafeNotifier {
 
   /** markRead：标为已读 */
   Future<void> markRead(String id) async {
+    onRead?.call(id);
     if (unread(id) == 0) return;
     _unread[id] = 0;
     notifyListeners();
