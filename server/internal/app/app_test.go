@@ -31,6 +31,7 @@ import (
 
 	"github.com/ewkzcz/pocketdesk/server/internal/agent"
 	"github.com/ewkzcz/pocketdesk/server/internal/config"
+	"github.com/ewkzcz/pocketdesk/server/internal/httpapi"
 )
 
 /** echoDriver：内存假 Agent，按提示词回应或请求审批 */
@@ -413,10 +414,22 @@ func workspaceFlow(t *testing.T, e *env) {
 	if !strings.Contains(string(body), "20261001/会议纪要.md") {
 		t.Fatalf("搜索 %s", body)
 	}
+	// 文件页上传到当前目录
+	res = e.tusUpload(t, []byte("up"), map[string]string{"filename": "上传.txt", "target": "ws:" + ws.ID + ":docs/新目录"})
+	if b, _ := os.ReadFile(filepath.Join(root, "docs", "新目录", "上传.txt")); string(b) != "up" {
+		t.Fatal("上传到工作区目录失败")
+	}
+	resolve := httpapi.UploadResolver(e.a.Cfg, e.a.Store)
+	if _, err := resolve(context.Background(), "ws:"+ws.ID+":../外面", ""); err == nil {
+		t.Fatal("上传不能跳出工作区")
+	}
 	// 只读工作区
 	e.adminDo("POST", "/admin/api/workspaces", map[string]any{"id": ws.ID, "name": "notes", "rootPath": root, "readOnly": true}, nil)
 	if res, _ = e.do("PUT", p+"/file?path=c.txt&create=1", []byte("x"), nil); res.StatusCode != 403 {
 		t.Fatal("只读工作区不应可写")
+	}
+	if _, err := resolve(context.Background(), "ws:"+ws.ID+":docs", ""); err == nil {
+		t.Fatal("只读工作区不应可上传")
 	}
 }
 

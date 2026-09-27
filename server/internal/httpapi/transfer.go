@@ -34,6 +34,7 @@ const (
  * 处理流程：
  * 1、默认、收件箱与文件传输助手：电脑收件目录下的日期文件夹
  * 2、聊天附件：会话工作目录下的 .pocketdesk/inbox/日期文件夹
+ * 3、文件页上传：ws:工作区ID:目录，直接存到工作区的这个目录（只读工作区或关闭文件编辑时拒绝）
  */
 func UploadResolver(cfg *config.Store, st *store.Store) tus.Resolver {
 	return func(ctx context.Context, target, date string) (tus.Target, error) {
@@ -57,6 +58,21 @@ func UploadResolver(cfg *config.Store, st *store.Store) tus.Resolver {
 			}
 			base := ".pocketdesk/inbox/" + date
 			return tus.Target{Dir: filepath.Join(cwd, filepath.FromSlash(base)), RelBase: base}, nil
+		// 3、工作区目录
+		case strings.HasPrefix(target, "ws:"):
+			id, rel, _ := strings.Cut(strings.TrimPrefix(target, "ws:"), ":")
+			ws, err := st.Workspace(ctx, id)
+			if err != nil {
+				return tus.Target{}, errors.New("工作区不存在")
+			}
+			if ws.ReadOnly || !cfg.Get().Features.FileEdit {
+				return tus.Target{}, errors.New("这个工作区不允许修改")
+			}
+			dir, err := workspace.Resolve(ws.RootPath, rel)
+			if err != nil {
+				return tus.Target{}, err
+			}
+			return tus.Target{Dir: dir, RelBase: strings.Trim(rel, "/")}, nil
 		}
 		return tus.Target{}, errors.New("未知的上传目标")
 	}
