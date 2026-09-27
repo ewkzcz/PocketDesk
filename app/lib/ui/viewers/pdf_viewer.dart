@@ -1,6 +1,6 @@
 /**
- * PDF 阅读：Markdown 由电脑转换为 PDF 后阅读（本地已有相同版本时跳过下载），上下连续滚动、双指缩放、夜间模式、记住阅读位置；
- * 在日期文件夹内可切换上一篇、下一篇；菜单支持刷新、查看源文件、分享 PDF、发给会话。
+ * PDF 阅读：上下连续滚动、双指缩放、夜间模式、记住阅读位置；
+ * 在日期文件夹内可切换上一篇、下一篇；菜单支持刷新、分享 PDF、发给会话。
  */
 library;
 
@@ -22,7 +22,7 @@ import '../share.dart';
 import '../tokens.dart';
 import '../widgets.dart';
 import 'fetch.dart';
-import 'text_viewer.dart';
+import 'open_file.dart';
 
 /** 反色矩阵（夜间模式） */
 const _invert = ColorFilter.matrix([-1, 0, 0, 0, 255, 0, -1, 0, 0, 255, 0, 0, -1, 0, 255, 0, 0, 0, 1, 0]);
@@ -31,14 +31,13 @@ const _invert = ColorFilter.matrix([-1, 0, 0, 0, 255, 0, -1, 0, 0, 255, 0, 0, -1
  * PdfReaderPage：PDF 阅读
  */
 class PdfReaderPage extends StatefulWidget {
-  const PdfReaderPage({super.key, required this.ws, required this.entry, this.siblings = const [], required this.markdown, this.readOnly = false});
+  const PdfReaderPage({super.key, required this.ws, required this.entry, this.siblings = const [], this.readOnly = false});
 
   final Workspace ws;
   final FileEntry entry;
 
   /** 同一日期文件夹中的同类文件（按时间升序），用于上一篇、下一篇 */
   final List<FileEntry> siblings;
-  final bool markdown;
   final bool readOnly;
 
   @override
@@ -72,48 +71,23 @@ class _PdfReaderPageState extends State<PdfReaderPage> {
   }
 
   /**
-   * _open：准备 PDF 并打开
-   *
-   * 处理流程：
-   * 1、Markdown 先请求电脑转换（命中缓存时很快返回）；PDF 直接下载
-   * 2、本地已有同一版本（ETag 相同）时跳过下载
-   * 3、打开文档并跳到上次阅读的页码
+   * _open：下载 PDF 并打开，跳到上次阅读的页码
    */
-  Future<void> _open({bool force = false}) async {
+  Future<void> _open() async {
     final app = context.read<AppState>();
     final scope = app.scope!;
     final api = scope.conn.api;
     setState(() {
       _error = '';
       _progress = 0;
-      _step = widget.markdown ? (force ? '正在重新转换…' : '正在转换为 PDF…') : '正在下载…';
+      _step = '正在下载…';
     });
     try {
-      // 1、转换
-      Uri url;
-      var etag = '';
-      if (widget.markdown) {
-        final r = await api.render(widget.ws.id, widget.entry.path, force: force);
-        url = api.base.resolve(r.url);
-        etag = r.etag;
-      } else {
-        url = api.fileUrl(widget.ws.id, widget.entry.path);
-      }
-      // 2、本地缓存
-      final key = etag.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
-      final dest = cacheFileFor(app, widget.ws.id, widget.markdown ? '${widget.entry.path}.$key.pdf' : widget.entry.path, sub: 'pdf');
-      File file;
-      if (widget.markdown && key.isNotEmpty && await dest.exists()) {
-        file = dest;
-      } else {
-        if (mounted) setState(() => _step = '正在下载…');
-        final f = await fetchToFile(scope, url, dest, onProgress: (got, total) {
-          if (mounted && total > 0) setState(() => _progress = got / total);
-        });
-        file = f.file;
-        if (etag.isEmpty) etag = f.etag;
-      }
-      // 3、打开
+      final f = await fetchToFile(scope, api.fileUrl(widget.ws.id, widget.entry.path), cacheFileFor(app, widget.ws.id, widget.entry.path, sub: 'pdf'), onProgress: (got, total) {
+        if (mounted && total > 0) setState(() => _progress = got / total);
+      });
+      final file = f.file;
+      final etag = f.etag;
       final page = await scope.sessions.db.position(scope.host.id, widget.ws.id, widget.entry.path);
       if (!mounted) return;
       _ctrl?.dispose();
@@ -127,7 +101,7 @@ class _PdfReaderPageState extends State<PdfReaderPage> {
     } on ApiException catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.code == 'render_unavailable' || e.status == 503 ? '电脑上没有可用于转换的浏览器，请安装 Chrome 或 Edge' : e.message;
+          _error = e.message;
           _step = '';
         });
       }
@@ -144,35 +118,10 @@ class _PdfReaderPageState extends State<PdfReaderPage> {
     });
   }
 
-  /** _neighbor：同一日期文件夹中的上一篇或下一篇 */
-  FileEntry? _neighbor(int delta) {
-    final parent = widget.entry.path.contains('/') ? widget.entry.path.substring(0, widget.entry.path.lastIndexOf('/')) : '';
-    if (!isDateFolder(parent.split('/').last)) return null;
-    final list = widget.siblings;
-    final i = list.indexWhere((e) => e.path == widget.entry.path);
-    if (i < 0) return null;
-    final j = i + delta;
-    return j >= 0 && j < list.length ? list[j] : null;
-  }
-
-  /** _go：切换到另一篇 */
-  void _go(FileEntry e) {
-    Navigator.of(context).pushReplacement(PageRouteBuilder<void>(
-      pageBuilder: (_, _, _) => PdfReaderPage(ws: widget.ws, entry: e, siblings: widget.siblings, markdown: e.name.toLowerCase().endsWith('.md') || e.name.toLowerCase().endsWith('.markdown'), readOnly: widget.readOnly),
-      transitionDuration: PdMotion.normal,
-      transitionsBuilder: (_, a, _, child) => FadeTransition(opacity: a, child: child),
-    ));
-  }
-
   /** _menu：右上角菜单 */
   Future<void> _menu() async {
     final items = <(SheetAction, Future<void> Function())>[
-      (SheetAction(widget.markdown ? '刷新（重新转换）' : '刷新', icon: LucideIcons.refreshCw300), () => _open(force: widget.markdown)),
-      if (widget.markdown)
-        (SheetAction(widget.readOnly ? '以纯文本查看源文件' : '查看或编辑源文件', icon: LucideIcons.fileCode300), () async {
-          await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => TextViewerPage(ws: widget.ws, path: widget.entry.path, readOnly: widget.readOnly)));
-          if (mounted) await _open();
-        }),
+      (const SheetAction('刷新', icon: LucideIcons.refreshCw300), _open),
       (SheetAction(_night ? '关闭夜间模式' : '夜间模式', icon: LucideIcons.moon300), () async => setState(() => _night = !_night)),
       (const SheetAction('分享 PDF', icon: LucideIcons.share2300), () async {
         final f = _file;
@@ -201,8 +150,7 @@ class _PdfReaderPageState extends State<PdfReaderPage> {
   @override
   Widget build(BuildContext context) {
     final c = context.pd;
-    final prev = _neighbor(-1);
-    final next = _neighbor(1);
+    final nav = ReaderNav.of(widget.entry, widget.siblings);
     final ctrl = _ctrl;
     Widget body;
     if (_error.isNotEmpty) {
@@ -234,26 +182,58 @@ class _PdfReaderPageState extends State<PdfReaderPage> {
       ),
       body: Column(children: [
         Expanded(child: body),
-        if (prev != null || next != null)
-          GestureDetector(
-            onHorizontalDragEnd: (d) {
-              final v = d.primaryVelocity ?? 0;
-              if (v > 300 && prev != null) _go(prev);
-              if (v < -300 && next != null) _go(next);
-            },
-            child: Container(
-              decoration: BoxDecoration(color: c.bar, border: Border(top: BorderSide(color: c.divider, width: PdSize.divider))),
-              child: SafeArea(
-                top: false,
-                child: Row(children: [
-                  Expanded(child: _NavButton(label: prev == null ? '' : '上一篇：${prev.name}', icon: LucideIcons.chevronLeft300, onTap: prev == null ? null : () => _go(prev))),
-                  Container(width: PdSize.divider, height: 28, color: c.divider),
-                  Expanded(child: _NavButton(label: next == null ? '' : '下一篇：${next.name}', icon: LucideIcons.chevronRight300, trailing: true, onTap: next == null ? null : () => _go(next))),
-                ]),
-              ),
-            ),
-          ),
+        if (nav.prev != null || nav.next != null)
+          ReaderNavBar(nav: nav, onGo: (e) => openDocument(context, ws: widget.ws, entry: e, siblings: widget.siblings, readOnly: widget.readOnly, replace: true)),
       ]),
+    );
+  }
+}
+
+/** ReaderNav：同一日期文件夹中的上一篇、下一篇（不在日期文件夹时都为空） */
+class ReaderNav {
+  const ReaderNav(this.prev, this.next);
+
+  final FileEntry? prev;
+  final FileEntry? next;
+
+  static ReaderNav of(FileEntry entry, List<FileEntry> siblings) {
+    final parent = entry.path.contains('/') ? entry.path.substring(0, entry.path.lastIndexOf('/')) : '';
+    if (!isDateFolder(parent.split('/').last)) return const ReaderNav(null, null);
+    final i = siblings.indexWhere((e) => e.path == entry.path);
+    if (i < 0) return const ReaderNav(null, null);
+    return ReaderNav(i > 0 ? siblings[i - 1] : null, i + 1 < siblings.length ? siblings[i + 1] : null);
+  }
+}
+
+/** ReaderNavBar：阅读器底部的上一篇、下一篇，也可左右滑动切换 */
+class ReaderNavBar extends StatelessWidget {
+  const ReaderNavBar({super.key, required this.nav, required this.onGo});
+
+  final ReaderNav nav;
+  final void Function(FileEntry e) onGo;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.pd;
+    final prev = nav.prev;
+    final next = nav.next;
+    return GestureDetector(
+      onHorizontalDragEnd: (d) {
+        final v = d.primaryVelocity ?? 0;
+        if (v > 300 && prev != null) onGo(prev);
+        if (v < -300 && next != null) onGo(next);
+      },
+      child: Container(
+        decoration: BoxDecoration(color: c.bar, border: Border(top: BorderSide(color: c.divider, width: PdSize.divider))),
+        child: SafeArea(
+          top: false,
+          child: Row(children: [
+            Expanded(child: _NavButton(label: prev == null ? '' : '上一篇：${prev.name}', icon: LucideIcons.chevronLeft300, onTap: prev == null ? null : () => onGo(prev))),
+            Container(width: PdSize.divider, height: 28, color: c.divider),
+            Expanded(child: _NavButton(label: next == null ? '' : '下一篇：${next.name}', icon: LucideIcons.chevronRight300, trailing: true, onTap: next == null ? null : () => onGo(next))),
+          ]),
+        ),
+      ),
     );
   }
 }

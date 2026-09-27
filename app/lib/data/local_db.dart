@@ -211,6 +211,16 @@ class LocalDb {
     return rows.isEmpty ? 1 : rows.first['page']! as int;
   }
 
+  /** saveOffset：记住 Markdown 文档滚动位置（像素） */
+  Future<void> saveOffset(String hostId, String ws, String rel, double offset) => db.insert('reading_pos',
+      {'host_id': hostId, 'ws_id': ws, 'rel_path': rel, 'offset': offset}, conflictAlgorithm: ConflictAlgorithm.replace);
+
+  /** offset：读取滚动位置，没有记录时为 0 */
+  Future<double> offset(String hostId, String ws, String rel) async {
+    final rows = await db.query('reading_pos', where: 'host_id=? AND ws_id=? AND rel_path=?', whereArgs: [hostId, ws, rel]);
+    return rows.isEmpty ? 0 : (rows.first['offset']! as num).toDouble();
+  }
+
   /* ---------- 传输队列 ---------- */
 
   /** saveTransfer：保存或更新传输任务 */

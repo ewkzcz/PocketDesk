@@ -23,6 +23,7 @@ dependencies:
   xterm: ^4.0.0
   pdfx: ^2.11.0
   markdown_widget: ^2.3.2+8
+  markdown: ^7.3.1
   lucide_icons_flutter: ^3.1.20
   file_picker: ^13.1.0
   image_picker: ^1.2.3
@@ -39,6 +40,7 @@ dependencies:
   highlight: ^0.7.0
   flutter_localizations:
     sdk: flutter
+  flutter_math_fork: ^0.7.4
 
 dev_dependencies:
   flutter_test:

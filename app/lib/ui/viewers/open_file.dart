@@ -18,6 +18,7 @@ import '../tokens.dart';
 import '../widgets.dart';
 import 'fetch.dart';
 import 'image_viewer.dart';
+import 'md_viewer.dart';
 import 'pdf_viewer.dart';
 import 'save.dart';
 import 'text_viewer.dart';
@@ -29,7 +30,7 @@ const textViewLimit = 2 * 1024 * 1024;
  * openWorkspaceFile：按类型打开
  *
  * 处理流程：
- * 1、Markdown 与 PDF 用 App 内阅读器
+ * 1、Markdown 与 PDF 用 App 内阅读器（Markdown 在手机上直接排版）
  * 2、图片用看图（可左右切换同目录图片）
  * 3、不超过 2MB 的文本用文本查看器
  * 4、其他交给手机上的其他 App
@@ -40,7 +41,7 @@ Future<void> openWorkspaceFile(BuildContext context, {required Workspace ws, req
     // 1、阅读器
     case ViewKind.markdown || ViewKind.pdf:
       final docs = siblings.where((e) => const {ViewKind.markdown, ViewKind.pdf}.contains(viewKindOf(e.name))).toList();
-      await nav.push(MaterialPageRoute<void>(builder: (_) => PdfReaderPage(ws: ws, entry: entry, siblings: docs, markdown: viewKindOf(entry.name) == ViewKind.markdown, readOnly: readOnly)));
+      await openDocument(context, ws: ws, entry: entry, siblings: docs, readOnly: readOnly);
     // 2、图片
     case ViewKind.image:
       final images = siblings.where((e) => viewKindOf(e.name) == ViewKind.image).toList();
@@ -53,6 +54,25 @@ Future<void> openWorkspaceFile(BuildContext context, {required Workspace ws, req
     default:
       await openExternally(context, ws: ws, entry: entry, readOnly: readOnly);
   }
+}
+
+/**
+ * openDocument：打开文档阅读器，Markdown 在手机上直接排版，PDF 用 PDF 阅读器；replace 为真时替换当前页（上一篇、下一篇）
+ */
+Future<void> openDocument(BuildContext context, {required Workspace ws, required FileEntry entry, required List<FileEntry> siblings, bool readOnly = false, bool replace = false}) async {
+  final Widget page = viewKindOf(entry.name) == ViewKind.markdown
+      ? MarkdownReaderPage(ws: ws, entry: entry, siblings: siblings, readOnly: readOnly)
+      : PdfReaderPage(ws: ws, entry: entry, siblings: siblings, readOnly: readOnly);
+  final nav = Navigator.of(context);
+  if (!replace) {
+    await nav.push(MaterialPageRoute<void>(builder: (_) => page));
+    return;
+  }
+  await nav.pushReplacement(PageRouteBuilder<void>(
+    pageBuilder: (_, _, _) => page,
+    transitionDuration: PdMotion.normal,
+    transitionsBuilder: (_, a, _, child) => FadeTransition(opacity: a, child: child),
+  ));
 }
 
 /**
