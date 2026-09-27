@@ -1,47 +1,52 @@
 /* 桌面端管理页样式：全部颜色、尺寸通过 CSS 变量统一管理，深色模式只覆盖变量 */
 :root {
-  --pd-accent: #07C160;
-  --pd-accent-hover: #06B057;
-  --pd-accent-grad: linear-gradient(135deg, #2BDB82 0%, #07C160 55%, #00A86B 100%);
-  --pd-accent-soft: rgba(7, 193, 96, .12);
-  --pd-accent-glow: 0 6px 18px rgba(7, 193, 96, .35);
-  --pd-danger: #FF3B30;
-  --pd-danger-soft: rgba(255, 59, 48, .1);
-  --pd-warn-bg: rgba(255, 149, 0, .1);
-  --pd-warn-border: rgba(255, 149, 0, .35);
-  --pd-warn-text: #B25E00;
-  --pd-blue: #0A84FF;
-  --pd-indigo: #5E5CE6;
-  --pd-orange: #FF9500;
-  --pd-graphite: #3A3A3C;
+  --pd-accent: #1560F0;
+  --pd-accent-hover: #0E4FCC;
+  --pd-accent-grad: linear-gradient(135deg, #4C8DFF 0%, #1560F0 60%, #0E4FCC 100%);
+  --pd-accent-soft: rgba(21, 96, 240, .1);
+  --pd-accent-glow: 0 6px 18px rgba(21, 96, 240, .32);
+  --pd-hero: linear-gradient(125deg, #4C8DFF 0%, #1560F0 48%, #00A6C8 100%);
+  --pd-hero-shadow: 0 14px 36px rgba(21, 70, 180, .3);
+  --pd-ok: #007A94;
+  --pd-ok-soft: #E4F6FB;
+  --pd-danger: #D6343A;
+  --pd-danger-soft: rgba(255, 77, 79, .1);
+  --pd-warn-bg: #FFF7E0;
+  --pd-warn-border: rgba(255, 197, 61, .6);
+  --pd-warn-text: #9A6A00;
+  --pd-graphite: #3A4456;
+  --pd-tile-blue: linear-gradient(135deg, #6EA4FF, #1560F0);
+  --pd-tile-teal: linear-gradient(135deg, #5FD3EA, #00A6C8);
+  --pd-tile-indigo: linear-gradient(135deg, #8B8CFF, #5856D6);
+  --pd-tile-amber: linear-gradient(135deg, #FFD36B, #F5A300);
+  --pd-tile-ink: linear-gradient(135deg, #3A4456, #0B1220);
 
-  --pd-bg: #EAF1EE;
+  --pd-bg: #EDF2FA;
   --pd-bg-mesh:
-    radial-gradient(60% 55% at 0% 0%, rgba(7, 193, 96, .20), transparent 70%),
-    radial-gradient(50% 50% at 100% 0%, rgba(10, 132, 255, .16), transparent 70%),
-    radial-gradient(55% 60% at 85% 100%, rgba(94, 92, 230, .13), transparent 70%),
-    radial-gradient(45% 45% at 20% 100%, rgba(48, 209, 88, .12), transparent 70%);
-  --pd-rail: rgba(246, 248, 247, .62);
-  --pd-rail-border: rgba(0, 0, 0, .06);
-  --pd-glass: rgba(255, 255, 255, .72);
+    radial-gradient(45% 50% at 100% 0%, rgba(156, 196, 255, .75), transparent 70%),
+    radial-gradient(40% 45% at 0% 100%, rgba(168, 228, 247, .7), transparent 70%),
+    radial-gradient(50% 50% at 10% 0%, rgba(201, 221, 255, .8), transparent 70%);
+  --pd-rail: rgba(255, 255, 255, .55);
+  --pd-rail-border: rgba(255, 255, 255, .8);
+  --pd-glass: rgba(255, 255, 255, .68);
   --pd-glass-strong: rgba(255, 255, 255, .86);
-  --pd-glass-edge: rgba(255, 255, 255, .9);
-  --pd-hairline: rgba(0, 0, 0, .07);
+  --pd-glass-edge: rgba(255, 255, 255, .92);
+  --pd-hairline: rgba(15, 30, 60, .07);
   --pd-surface: #FFFFFF;
-  --pd-hover: rgba(0, 0, 0, .045);
-  --pd-press: rgba(0, 0, 0, .08);
-  --pd-chip: rgba(118, 118, 128, .12);
-  --pd-border: rgba(0, 0, 0, .1);
-  --pd-divider: rgba(60, 60, 67, .1);
-  --pd-text: #111214;
-  --pd-text-2: rgba(60, 60, 67, .82);
-  --pd-text-3: rgba(60, 60, 67, .56);
-  --pd-text-4: rgba(60, 60, 67, .3);
-  --pd-shadow-card: 0 1px 2px rgba(0, 0, 0, .04), 0 8px 24px rgba(20, 40, 30, .06);
-  --pd-shadow: 0 24px 64px rgba(0, 0, 0, .18), 0 2px 8px rgba(0, 0, 0, .06);
+  --pd-hover: rgba(15, 30, 60, .045);
+  --pd-press: rgba(15, 30, 60, .08);
+  --pd-chip: rgba(15, 30, 60, .06);
+  --pd-border: rgba(15, 30, 60, .1);
+  --pd-divider: rgba(15, 30, 60, .07);
+  --pd-text: #0B1220;
+  --pd-text-2: #3A4456;
+  --pd-text-3: #66758C;
+  --pd-text-4: #A3B0C2;
+  --pd-shadow-card: 0 1px 2px rgba(21, 60, 140, .04), 0 10px 28px rgba(21, 60, 140, .08);
+  --pd-shadow: 0 24px 64px rgba(11, 18, 32, .18), 0 2px 8px rgba(11, 18, 32, .06);
   --pd-blur: blur(28px) saturate(180%);
-  --pd-radius: 14px;
-  --pd-radius-s: 9px;
+  --pd-radius: 18px;
+  --pd-radius-s: 10px;
   --pd-rail-w: 76px;
   --pd-mono: "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   --pd-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
@@ -50,37 +55,44 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --pd-accent-soft: rgba(7, 193, 96, .18);
-    --pd-accent-glow: 0 6px 20px rgba(7, 193, 96, .28);
-    --pd-danger: #FF453A;
-    --pd-danger-soft: rgba(255, 69, 58, .16);
-    --pd-warn-bg: rgba(255, 159, 10, .12);
-    --pd-warn-border: rgba(255, 159, 10, .3);
-    --pd-warn-text: #FFB340;
-    --pd-graphite: #636366;
-    --pd-bg: #0C0F0E;
+    --pd-accent: #3B82FF;
+    --pd-accent-hover: #2F6FE0;
+    --pd-accent-grad: linear-gradient(135deg, #6EA4FF 0%, #3B82FF 60%, #2F6FE0 100%);
+    --pd-accent-soft: rgba(59, 130, 255, .16);
+    --pd-accent-glow: 0 6px 20px rgba(59, 130, 255, .3);
+    --pd-hero: linear-gradient(125deg, #2F6FE0 0%, #1E4FB8 50%, #0B7F99 100%);
+    --pd-hero-shadow: 0 14px 36px rgba(0, 0, 0, .45);
+    --pd-ok: #5FD3EA;
+    --pd-ok-soft: rgba(95, 211, 234, .12);
+    --pd-danger: #FF7A7C;
+    --pd-danger-soft: rgba(255, 90, 92, .15);
+    --pd-warn-bg: rgba(255, 197, 61, .14);
+    --pd-warn-border: rgba(255, 197, 61, .3);
+    --pd-warn-text: #FFCF5C;
+    --pd-graphite: #4A566B;
+    --pd-bg: #070B14;
     --pd-bg-mesh:
-      radial-gradient(60% 55% at 0% 0%, rgba(7, 193, 96, .16), transparent 70%),
-      radial-gradient(50% 50% at 100% 0%, rgba(10, 132, 255, .12), transparent 70%),
-      radial-gradient(55% 60% at 85% 100%, rgba(94, 92, 230, .12), transparent 70%);
-    --pd-rail: rgba(24, 26, 27, .6);
+      radial-gradient(45% 50% at 100% 0%, rgba(31, 63, 122, .7), transparent 70%),
+      radial-gradient(40% 45% at 0% 100%, rgba(18, 63, 85, .7), transparent 70%),
+      radial-gradient(50% 50% at 10% 0%, rgba(27, 47, 94, .6), transparent 70%);
+    --pd-rail: rgba(19, 28, 45, .55);
     --pd-rail-border: rgba(255, 255, 255, .06);
-    --pd-glass: rgba(36, 38, 40, .62);
-    --pd-glass-strong: rgba(40, 42, 44, .88);
-    --pd-glass-edge: rgba(255, 255, 255, .07);
+    --pd-glass: rgba(26, 37, 58, .62);
+    --pd-glass-strong: rgba(19, 28, 45, .9);
+    --pd-glass-edge: rgba(255, 255, 255, .08);
     --pd-hairline: rgba(255, 255, 255, .06);
-    --pd-surface: #1C1C1E;
+    --pd-surface: #131C2D;
     --pd-hover: rgba(255, 255, 255, .06);
     --pd-press: rgba(255, 255, 255, .1);
-    --pd-chip: rgba(118, 118, 128, .24);
+    --pd-chip: rgba(255, 255, 255, .08);
     --pd-border: rgba(255, 255, 255, .12);
-    --pd-divider: rgba(84, 84, 88, .45);
-    --pd-text: #F2F2F7;
-    --pd-text-2: rgba(235, 235, 245, .78);
-    --pd-text-3: rgba(235, 235, 245, .5);
-    --pd-text-4: rgba(235, 235, 245, .26);
-    --pd-shadow-card: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
-    --pd-shadow: 0 24px 64px rgba(0, 0, 0, .55), 0 2px 8px rgba(0, 0, 0, .3);
+    --pd-divider: rgba(255, 255, 255, .08);
+    --pd-text: #E8EEF7;
+    --pd-text-2: #B8C4D6;
+    --pd-text-3: #8391A6;
+    --pd-text-4: #56647A;
+    --pd-shadow-card: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 28px rgba(0, 0, 0, .3);
+    --pd-shadow: 0 24px 64px rgba(0, 0, 0, .6), 0 2px 8px rgba(0, 0, 0, .3);
     color-scheme: dark;
   }
 }
@@ -129,8 +141,8 @@ select.pd-input { -webkit-appearance: none; appearance: none; padding-right: 32p
 
 /* 标签 */
 .pd-tag { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 500; line-height: 18px; white-space: nowrap; background: var(--pd-chip); color: var(--pd-text-2); }
-.pd-tag-ok { background: var(--pd-accent-soft); color: var(--pd-accent); }
-.pd-tag-blue { background: rgba(10, 132, 255, .12); color: var(--pd-blue); }
+.pd-tag-ok { background: var(--pd-ok-soft); color: var(--pd-ok); }
+.pd-tag-blue { background: var(--pd-accent-soft); color: var(--pd-accent); }
 .pd-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pd-accent); display: inline-block; box-shadow: 0 0 0 3px var(--pd-accent-soft); }
 .pd-dot-off { background: var(--pd-text-4); box-shadow: none; }
 
@@ -163,7 +175,7 @@ select.pd-input { -webkit-appearance: none; appearance: none; padding-right: 32p
 .pd-view { max-width: 1040px; animation: pd-rise .32s var(--pd-ease); }
 
 /* 概览：状态卡 */
-.pd-hero { position: relative; border-radius: 18px; padding: 22px 24px; color: #fff; background: linear-gradient(125deg, #34E08A 0%, #07C160 42%, #00A6A0 100%); box-shadow: 0 14px 36px rgba(7, 160, 110, .32), inset 0 1px 0 rgba(255,255,255,.3); overflow: hidden; display: flex; align-items: center; gap: 18px; }
+.pd-hero { position: relative; border-radius: 18px; padding: 22px 24px; color: #fff; background: var(--pd-hero); box-shadow: var(--pd-hero-shadow), inset 0 1px 0 rgba(255,255,255,.3); overflow: hidden; display: flex; align-items: center; gap: 18px; }
 .pd-hero::after { content: ""; position: absolute; right: -60px; top: -80px; width: 260px; height: 260px; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.28), transparent 65%); pointer-events: none; }
 .pd-hero-icon { width: 54px; height: 54px; border-radius: 16px; background: rgba(255,255,255,.22); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,.35); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .pd-hero-name { font-size: 20px; font-weight: 700; letter-spacing: -.015em; line-height: 1.2; }
@@ -218,7 +230,7 @@ select.pd-input { -webkit-appearance: none; appearance: none; padding-right: 32p
 .pd-pair { height: 100%; overflow-y: auto; display: flex; flex-direction: column; }
 .pd-pair-body { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 28px 28px 24px; max-width: 460px; width: 100%; margin: auto; animation: pd-rise .32s var(--pd-ease); }
 .pd-pair-title { font-size: 22px; font-weight: 700; letter-spacing: -.02em; text-align: center; }
-.pd-qr { width: 208px; height: 208px; border-radius: 20px; background: #fff; padding: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 16px 40px rgba(7, 120, 70, .18), 0 0 0 1px rgba(0,0,0,.04); }
+.pd-qr { width: 208px; height: 208px; border-radius: 20px; background: #fff; padding: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 16px 40px rgba(21, 60, 140, .18), 0 0 0 1px rgba(0,0,0,.04); }
 .pd-qr img { width: 100%; height: 100%; image-rendering: pixelated; }
 .pd-steps { width: 100%; padding: 6px 0; }
 .pd-step { display: flex; gap: 12px; align-items: center; padding: 10px 16px; line-height: 1.5; }

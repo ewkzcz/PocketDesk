@@ -184,7 +184,7 @@
 
   function workspacesView() {
     var rows = state.workspaces.map(function (w) {
-      return '<tr><td><div class="pd-name">' + tile('folder', 'linear-gradient(135deg,#5AC8FA,#0A84FF)') + esc(w.name) + '</div></td><td class="pd-path">' + esc(w.rootPath) + '</td>' +
+      return '<tr><td><div class="pd-name">' + tile('folder', 'var(--pd-tile-blue)') + esc(w.name) + '</div></td><td class="pd-path">' + esc(w.rootPath) + '</td>' +
         '<td><span class="pd-tag' + (w.readOnly ? '' : ' pd-tag-ok') + '">' + (w.readOnly ? '只读' : '读写') + '</span></td>' +
         '<td><div class="pd-actions"><button class="pd-link" data-act="ws-edit" data-id="' + esc(w.id) + '">编辑</button>' +
         '<button class="pd-link pd-link-danger" data-act="ws-del" data-id="' + esc(w.id) + '">删除</button></div></td></tr>';
@@ -199,7 +199,7 @@
   function devicesView() {
     var rows = state.devices.map(function (d) {
       var status = d.revoked ? '<span class="pd-tag">已吊销</span>' : d.online ? '<span class="pd-tag pd-tag-ok">在线</span>' : '<span class="pd-muted">' + ago(d.lastSeen) + '</span>';
-      var color = d.revoked ? 'var(--pd-graphite)' : 'linear-gradient(135deg,#34E08A,#07C160)';
+      var color = d.revoked ? 'var(--pd-graphite)' : 'var(--pd-tile-teal)';
       return '<tr><td><div class="pd-name">' + tile('smartphone', color) + esc(d.name) + '</div></td><td class="pd-hide-s pd-muted">' + esc(platformName(d.platform)) + '</td><td>' + status + '</td>' +
         '<td>' + (d.revoked ? '' : '<button class="pd-link pd-link-danger" data-act="dev-revoke" data-id="' + esc(d.id) + '" data-name="' + esc(d.name) + '">吊销</button>') + '</td></tr>';
     }).join('');
@@ -215,7 +215,7 @@
       '<div class="pd-h2">目录</div><div class="pd-card"><div class="pd-form-grid">' +
       '<div class="pd-form-row"><div class="pd-field"><label for="inbox">收件目录（手机发来的文件）</label><input class="pd-input pd-mono" id="inbox" value="' + esc(c.transfer.inboxDir) + '"></div><button class="pd-btn" data-act="open-inbox" aria-label="打开收件目录">' + icon('folder-open', 16) + '</button></div>' +
       '<div class="pd-form-row"><div class="pd-field"><label for="outbox">发件目录（放进来的文件会发给手机）</label><input class="pd-input pd-mono" id="outbox" value="' + esc(c.transfer.outboxDir) + '"></div><button class="pd-btn" data-act="open-outbox" aria-label="打开发件目录">' + icon('folder-open', 16) + '</button></div>' +
-      '</div>' + setting('pause', 'linear-gradient(135deg,#FFB340,#FF9500)', '暂停所有传输', '暂停期间手机会自动等待，恢复后继续', 'pause-all', state.transfersPaused) + '</div>' +
+      '</div>' + setting('pause', 'var(--pd-tile-amber)', '暂停所有传输', '暂停期间手机会自动等待，恢复后继续', 'pause-all', state.transfersPaused) + '</div>' +
       '<div class="pd-h2">后台通知</div><div class="pd-card"><div class="pd-form-grid">' +
       '<div class="pd-field"><label for="nkind">推送方式</label><select class="pd-input" id="nkind"><option value="">不推送</option><option value="ntfy"' + (n.kind === 'ntfy' ? ' selected' : '') + '>ntfy</option><option value="bark"' + (n.kind === 'bark' ? ' selected' : '') + '>Bark</option></select></div>' +
       '<div class="pd-field"><label for="nurl">服务地址</label><input class="pd-input" id="nurl" placeholder="https://ntfy.sh" value="' + esc(n.url) + '"></div>' +
@@ -228,10 +228,10 @@
     var f = state.config.features;
     return [head('安全', '单独开关各项功能，终端可以访问整台电脑，默认关闭'),
       '<div class="pd-card">' +
-      setting('bot', 'linear-gradient(135deg,#7D7AFF,#5E5CE6)', 'Agent 会话', '手机向电脑上的 AI 编程工具发送提示词', 'f-agents', f.agents) +
-      setting('terminal', 'linear-gradient(135deg,#636366,#1C1C1E)', '终端', '手机可在电脑上执行任意命令，每次进入需验证指纹或面容', 'f-terminal', f.terminal) +
-      setting('pencil', 'linear-gradient(135deg,#FFB340,#FF9500)', '文件编辑', '手机可保存、重命名、移动和删除工作区文件', 'f-fileEdit', f.fileEdit) +
-      '<div class="pd-setting">' + tile('clock', 'linear-gradient(135deg,#5AC8FA,#0A84FF)') + '<div class="pd-setting-text"><div class="pd-setting-name">终端空闲自动结束</div><div class="pd-setting-desc">没有输入也没有连接超过设定小时数后结束</div></div>' +
+      setting('bot', 'var(--pd-tile-indigo)', 'Agent 会话', '手机向电脑上的 AI 编程工具发送提示词', 'f-agents', f.agents) +
+      setting('terminal', 'var(--pd-tile-ink)', '终端', '手机可在电脑上执行任意命令，每次进入需验证指纹或面容', 'f-terminal', f.terminal) +
+      setting('pencil', 'var(--pd-tile-amber)', '文件编辑', '手机可保存、重命名、移动和删除工作区文件', 'f-fileEdit', f.fileEdit) +
+      '<div class="pd-setting">' + tile('clock', 'var(--pd-tile-blue)') + '<div class="pd-setting-text"><div class="pd-setting-name">终端空闲自动结束</div><div class="pd-setting-desc">没有输入也没有连接超过设定小时数后结束</div></div>' +
       '<input class="pd-input" id="idle" type="number" min="1" max="720" style="width:90px" value="' + state.config.terminalIdleHours + '" aria-label="小时"></div>' +
       '</div>' +
       '<div class="pd-h2">操作记录</div><div class="pd-card" id="audit"><div class="pd-empty">正在加载…</div></div>'];
