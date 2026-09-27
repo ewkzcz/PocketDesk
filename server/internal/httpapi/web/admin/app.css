@@ -184,7 +184,7 @@ select.pd-input { -webkit-appearance: none; appearance: none; padding-right: 32p
 .pd-table .pd-path { color: var(--pd-text-3); font: 12px/1.4 var(--pd-mono); word-break: break-all; }
 .pd-table .pd-col-tag { width: 72px; white-space: nowrap; }
 .pd-table .pd-nowrap { white-space: nowrap; }
-.pd-name { display: flex; align-items: center; gap: 12px; font-weight: 600; }
+.pd-name { display: flex; align-items: center; gap: 12px; font-weight: 600; white-space: nowrap; }
 .pd-actions { display: flex; gap: 2px; align-items: center; white-space: nowrap; }
 .pd-empty { padding: 36px 16px; text-align: center; color: var(--pd-text-3); }
 .pd-warn { margin-top: 16px; background: var(--pd-warn-bg); border: 1px solid var(--pd-warn-border); border-radius: 12px; padding: 12px 16px; display: flex; gap: 10px; color: var(--pd-warn-text); line-height: 1.6; }
