@@ -103,12 +103,20 @@ func DefaultDataDir() (string, error) {
 	return filepath.Join(home, "PocketDesk", "data"), nil
 }
 
+/** baseDir：PocketDesk 文件夹，Windows 放在自带的「文档」下；macOS 的「文稿」受系统保护，放在用户主目录下 */
+func baseDir(home string) string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(home, "Documents", "PocketDesk")
+	}
+	return filepath.Join(home, "PocketDesk")
+}
+
 /**
  * 默认配置
  *
  * 处理流程：
  * 1、取主机名作为电脑名称
- * 2、收件、发件目录放在 ~/PocketDesk 下；默认工作目录优先用已有的 ~/Workspace，否则为 ~/PocketDesk/Workspace
+ * 2、默认工作目录、收件与发件目录都放在 PocketDesk 文件夹下
  * 3、终端默认关闭，Agent 与文件编辑默认开启
  */
 func Default() Config {
@@ -119,11 +127,7 @@ func Default() Config {
 	}
 	// 2、收发目录
 	home, _ := os.UserHomeDir()
-	base := filepath.Join(home, "PocketDesk")
-	defaultWS := filepath.Join(base, "Workspace")
-	if info, err := os.Stat(filepath.Join(home, "Workspace")); err == nil && info.IsDir() {
-		defaultWS = filepath.Join(home, "Workspace")
-	}
+	base := baseDir(home)
 	// 3、组装默认值
 	return Config{
 		HostName:  name,
@@ -135,7 +139,7 @@ func Default() Config {
 			OutboxDir:        filepath.Join(base, "Outbox"),
 			UploadExpireDays: 7,
 		},
-		DefaultWorkspace:  defaultWS,
+		DefaultWorkspace:  filepath.Join(base, "Workspace"),
 		Agents:            DefaultAgents(),
 		Models:            DefaultModels(),
 		TerminalIdleHours: 24,
@@ -175,6 +179,26 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
+/** moveLegacyDirs：仍在使用旧版默认位置（用户主目录/PocketDesk 下）的目录改到新的默认位置，用户自己选的目录不动 */
+func moveLegacyDirs(c, d Config) Config {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return c
+	}
+	old := filepath.Join(home, "PocketDesk")
+	same := func(p, name string) bool { return filepath.Clean(p) == filepath.Join(old, name) }
+	if same(c.Transfer.InboxDir, "Inbox") {
+		c.Transfer.InboxDir = d.Transfer.InboxDir
+	}
+	if same(c.Transfer.OutboxDir, "Outbox") {
+		c.Transfer.OutboxDir = d.Transfer.OutboxDir
+	}
+	if same(c.DefaultWorkspace, "Workspace") {
+		c.DefaultWorkspace = d.DefaultWorkspace
+	}
+	return c
+}
+
 /** normalize：把非法取值替换为默认值 */
 func normalize(c Config) Config {
 	d := Default()
@@ -202,6 +226,7 @@ func normalize(c Config) Config {
 	if c.DefaultWorkspace == "" {
 		c.DefaultWorkspace = d.DefaultWorkspace
 	}
+	c = moveLegacyDirs(c, d)
 	if c.Agents == nil {
 		c.Agents = map[string][]string{}
 	}

@@ -74,3 +74,30 @@ func TestAgentsDefaultsFilled(t *testing.T) {
 		t.Fatal("非法推送类型应清空")
 	}
 }
+
+func TestDefaultDirs(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	base := baseDir(home)
+	// 新安装：默认工作目录与收发目录都在 PocketDesk 文件夹下
+	d := Default()
+	if d.DefaultWorkspace != filepath.Join(base, "Workspace") || d.Transfer.InboxDir != filepath.Join(base, "Inbox") || d.Transfer.OutboxDir != filepath.Join(base, "Outbox") {
+		t.Fatalf("默认目录异常: %+v", d)
+	}
+	// 旧版默认位置改到新位置，用户自己选的目录保持不变
+	p := filepath.Join(t.TempDir(), "config.json")
+	old := filepath.Join(home, "PocketDesk")
+	raw := `{"transfer":{"inboxDir":"` + filepath.ToSlash(filepath.Join(old, "Inbox")) + `","outboxDir":"/data/out"},"defaultWorkspace":"` + filepath.ToSlash(filepath.Join(old, "Workspace")) + `"}`
+	if err := os.WriteFile(p, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Open(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := s.Get()
+	if filepath.Clean(c.Transfer.InboxDir) != filepath.Join(base, "Inbox") || c.DefaultWorkspace != filepath.Join(base, "Workspace") || c.Transfer.OutboxDir != "/data/out" {
+		t.Fatalf("旧目录迁移异常: %+v", c.Transfer)
+	}
+}
