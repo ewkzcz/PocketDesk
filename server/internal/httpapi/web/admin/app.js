@@ -8,12 +8,13 @@
   var pairInfo = null;
   var pairTimer = null;
   var shownRequests = {};
+  var lastView = '';
   var app = document.getElementById('app');
   var modalRoot = document.getElementById('modal-root');
   var SECTIONS = [
     ['overview', '概览', 'layout-grid'],
     ['workspaces', '工作区', 'folder'],
-    ['devices', '已配对设备', 'smartphone'],
+    ['devices', '设备', 'smartphone'],
     ['transfer', '传输', 'arrow-up-down'],
     ['security', '安全', 'shield'],
     ['about', '关于', 'info']
@@ -84,30 +85,35 @@
   function render() {
     if (!state) { return; }
     var r = route();
-    document.title = r.page === 'pair' ? '配对新手机 · PocketDesk' : 'PocketDesk 设置';
-    if (r.page === 'pair') { app.innerHTML = pairView(); }
-    else { app.innerHTML = settingsView(r.section); }
+    document.title = r.page === 'pair' ? '配对新手机 · PocketDesk' : 'PocketDesk';
+    if (r.page === 'pair') { app.innerHTML = pairView(); lastView = 'pair'; return; }
+    // 定时刷新同一页面时保留滚动位置、不重放进入动画
+    var main = app.querySelector('.pd-main');
+    var top = main && lastView === r.section ? main.scrollTop : 0;
+    app.innerHTML = settingsView(r.section);
+    if (lastView === r.section) { app.querySelector('.pd-view').style.animation = 'none'; }
+    app.querySelector('.pd-main').scrollTop = top;
+    lastView = r.section;
   }
 
-  /* ---------- 配对窗口 ---------- */
+  /* ---------- 配对 ---------- */
   function pairView() {
     if (!pairInfo) {
-      return '<div class="pd-center"><div class="pd-dialog"><div class="pd-dialog-head"><div class="pd-dialog-title">配对新手机</div></div>' +
-        '<div class="pd-dialog-body"><div class="pd-muted">正在生成配对码…</div></div></div></div>';
+      return '<div class="pd-pair"><div class="pd-pair-body"><div class="pd-pair-title">配对新手机</div><div class="pd-muted">正在生成配对码…</div></div></div>';
     }
     var addr = (pairInfo.addresses || [])[0] || '未检测到局域网地址';
-    return '<div class="pd-center"><div class="pd-dialog">' +
-      '<div class="pd-dialog-head"><div class="pd-dialog-title">配对新手机</div><button class="pd-icon-btn" data-act="pair-close" aria-label="关闭">' + icon('x', 18) + '</button></div>' +
-      '<div class="pd-dialog-body">' +
+    return '<div class="pd-pair"><div class="pd-pair-body">' +
+      '<div class="pd-pair-title">配对新手机</div>' +
       '<div class="pd-qr"><img alt="配对二维码" src="' + esc(pairInfo.qr) + '"></div>' +
       '<div class="pd-muted" id="pair-left">' + countdownText() + '</div>' +
-      '<div class="pd-steps">' +
+      '<div class="pd-card pd-steps">' +
       step(1, '在手机上打开 PocketDesk，进入「消息 → +」，点「扫一扫」') +
       step(2, '对准上方二维码扫描，或手动输入下方配对码') +
       step(3, '在电脑上点击「允许」完成配对') + '</div>' +
-      '<div class="pd-codebox"><div><div class="pd-muted" style="font-size:11px">手动配对码</div><div class="pd-code">' + esc(pairInfo.code) + '</div></div>' +
-      '<div class="pd-muted" style="font-size:11px;text-align:right">' + esc(pairInfo.hostName) + '<br>' + esc(addr) + '</div></div>' +
-      '</div><div class="pd-dialog-foot"><button class="pd-btn" data-act="pair-refresh">换一个配对码</button><button class="pd-btn" data-act="pair-close">取消</button></div></div></div>';
+      '<div class="pd-card pd-codebox"><div><div class="pd-muted" style="font-size:11px">手动配对码</div><div class="pd-code">' + esc(pairInfo.code) + '</div></div>' +
+      '<div class="pd-muted" style="font-size:11px;text-align:right">' + esc(pairInfo.hostName) + '<br><span class="pd-mono">' + esc(addr) + '</span></div></div>' +
+      '<div class="pd-pair-foot"><button class="pd-btn" data-act="pair-refresh">换一个配对码</button><button class="pd-btn" data-act="pair-close">取消</button></div>' +
+      '</div></div>';
   }
   function step(n, text) {
     return '<div class="pd-step"><div class="pd-stepnum">' + n + '</div><div>' + text + '</div></div>';
@@ -134,107 +140,115 @@
     }).catch(function (e) { toast(e.message); });
   }
 
-  /* ---------- 设置窗口 ---------- */
+  /* ---------- 主界面 ---------- */
   function settingsView(section) {
     var nav = SECTIONS.map(function (s) {
-      return '<button class="pd-nav' + (s[0] === section ? ' active' : '') + '" data-go="settings/' + s[0] + '">' + icon(s[2], 16) + s[1] + '</button>';
+      return '<button class="pd-nav' + (s[0] === section ? ' active' : '') + '" data-go="settings/' + s[0] + '"' + (s[0] === section ? ' aria-current="page"' : '') + '>' + icon(s[2], 22) + '<span>' + s[1] + '</span></button>';
     }).join('');
-    var body = ({ overview: overviewView, workspaces: workspacesView, devices: devicesView, transfer: transferView, security: securityView, about: aboutView }[section] || overviewView)();
-    return '<div class="pd-center"><div class="pd-window">' +
-      '<div class="pd-window-head"><div class="pd-dialog-title">PocketDesk 设置</div></div>' +
-      '<div class="pd-window-body"><nav class="pd-side">' + nav + '</nav><main class="pd-main">' + body + '</main></div></div></div>';
+    var view = ({ overview: overviewView, workspaces: workspacesView, devices: devicesView, transfer: transferView, security: securityView, about: aboutView }[section] || overviewView)();
+    return '<div class="pd-shell"><nav class="pd-rail"><div class="pd-logo">' + icon('monitor', 22) + '</div>' + nav +
+      '<div class="pd-rail-gap"></div><button class="pd-rail-btn" data-go="pair" title="配对新手机" aria-label="配对新手机">' + icon('qr-code', 20) + '</button></nav>' +
+      '<main class="pd-main">' + view[0] + '<div class="pd-view">' + view[1] + '</div></main></div>';
   }
   function head(title, sub, action) {
-    return '<div class="pd-section-head"><div><div class="pd-h1">' + title + '</div><div class="pd-sub">' + sub + '</div></div>' + (action || '') + '</div>';
+    return '<header class="pd-head"><div><div class="pd-h1">' + title + '</div>' + (sub ? '<div class="pd-sub">' + sub + '</div>' : '') + '</div>' + (action || '') + '</header>';
+  }
+  function tile(name, color) {
+    return '<div class="pd-tile pd-tile-c" style="background:' + color + '">' + icon(name, 17) + '</div>';
   }
 
   function overviewView() {
     var addrs = (state.addresses || []).map(function (a) {
-      return '<div><span class="pd-mono">' + esc(a.ip) + '</span> <span class="pd-tag' + (a.kind === 'tailscale' ? '' : ' pd-tag-ok') + '">' + (a.kind === 'tailscale' ? 'Tailscale' : '局域网') + '</span></div>';
+      return '<div class="pd-addr"><span class="pd-mono">' + esc(a.ip) + '</span><span class="pd-tag ' + (a.kind === 'tailscale' ? 'pd-tag-blue' : 'pd-tag-ok') + '">' + (a.kind === 'tailscale' ? 'Tailscale' : '局域网') + '</span></div>';
     }).join('') || '<span class="pd-muted">未检测到局域网或 Tailscale 地址</span>';
     var agents = (state.agents || []).map(function (a) {
-      return '<div class="pd-agent"><img class="pd-avatar" src="/admin/avatars/' + esc(a.kind) + '.svg" alt="">' +
-        '<div style="min-width:0"><div>' + esc(a.label) + '</div><div class="pd-muted" style="font-size:12px">' + (a.installed ? esc(a.version || '已安装') : '未安装') + '</div></div></div>';
+      return '<div class="pd-card pd-agent' + (a.installed ? '' : ' off') + '"><img class="pd-avatar" src="/admin/avatars/' + esc(a.kind) + '.svg" alt="">' +
+        '<div style="min-width:0"><div class="pd-agent-name">' + esc(a.label) + '</div><div class="pd-muted" style="font-size:12px">' + (a.installed ? esc(a.version || '已安装') : '未安装') + '</div></div></div>';
     }).join('');
     var online = state.devices.filter(function (d) { return d.online; }).length;
-    return head('概览', '电脑端服务的运行状态', '<button class="pd-btn pd-btn-primary" data-go="pair">' + icon('qr-code', 16) + '配对新手机</button>') +
-      '<div class="pd-card"><dl class="pd-kv">' +
-      '<dt>电脑名称</dt><dd>' + esc(state.host.name) + '</dd>' +
-      '<dt>状态</dt><dd><span class="pd-status"><span class="pd-dot"></span>运行中 · 端口 ' + state.host.port + '</span></dd>' +
+    var paired = state.devices.filter(function (d) { return !d.revoked; }).length;
+    return [head('概览', '电脑端服务的运行状态', '<button class="pd-btn pd-btn-primary" data-go="pair">' + icon('qr-code', 16) + '配对新手机</button>'),
+      '<div class="pd-hero"><div class="pd-hero-icon">' + icon('monitor', 28) + '</div>' +
+      '<div class="pd-hero-main"><div class="pd-hero-name">' + esc(state.host.name) + '</div>' +
+      '<div class="pd-hero-state"><span class="pd-dot"></span>运行中 · 端口 ' + state.host.port + '</div></div>' +
+      '<div class="pd-stats"><div class="pd-stat"><b>' + online + '</b><span>在线手机</span></div>' +
+      '<div class="pd-stat"><b>' + paired + '</b><span>已配对</span></div>' +
+      '<div class="pd-stat"><b>' + state.workspaces.length + '</b><span>工作区</span></div></div></div>' +
+      '<div class="pd-h2">连接</div><div class="pd-card"><dl class="pd-kv">' +
       '<dt>访问地址</dt><dd>' + addrs + '</dd>' +
-      '<dt>在线手机</dt><dd>' + online + ' 台</dd>' +
       '<dt>证书指纹</dt><dd class="pd-mono" style="font-size:12px">' + esc(fmtFp(state.host.fingerprint)) + '</dd>' +
       '</dl></div>' +
-      '<div class="pd-block" style="margin-top:24px"><div class="pd-h2">AI 编程工具</div><div class="pd-agents">' + agents + '</div></div>';
+      '<div class="pd-h2">AI 编程工具</div><div class="pd-agents">' + agents + '</div>'];
   }
   function fmtFp(fp) { return (fp || '').toUpperCase().match(/.{1,4}/g).join(' '); }
 
   function workspacesView() {
     var rows = state.workspaces.map(function (w) {
-      return '<tr><td style="font-weight:500">' + esc(w.name) + '</td><td class="pd-path">' + esc(w.rootPath) + '</td>' +
+      return '<tr><td><div class="pd-name">' + tile('folder', 'linear-gradient(135deg,#5AC8FA,#0A84FF)') + esc(w.name) + '</div></td><td class="pd-path">' + esc(w.rootPath) + '</td>' +
         '<td><span class="pd-tag' + (w.readOnly ? '' : ' pd-tag-ok') + '">' + (w.readOnly ? '只读' : '读写') + '</span></td>' +
-        '<td><div class="pd-actions"><button class="pd-link" data-act="ws-edit" data-id="' + esc(w.id) + '">编辑</button><span class="pd-sepdot">·</span>' +
+        '<td><div class="pd-actions"><button class="pd-link" data-act="ws-edit" data-id="' + esc(w.id) + '">编辑</button>' +
         '<button class="pd-link pd-link-danger" data-act="ws-del" data-id="' + esc(w.id) + '">删除</button></div></td></tr>';
     }).join('');
     var warns = state.workspaces.filter(function (w) { return w.warning; }).map(function (w) {
       return '<div class="pd-warn">' + icon('alert-triangle', 16) + '<div>' + esc(w.warning) + '</div></div>';
     }).join('');
-    return head('工作区', '手机上可访问的电脑文件夹', '<button class="pd-btn pd-btn-primary" data-act="ws-add">' + icon('plus', 16) + '添加工作区</button>') +
-      '<div class="pd-card">' + (rows ? '<table class="pd-table"><tr><th>名称</th><th>路径</th><th class="pd-col-tag">权限</th><th style="width:100px">操作</th></tr>' + rows + '</table>' : '<div class="pd-empty">还没有工作区，添加后手机才能浏览电脑上的文件</div>') + '</div>' + warns;
+    return [head('工作区', '手机上可访问的电脑文件夹', '<button class="pd-btn pd-btn-primary" data-act="ws-add">' + icon('plus', 16) + '添加工作区</button>'),
+      '<div class="pd-card">' + (rows ? '<table class="pd-table"><tr><th>名称</th><th>路径</th><th class="pd-col-tag">权限</th><th style="width:110px">操作</th></tr>' + rows + '</table>' : '<div class="pd-empty">还没有工作区，添加后手机才能浏览电脑上的文件</div>') + '</div>' + warns];
   }
 
   function devicesView() {
     var rows = state.devices.map(function (d) {
       var status = d.revoked ? '<span class="pd-tag">已吊销</span>' : d.online ? '<span class="pd-tag pd-tag-ok">在线</span>' : '<span class="pd-muted">' + ago(d.lastSeen) + '</span>';
-      return '<tr><td style="font-weight:500">' + esc(d.name) + '</td><td class="pd-hide-s pd-muted">' + esc(platformName(d.platform)) + '</td><td>' + status + '</td>' +
+      var color = d.revoked ? 'var(--pd-graphite)' : 'linear-gradient(135deg,#34E08A,#07C160)';
+      return '<tr><td><div class="pd-name">' + tile('smartphone', color) + esc(d.name) + '</div></td><td class="pd-hide-s pd-muted">' + esc(platformName(d.platform)) + '</td><td>' + status + '</td>' +
         '<td>' + (d.revoked ? '' : '<button class="pd-link pd-link-danger" data-act="dev-revoke" data-id="' + esc(d.id) + '" data-name="' + esc(d.name) + '">吊销</button>') + '</td></tr>';
     }).join('');
-    return head('已配对设备', '吊销后该手机需要重新扫码配对', '<button class="pd-btn pd-btn-primary" data-go="pair">' + icon('qr-code', 16) + '配对新手机</button>') +
-      '<div class="pd-card">' + (rows ? '<table class="pd-table"><tr><th>名称</th><th class="pd-hide-s">系统</th><th>状态</th><th style="width:80px">操作</th></tr>' + rows + '</table>' : '<div class="pd-empty">还没有配对的手机</div>') + '</div>';
+    return [head('已配对设备', '吊销后该手机需要重新扫码配对', '<button class="pd-btn pd-btn-primary" data-go="pair">' + icon('qr-code', 16) + '配对新手机</button>'),
+      '<div class="pd-card">' + (rows ? '<table class="pd-table"><tr><th>名称</th><th class="pd-hide-s">系统</th><th>状态</th><th style="width:80px">操作</th></tr>' + rows + '</table>' : '<div class="pd-empty">还没有配对的手机</div>') + '</div>'];
   }
   function platformName(p) { return { ios: 'iOS', android: 'Android', web: '浏览器' }[p] || p || '未知'; }
 
   function transferView() {
     var c = state.config;
     var n = c.notify || {};
-    return head('传输', '文件收发目录与后台通知') +
+    return [head('传输', '文件收发目录与后台通知'),
       '<div class="pd-h2">目录</div><div class="pd-card"><div class="pd-form-grid">' +
       '<div class="pd-form-row"><div class="pd-field"><label for="inbox">收件目录（手机发来的文件）</label><input class="pd-input pd-mono" id="inbox" value="' + esc(c.transfer.inboxDir) + '"></div><button class="pd-btn" data-act="open-inbox" aria-label="打开收件目录">' + icon('folder-open', 16) + '</button></div>' +
       '<div class="pd-form-row"><div class="pd-field"><label for="outbox">发件目录（放进来的文件会发给手机）</label><input class="pd-input pd-mono" id="outbox" value="' + esc(c.transfer.outboxDir) + '"></div><button class="pd-btn" data-act="open-outbox" aria-label="打开发件目录">' + icon('folder-open', 16) + '</button></div>' +
-      '</div><div class="pd-setting"><div><div class="pd-setting-name">暂停所有传输</div><div class="pd-setting-desc">暂停期间手机会自动等待，恢复后继续</div></div>' + toggle('pause-all', state.transfersPaused) + '</div></div>' +
-      '<div class="pd-h2" style="margin-top:24px">后台通知</div><div class="pd-card"><div class="pd-form-grid">' +
+      '</div>' + setting('pause', 'linear-gradient(135deg,#FFB340,#FF9500)', '暂停所有传输', '暂停期间手机会自动等待，恢复后继续', 'pause-all', state.transfersPaused) + '</div>' +
+      '<div class="pd-h2">后台通知</div><div class="pd-card"><div class="pd-form-grid">' +
       '<div class="pd-field"><label for="nkind">推送方式</label><select class="pd-input" id="nkind"><option value="">不推送</option><option value="ntfy"' + (n.kind === 'ntfy' ? ' selected' : '') + '>ntfy</option><option value="bark"' + (n.kind === 'bark' ? ' selected' : '') + '>Bark</option></select></div>' +
       '<div class="pd-field"><label for="nurl">服务地址</label><input class="pd-input" id="nurl" placeholder="https://ntfy.sh" value="' + esc(n.url) + '"></div>' +
       '<div class="pd-field"><label for="ntopic">主题或设备密钥</label><input class="pd-input" id="ntopic" value="' + esc(n.topic) + '"></div>' +
       '</div></div>' +
-      '<div style="margin-top:16px;display:flex;justify-content:flex-end"><button class="pd-btn pd-btn-primary" data-act="save-transfer">保存</button></div>';
+      '<div class="pd-savebar"><button class="pd-btn pd-btn-primary" data-act="save-transfer">保存</button></div>'];
   }
 
   function securityView() {
     var f = state.config.features;
-    return head('安全', '单独开关各项功能，终端可以访问整台电脑，默认关闭') +
+    return [head('安全', '单独开关各项功能，终端可以访问整台电脑，默认关闭'),
       '<div class="pd-card">' +
-      setting('Agent 会话', '手机向电脑上的 AI 编程工具发送提示词', 'f-agents', f.agents) +
-      setting('终端', '手机可在电脑上执行任意命令，每次进入需验证指纹或面容', 'f-terminal', f.terminal) +
-      setting('文件编辑', '手机可保存、重命名、移动和删除工作区文件', 'f-fileEdit', f.fileEdit) +
-      '<div class="pd-setting"><div><div class="pd-setting-name">终端空闲自动结束</div><div class="pd-setting-desc">没有输入也没有连接超过设定小时数后结束</div></div>' +
+      setting('bot', 'linear-gradient(135deg,#7D7AFF,#5E5CE6)', 'Agent 会话', '手机向电脑上的 AI 编程工具发送提示词', 'f-agents', f.agents) +
+      setting('terminal', 'linear-gradient(135deg,#636366,#1C1C1E)', '终端', '手机可在电脑上执行任意命令，每次进入需验证指纹或面容', 'f-terminal', f.terminal) +
+      setting('pencil', 'linear-gradient(135deg,#FFB340,#FF9500)', '文件编辑', '手机可保存、重命名、移动和删除工作区文件', 'f-fileEdit', f.fileEdit) +
+      '<div class="pd-setting">' + tile('clock', 'linear-gradient(135deg,#5AC8FA,#0A84FF)') + '<div class="pd-setting-text"><div class="pd-setting-name">终端空闲自动结束</div><div class="pd-setting-desc">没有输入也没有连接超过设定小时数后结束</div></div>' +
       '<input class="pd-input" id="idle" type="number" min="1" max="720" style="width:90px" value="' + state.config.terminalIdleHours + '" aria-label="小时"></div>' +
       '</div>' +
-      '<div class="pd-h2" style="margin-top:24px">操作记录</div><div class="pd-card" id="audit"><div class="pd-empty">正在加载…</div></div>';
+      '<div class="pd-h2">操作记录</div><div class="pd-card" id="audit"><div class="pd-empty">正在加载…</div></div>'];
   }
-  function setting(name, desc, id, on) {
-    return '<div class="pd-setting"><div><div class="pd-setting-name">' + name + '</div><div class="pd-setting-desc">' + desc + '</div></div>' + toggle(id, on) + '</div>';
+  function setting(ic, color, name, desc, id, on) {
+    return '<div class="pd-setting">' + tile(ic, color) + '<div class="pd-setting-text"><div class="pd-setting-name">' + name + '</div><div class="pd-setting-desc">' + desc + '</div></div>' + toggle(id, on) + '</div>';
   }
   function toggle(id, on) {
     return '<label class="pd-switch"><input type="checkbox" id="' + id + '"' + (on ? ' checked' : '') + '><span></span></label>';
   }
 
   function aboutView() {
-    return head('关于', '') +
+    return [head('关于', ''),
       '<div class="pd-card"><dl class="pd-kv">' +
       '<dt>版本</dt><dd>' + esc(state.host.version) + '</dd>' +
       '<dt>数据目录</dt><dd class="pd-mono" style="font-size:12px">' + esc(state.dataDir) + '</dd>' +
-      '</dl></div><div style="margin-top:16px"><button class="pd-btn pd-btn-danger" data-act="quit">' + icon('log-out', 16) + '退出服务</button></div>';
+      '</dl></div><div class="pd-savebar" style="justify-content:flex-start"><button class="pd-btn pd-btn-danger" data-act="quit">' + icon('log-out', 16) + '退出服务</button></div>'];
   }
 
   /** fmtTime：固定为中文 24 小时制，不随浏览器语言变化 */
@@ -319,7 +333,7 @@
       case 'open-outbox': api('POST', '/admin/api/open', { which: 'outbox' }).catch(function (er) { toast(er.message); }); break;
       case 'quit':
         confirmBox('退出服务', '退出后手机将无法连接这台电脑，直到服务再次启动。', '退出', function () {
-          api('POST', '/admin/api/quit').then(function () { app.innerHTML = '<div class="pd-center"><div class="pd-muted">服务已退出，可以关闭此页面</div></div>'; });
+          api('POST', '/admin/api/quit').then(function () { app.innerHTML = '<div class="pd-center"><div class="pd-muted">服务已退出，可以关闭此窗口</div></div>'; });
         });
         break;
       case 'ws-add': workspaceForm(); break;
