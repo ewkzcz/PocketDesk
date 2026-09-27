@@ -30,6 +30,13 @@ android {
         versionName = flutter.versionName
     }
 
+    // 原生库压缩存放以减小安装包（安装时解压到手机上），单架构包控制在 10MB 左右
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.
