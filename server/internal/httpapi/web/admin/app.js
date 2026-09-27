@@ -345,7 +345,7 @@
           inboxDir: document.getElementById('inbox').value.trim(),
           outboxDir: document.getElementById('outbox').value.trim(),
           notify: { kind: document.getElementById('nkind').value, url: document.getElementById('nurl').value.trim(), topic: document.getElementById('ntopic').value.trim() }
-        }).then(function (r) { toast(r.restartRequired ? '已保存，目录变更在重启服务后生效' : '已保存'); load(); }).catch(function (er) { toast(er.message); });
+        }).then(function (r) { toast('已保存'); load(); }).catch(function (er) { toast(er.message); });
         break;
       case 'req':
         api('POST', '/admin/api/pair/' + encodeURIComponent(id), { allow: t.dataset.allow === '1' }).then(function () {

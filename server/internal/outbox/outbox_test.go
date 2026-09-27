@@ -125,3 +125,27 @@ func TestSendWithTargetAndAck(t *testing.T) {
 		t.Fatal("文件夹应拒绝")
 	}
 }
+
+func TestSetDirTakesEffect(t *testing.T) {
+	s, st := newSvc(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s.Start(ctx)
+	defer s.Stop()
+	old := s.Dir()
+	next := filepath.Join(t.TempDir(), "新发件箱")
+	if err := s.SetDir(next); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(next, "a.txt"), []byte("a"), 0o644)
+	waitFor(t, func() bool {
+		l, _ := st.PendingOutbox(ctx, "d1")
+		return len(l) == 1
+	})
+	// 旧目录不再监听
+	os.WriteFile(filepath.Join(old, "b.txt"), []byte("b"), 0o644)
+	time.Sleep(200 * time.Millisecond)
+	if l, _ := st.PendingOutbox(ctx, "d1"); len(l) != 1 || filepath.Dir(l[0].Path) != next {
+		t.Fatalf("待发 %+v", l)
+	}
+}

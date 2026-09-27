@@ -36,6 +36,7 @@ type Service struct {
 	timers   map[string]*time.Timer
 	OnNew    func(store.OutboxItem)
 	watcher  *fsnotify.Watcher
+	ctx      context.Context
 	stopOnce sync.Once
 }
 
@@ -51,7 +52,37 @@ func New(s *store.Store, dir string) (*Service, error) {
 func (s *Service) SetSettle(d time.Duration) { s.settle = d }
 
 /** Dir：发件目录 */
-func (s *Service) Dir() string { return s.dir }
+func (s *Service) Dir() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.dir
+}
+
+/**
+ * SetDir：更换发件目录并立即生效
+ *
+ * 处理流程：
+ * 1、创建新目录
+ * 2、停止监听旧目录，改用新目录重新扫描并监听
+ */
+func (s *Service) SetDir(dir string) error {
+	// 1、新目录
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	// 2、切换
+	s.mu.Lock()
+	old, ctx := s.watcher, s.ctx
+	s.dir, s.watcher = dir, nil
+	s.mu.Unlock()
+	if old != nil {
+		old.Close()
+	}
+	if ctx == nil {
+		return nil
+	}
+	return s.Start(ctx)
+}
 
 /**
  * Start：扫描已有文件并开始监听
@@ -61,14 +92,18 @@ func (s *Service) Dir() string { return s.dir }
  * 2、启动 fsnotify 监听，新文件稳定后登记
  */
 func (s *Service) Start(ctx context.Context) error {
+	s.mu.Lock()
+	s.ctx = ctx
+	dir := s.dir
+	s.mu.Unlock()
 	// 1、初始扫描
-	entries, err := os.ReadDir(s.dir)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
 	}
 	for _, e := range entries {
 		if s.eligible(e.Name()) && !e.IsDir() {
-			if _, err := s.register(ctx, filepath.Join(s.dir, e.Name()), ""); err != nil {
+			if _, err := s.register(ctx, filepath.Join(dir, e.Name()), ""); err != nil {
 				slog.Warn("登记发件失败", "err", err)
 			}
 		}
@@ -78,11 +113,13 @@ func (s *Service) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := w.Add(s.dir); err != nil {
+	if err := w.Add(dir); err != nil {
 		w.Close()
 		return err
 	}
+	s.mu.Lock()
 	s.watcher = w
+	s.mu.Unlock()
 	go s.loop(ctx, w)
 	return nil
 }
@@ -214,7 +251,7 @@ func (s *Service) Send(ctx context.Context, src, target string) (store.OutboxIte
 	if info.IsDir() {
 		return store.OutboxItem{}, errors.New("暂不支持发送文件夹")
 	}
-	tmp, err := os.CreateTemp(s.dir, ".pd-send-*")
+	tmp, err := os.CreateTemp(s.Dir(), ".pd-send-*")
 	if err != nil {
 		return store.OutboxItem{}, err
 	}
