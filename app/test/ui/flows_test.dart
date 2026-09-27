@@ -17,9 +17,11 @@ import 'package:pocketdesk/ui/pages/pair_page.dart';
 import 'package:pocketdesk/ui/pages/terminal_page.dart';
 import 'package:pocketdesk/ui/viewers/book/book_reader.dart';
 import 'package:pocketdesk/ui/viewers/image_viewer.dart';
+import 'package:pocketdesk/ui/viewers/office/office_viewer.dart';
 import 'package:pocketdesk/ui/viewers/text_viewer.dart';
 
 import '../core/services_test.dart' show FakeDiscovery;
+import '../support/office_fixtures.dart';
 import 'harness.dart';
 
 const _ws = Workspace(id: 'w1', name: 'payments', rootPath: '/p', readOnly: false);
@@ -215,6 +217,44 @@ void main() {
     expect(pos.offset, greaterThan(0));
     await finish(tester, env);
   });
+
+  for (final (kind, name, bytes, expectText) in [
+    (OfficeKind.word, '周报.docx', docxBytes, '项目周报'),
+    (OfficeKind.excel, '账单.xlsx', xlsxBytes, '2025-10-01'),
+    (OfficeKind.slides, '汇报.pptx', pptxBytes, '第一页标题'),
+  ]) {
+    testWidgets('Office 在 App 内查看：$name', (tester) async {
+      const ws = Workspace(id: 'w1', name: 'payments', rootPath: '/Users/me/payments', readOnly: false);
+      final entry = FileEntry(name: name, path: name, isDir: false, size: 1000, modTime: 0);
+      final env = await start(tester, page: OfficeViewerPage(ws: ws, entry: entry, kind: kind, load: () async => bytes()));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 500)));
+      await settle(tester);
+      expect(find.textContaining(expectText, findRichText: true), findsWidgets);
+      await shot(tester, 'flow-office-${kind.name}');
+      if (kind == OfficeKind.excel) {
+        // 列号、行号与工作表切换
+        expect(find.text('A'), findsOneWidget);
+        expect(find.text('1'), findsWidgets);
+        await tester.tap(find.text('明细'));
+        await settle(tester);
+        // AB30：从屏幕内的一点向上滑到第 30 行，AB 列在右侧（表格比屏幕宽）
+        await tester.dragFrom(const Offset(150, 400), const Offset(0, -700));
+        await settle(tester);
+        expect(find.text('30'), findsOneWidget);
+        expect(find.text('AB', skipOffstage: false), findsOneWidget);
+        expect(find.text('TRUE', skipOffstage: false), findsOneWidget);
+        await tester.dragFrom(const Offset(300, 400), const Offset(-2000, 0));
+        await settle(tester);
+        expect(find.text('TRUE'), findsOneWidget);
+      }
+      await tester.tap(find.bySemanticsLabel('更多').last);
+      await settle(tester);
+      expect(find.text('用其他应用打开'), findsOneWidget);
+      await tester.tapAt(const Offset(10, 10));
+      await settle(tester);
+      await finish(tester, env);
+    });
+  }
 
   testWidgets('搜索过滤会话', (tester) async {
     final env = await start(tester);

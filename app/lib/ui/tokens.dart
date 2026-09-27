@@ -254,6 +254,9 @@ abstract final class PdFileColors {
   static const Color image = Color(0xFFF08A3C);
   static const Color media = Color(0xFFE0569B);
   static const Color book = Color(0xFFB7791F);
+  static const Color word = Color(0xFF2B6CDF);
+  static const Color excel = Color(0xFF1D9A5B);
+  static const Color slides = Color(0xFFE2572B);
 }
 
 /** PdAgentColors：各类会话头像底色（浅色深色通用） */

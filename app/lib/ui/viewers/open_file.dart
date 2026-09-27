@@ -20,6 +20,7 @@ import 'fetch.dart';
 import 'book/book_reader.dart';
 import 'image_viewer.dart';
 import 'md_viewer.dart';
+import 'office/office_viewer.dart';
 import 'pdf_viewer.dart';
 import 'save.dart';
 import 'text_viewer.dart';
@@ -30,11 +31,14 @@ const textViewLimit = 2 * 1024 * 1024;
 /** 小说阅读器能打开的 txt 大小上限 */
 const bookViewLimit = 64 * 1024 * 1024;
 
+/** 在 App 内查看的 Office 文档大小上限 */
+const officeViewLimit = 60 * 1024 * 1024;
+
 /**
  * openWorkspaceFile：按类型打开
  *
  * 处理流程：
- * 1、Markdown 与 PDF 用 App 内阅读器（Markdown 在手机上直接排版）
+ * 1、Markdown 与 PDF 用 App 内阅读器（Markdown 在手机上直接排版）；txt 用小说阅读器；Word、Excel、PPT 在 App 内查看
  * 2、图片用看图（可左右切换同目录图片）
  * 3、不超过 2MB 的文本用文本查看器
  * 4、其他交给手机上的其他 App
@@ -54,6 +58,9 @@ Future<void> openWorkspaceFile(BuildContext context, {required Workspace ws, req
     // 3、txt 用小说阅读器，其他文本用文本查看器
     case ViewKind.book when entry.size <= bookViewLimit:
       await nav.push(MaterialPageRoute<void>(builder: (_) => BookReaderPage(ws: ws, entry: entry, readOnly: readOnly)));
+    case ViewKind.word || ViewKind.excel || ViewKind.slides when entry.size <= officeViewLimit:
+      final kind = switch (viewKindOf(entry.name)) { ViewKind.word => OfficeKind.word, ViewKind.excel => OfficeKind.excel, _ => OfficeKind.slides };
+      await nav.push(MaterialPageRoute<void>(builder: (_) => OfficeViewerPage(ws: ws, entry: entry, kind: kind, readOnly: readOnly)));
     case ViewKind.text when entry.size <= textViewLimit:
       await nav.push(MaterialPageRoute<void>(builder: (_) => TextViewerPage(ws: ws, path: entry.path, readOnly: readOnly)));
     // 4、其他
