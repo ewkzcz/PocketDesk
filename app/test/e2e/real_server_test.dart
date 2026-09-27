@@ -9,6 +9,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -247,17 +248,33 @@ void main() {
     // 1、在手机与电脑之间放一个会定时切断全部连接的转发器
     final proxy = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
     final pipes = <Socket>[];
+    var chaos = true;
+    // 除定时切断外，还随机在电脑已收到请求、回复尚未传回时切断，稳定触发「已受理但手机没收到回复」的重发
+    final rnd = Random(7);
     proxy.listen((client) async {
       try {
         final upstream = await Socket.connect('127.0.0.1', _port);
         pipes.addAll([client, upstream]);
-        client.listen(upstream.add, onDone: upstream.destroy, onError: (_) => upstream.destroy());
-        upstream.listen(client.add, onDone: client.destroy, onError: (_) => client.destroy());
+        // 对端已被切断时写入会抛错，转发器只管丢弃
+        void pass(Socket to, List<int> data) {
+          try {
+            to.add(data);
+          } catch (_) {}
+        }
+
+        client.listen((data) => pass(upstream, data), onDone: upstream.destroy, onError: (_) => upstream.destroy());
+        upstream.listen((data) {
+          if (chaos && rnd.nextInt(4) == 0) {
+            client.destroy();
+            upstream.destroy();
+            return;
+          }
+          pass(client, data);
+        }, onDone: client.destroy, onError: (_) => client.destroy());
       } catch (_) {
         client.destroy();
       }
     });
-    var chaos = true;
     var cuts = 0;
     var failures = 0;
     final killer = Timer.periodic(const Duration(milliseconds: 400), (_) {
@@ -287,11 +304,9 @@ void main() {
       for (var i = 0;; i++) {
         try {
           return await f();
-        } on ApiException {
-          failures++;
-          if (i > 200) rethrow;
-          await Future<void>.delayed(const Duration(milliseconds: 50));
         } catch (_) {
+          // 断线在不同系统上表现为接口错误或底层网络异常，都算一次失败重发
+          failures++;
           if (i > 200) rethrow;
           await Future<void>.delayed(const Duration(milliseconds: 50));
         }
