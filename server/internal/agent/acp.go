@@ -52,6 +52,7 @@ type acpTool struct {
  * 1、启动进程，按消息类型分发
  * 2、initialize 协商版本
  * 3、有旧会话且对方支持时 session/load，否则 session/new
+ * 4、记下可选模型；指定了模型时切换过去
  */
 func (d ACPDriver) Start(ctx context.Context, opt Options) (Process, error) {
 	if len(opt.Command) == 0 {
@@ -82,30 +83,61 @@ func (d ACPDriver) Start(ctx context.Context, opt Options) (Process, error) {
 		return nil, fmt.Errorf("握手失败: %w", err)
 	}
 	// 3、会话
+	var ns struct {
+		SessionID     string          `json:"sessionId"`
+		ConfigOptions json.RawMessage `json:"configOptions"`
+	}
 	if opt.ResumeID != "" && init.AgentCapabilities.LoadSession {
 		a.mu.Lock()
 		a.loading = true
 		a.mu.Unlock()
-		err := a.call(hctx, "session/load", map[string]any{"sessionId": opt.ResumeID, "cwd": opt.Cwd, "mcpServers": []any{}}, nil)
+		err := a.call(hctx, "session/load", map[string]any{"sessionId": opt.ResumeID, "cwd": opt.Cwd, "mcpServers": []any{}}, &ns)
 		a.mu.Lock()
 		a.loading = false
 		a.mu.Unlock()
 		if err == nil {
-			a.sessionID = opt.ResumeID
-			p.emit(ev(EvSessionID, "id", a.sessionID))
-			return a, nil
+			ns.SessionID = opt.ResumeID
 		}
 	}
-	var ns struct {
-		SessionID string `json:"sessionId"`
-	}
-	if err := a.call(hctx, "session/new", map[string]any{"cwd": opt.Cwd, "mcpServers": []any{}}, &ns); err != nil {
-		p.Close()
-		return nil, fmt.Errorf("创建会话失败: %w", err)
+	if ns.SessionID == "" {
+		if err := a.call(hctx, "session/new", map[string]any{"cwd": opt.Cwd, "mcpServers": []any{}}, &ns); err != nil {
+			p.Close()
+			return nil, fmt.Errorf("创建会话失败: %w", err)
+		}
 	}
 	a.sessionID = ns.SessionID
-	p.emit(ev(EvSessionID, "id", a.sessionID))
+	// 4、模型
+	model := a.selectModel(hctx, d.Name, ns.ConfigOptions)
+	p.emit(ev(EvSessionID, "id", a.sessionID, "model", model))
 	return a, nil
+}
+
+/**
+ * selectModel：缓存可选模型，按展示名、取值切换到指定模型，返回当前模型展示名
+ */
+func (a *acpProc) selectModel(ctx context.Context, kind string, raw json.RawMessage) string {
+	opts, current := acpModels(raw)
+	if len(opts) > 0 {
+		names := make([]string, len(opts))
+		for i, o := range opts {
+			names[i] = o.display
+		}
+		acpModelCache.Store(kind, names)
+	}
+	if a.opt.Model == "" || a.opt.Model == current {
+		return current
+	}
+	for _, o := range opts {
+		if o.display == a.opt.Model || o.value == a.opt.Model {
+			if err := a.call(ctx, "session/set_config_option", map[string]any{"sessionId": a.sessionID, "configId": "model", "value": o.value}, nil); err != nil {
+				a.emit(ev(EvError, "message", "切换模型失败："+err.Error()))
+				return current
+			}
+			return o.display
+		}
+	}
+	a.emit(ev(EvError, "message", "没有找到模型 "+a.opt.Model+"，继续使用 "+current))
+	return current
 }
 
 /**

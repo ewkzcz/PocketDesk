@@ -472,3 +472,63 @@ func TestPiApprovalExtension(t *testing.T) {
 		}
 	}
 }
+
+func TestParsePiModels(t *testing.T) {
+	out := "provider     model          context\nanthropic    claude-x       1M\n劲风-API  gpt-y   400K\n\n"
+	if got := strings.Join(parsePiModels([]byte(out)), ","); got != "anthropic/claude-x,劲风-API/gpt-y" {
+		t.Fatalf("解析 %s", got)
+	}
+}
+
+func TestACPModelSelect(t *testing.T) {
+	acpModelCache.Delete(KindDSH)
+	if _, err := (ACPDriver{Name: KindDSH}).Models(context.Background(), nil); err == nil {
+		t.Fatal("还没建过会话时应拿不到列表")
+	}
+	for model, want := range map[string]string{"": "ds/flash", "ds/pro": "ds/pro", "ds/none": "ds/flash"} {
+		opt := fakeOpts(t, "acp")
+		opt.Model = model
+		p, err := ACPDriver{Name: KindDSH}.Start(context.Background(), opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var sid Event
+		var errs []string
+		for e := range p.Events() {
+			if e.Type == EvError {
+				errs = append(errs, e.Data["message"].(string))
+			}
+			if e.Type == EvSessionID {
+				sid = e
+				break
+			}
+		}
+		p.Close()
+		if sid.Data["model"] != want {
+			t.Fatalf("指定 %q 后当前模型 %v，期望 %s（错误 %v）", model, sid.Data["model"], want, errs)
+		}
+		if (model == "ds/none") != (len(errs) == 1) {
+			t.Fatalf("找不到模型时应提示一次，实际 %v", errs)
+		}
+	}
+	list, err := (ACPDriver{Name: KindDSH}).Models(context.Background(), nil)
+	if err != nil || strings.Join(list, ",") != "ds/flash,ds/pro" {
+		t.Fatalf("可选模型 %v %v", list, err)
+	}
+}
+
+func TestModelCache(t *testing.T) {
+	c := NewModelCache(time.Minute)
+	acpModelCache.Delete("x")
+	if got := c.Get(context.Background(), ACPDriver{Name: "x"}, nil, []string{"fb"}); len(got) != 1 || got[0] != "fb" {
+		t.Fatalf("查询失败应退回 %v", got)
+	}
+	acpModelCache.Store("x", []string{"m1"})
+	if got := c.Get(context.Background(), ACPDriver{Name: "x"}, nil, nil); len(got) != 1 || got[0] != "m1" {
+		t.Fatalf("查询结果 %v", got)
+	}
+	acpModelCache.Store("x", []string{"m2"})
+	if got := c.Get(context.Background(), ACPDriver{Name: "x"}, nil, nil); got[0] != "m1" {
+		t.Fatalf("缓存期内不应重新查询 %v", got)
+	}
+}

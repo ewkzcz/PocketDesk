@@ -71,6 +71,7 @@ type Manager struct {
 	interruptGrace  time.Duration
 	now             func() time.Time
 	closed          atomic.Bool
+	models          *agent.ModelCache
 
 	/** 最近处理过的消息编号，忽略网络重试造成的重复发送 */
 	recent *idem.Recent
@@ -112,7 +113,7 @@ func New(d Deps) *Manager {
 	if d.Notifier == nil {
 		d.Notifier = func() notify.Notifier { return notify.Nop{} }
 	}
-	return &Manager{d: d, rts: map[string]*runtime{}, pend: map[string]*pending{}, approvalTimeout: 10 * time.Minute, interruptGrace: 10 * time.Second, now: time.Now, recent: idem.New(2000, 30*time.Minute)}
+	return &Manager{d: d, rts: map[string]*runtime{}, pend: map[string]*pending{}, approvalTimeout: 10 * time.Minute, interruptGrace: 10 * time.Second, now: time.Now, recent: idem.New(2000, 30*time.Minute), models: agent.NewModelCache(10 * time.Minute)}
 }
 
 /** SetTimeouts：调整审批超时与打断宽限，仅供测试 */
@@ -838,4 +839,21 @@ func displayCwd(c string) string {
 		return "工作区根目录"
 	}
 	return c
+}
+
+/**
+ * Models：某 Agent 的可选模型；配置文件里写了列表时以配置为准，否则向 Agent 实时查询
+ */
+func (m *Manager) Models(ctx context.Context, kind string) []string {
+	cfg := m.d.Config()
+	if list := cfg.Models[kind]; len(list) > 0 {
+		return list
+	}
+	d, ok := m.d.Registry.Get(kind)
+	if !ok {
+		return []string{}
+	}
+	qctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	return m.models.Get(qctx, d, cfg.Agents[kind], []string{})
 }

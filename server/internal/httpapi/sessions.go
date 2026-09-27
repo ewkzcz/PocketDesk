@@ -216,11 +216,7 @@ func (s *Server) decide(w http.ResponseWriter, r *http.Request) {
 
 /** models：某 Agent 可选模型 */
 func (s *Server) models(w http.ResponseWriter, r *http.Request) {
-	list := s.Cfg.Get().Models[r.PathValue("kind")]
-	if list == nil {
-		list = []string{}
-	}
-	writeJSON(w, 200, list)
+	writeJSON(w, 200, s.Sessions.Models(r.Context(), r.PathValue("kind")))
 }
 
 /**

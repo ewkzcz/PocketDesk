@@ -54,13 +54,13 @@ type Config struct {
 	TerminalIdleHours int                 `json:"terminalIdleHours"`
 }
 
-/** DefaultModels：/model 指令弹出的可选模型，可在配置文件中改写 */
+/** DefaultModels：/model 指令弹出的可选模型，可在配置文件中改写；留空的由电脑端向 Agent 实时查询 */
 func DefaultModels() map[string][]string {
 	return map[string][]string{
 		"claude": {"sonnet", "opus", "haiku"},
-		"codex":  {"gpt-5-codex", "gpt-5"},
+		"codex":  {},
 		"pi":     {},
-		"dsh":    {"deepseek-chat", "deepseek-reasoner"},
+		"dsh":    {},
 	}
 }
 

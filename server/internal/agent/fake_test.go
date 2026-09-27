@@ -258,7 +258,20 @@ func fakeACP() {
 		case "initialize":
 			out(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{"protocolVersion": 1, "agentCapabilities": map[string]any{"loadSession": true}}})
 		case "session/new":
-			out(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{"sessionId": "acp-s1"}})
+			// 与真实 DSH 一致：模型取值是字符串数组编码，按提供方分组
+			out(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{"sessionId": "acp-s1", "configOptions": []any{
+				map[string]any{"id": "model", "category": "model", "type": "select", "currentValue": `["ds","flash"]`, "options": []any{
+					map[string]any{"group": "ds", "name": "DeepSeek", "options": []any{map[string]any{"value": `["ds","flash"]`, "name": "Flash"}, map[string]any{"value": `["ds","pro"]`, "name": "Pro"}}},
+				}},
+				map[string]any{"id": "reasoning_effort", "category": "thought_level", "currentValue": "high", "options": []any{map[string]any{"value": "high"}}},
+			}}})
+		case "session/set_config_option":
+			params, _ := m["params"].(map[string]any)
+			if params["configId"] != "model" || params["value"] != `["ds","pro"]` || params["sessionId"] != "acp-s1" {
+				out(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": -32602, "message": fmt.Sprint("取值不对 ", params)}})
+				continue
+			}
+			out(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{}})
 		case "session/load":
 			out(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"update": map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": "历史回放"}}}})
 			out(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{}})
