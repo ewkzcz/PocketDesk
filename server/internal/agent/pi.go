@@ -1,14 +1,42 @@
 /**
- * Pi 驱动：以 rpc 模式常驻运行，标准输入输出逐行 JSON，支持插话与追加。
+ * Pi 驱动：以 rpc 模式常驻运行，标准输入输出逐行 JSON，支持插话与追加；
+ * 加载内置审批扩展，执行命令和写工作区外文件前经扩展界面请求向手机要确认。
  */
 package agent
 
 import (
+	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 )
+
+/** piApproveExt：审批扩展源码 */
+//go:embed pi_approve.ts
+var piApproveExt []byte
+
+/** piApprovalTitle：审批扩展发起选择请求时的标题前缀，后接 JSON 内容 */
+const piApprovalTitle = "pocketdesk:approval "
+
+/** piExtensionPath：把审批扩展写到缓存目录，内容不变时不重写 */
+func piExtensionPath() (string, error) {
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		dir = os.TempDir()
+	}
+	p := filepath.Join(dir, "PocketDesk", "pi-approve.ts")
+	if old, err := os.ReadFile(p); err == nil && bytes.Equal(old, piApproveExt) {
+		return p, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		return "", err
+	}
+	return p, os.WriteFile(p, piApproveExt, 0o644)
+}
 
 /** PiDriver：Pi 接入 */
 type PiDriver struct{}
@@ -43,9 +71,21 @@ func (PiDriver) Start(_ context.Context, opt Options) (Process, error) {
 	if len(opt.Command) == 0 {
 		opt.Command = []string{"pi"}
 	}
-	// 1、启动
+	// 1、启动；有审批方时加载审批扩展
+	args := PiArgs(opt)
+	if opt.Approver != nil {
+		ext, err := piExtensionPath()
+		if err != nil {
+			return nil, fmt.Errorf("准备审批扩展失败: %w", err)
+		}
+		args = append(args, "-e", ext)
+	}
 	parser := &piParser{}
-	p, err := startLineProc(PiArgs(opt), opt.Cwd, append(EnvPath(), opt.Env...), func(lp *lineProc, line []byte) {
+	p, err := startLineProc(args, opt.Cwd, append(EnvPath(), opt.Env...), func(lp *lineProc, line []byte) {
+		if bytes.Contains(line, []byte(`"extension_ui_request"`)) {
+			piUIRequest(lp, opt.Approver, line)
+			return
+		}
 		for _, e := range parser.parse(line) {
 			lp.emit(e)
 		}
@@ -56,6 +96,47 @@ func (PiDriver) Start(_ context.Context, opt Options) (Process, error) {
 	// 2、会话信息
 	p.writeJSON(map[string]any{"type": "get_state"})
 	return &piProc{lineProc: p}, nil
+}
+
+/**
+ * piUIRequest：处理扩展界面请求
+ *
+ * 处理流程：
+ * 1、只有选择、确认、输入、编辑四类对话需要回复，其余为通知直接忽略
+ * 2、审批扩展的选择请求：解析内容，异步等待手机决定后回复 allow / deny
+ * 3、其他扩展的对话：手机上没有对应界面，直接取消，避免 Pi 一直等待
+ */
+func piUIRequest(lp *lineProc, ap Approver, line []byte) {
+	var r struct {
+		ID     string `json:"id"`
+		Method string `json:"method"`
+		Title  string `json:"title"`
+	}
+	if json.Unmarshal(line, &r) != nil {
+		return
+	}
+	// 1、通知类
+	switch r.Method {
+	case "select", "confirm", "input", "editor":
+	default:
+		return
+	}
+	// 2、审批
+	if r.Method == "select" && strings.HasPrefix(r.Title, piApprovalTitle) && ap != nil {
+		var req ApprovalRequest
+		json.Unmarshal([]byte(strings.TrimPrefix(r.Title, piApprovalTitle)), &req)
+		go func() {
+			d, err := ap.RequestApproval(context.Background(), req)
+			value := "deny"
+			if err == nil && d.Allow {
+				value = "allow"
+			}
+			lp.writeJSON(map[string]any{"type": "extension_ui_response", "id": r.ID, "value": value})
+		}()
+		return
+	}
+	// 3、其他对话
+	lp.writeJSON(map[string]any{"type": "extension_ui_response", "id": r.ID, "cancelled": true})
 }
 
 /** piProc：Pi 进程 */

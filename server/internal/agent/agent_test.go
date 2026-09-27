@@ -447,3 +447,28 @@ func TestCodexAppInterrupt(t *testing.T) {
 		t.Fatalf("打断 %+v", e.Data)
 	}
 }
+
+func TestPiApprovalExtension(t *testing.T) {
+	for _, tc := range []struct {
+		d    Decision
+		want string
+	}{{Decision{Allow: true}, "true/a1/allow"}, {Decision{}, "true/a1/deny"}} {
+		ap := &fakeApprover{d: tc.d}
+		opt := fakeOpts(t, "pi")
+		opt.Approver = ap
+		p, err := PiDriver{}.Start(context.Background(), opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p.Send(context.Background(), Message{Text: "danger"})
+		evs := collect(t, p)
+		p.Close()
+		if len(ap.reqs) != 1 || ap.reqs[0].Kind != "command" || ap.reqs[0].Summary != "rm -rf tmp" || ap.reqs[0].Input["command"] != "rm -rf tmp" {
+			t.Fatalf("审批请求 %+v", ap.reqs)
+		}
+		// 其他扩展的对话被取消，审批按决定回复
+		if end, _ := find(evs, EvToolEnd); end.Data["output"] != tc.want {
+			t.Fatalf("扩展收到的回复 %v，期望 %s", end.Data["output"], tc.want)
+		}
+	}
+}

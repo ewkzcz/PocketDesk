@@ -195,6 +195,10 @@ func fakePi() {
 			out(map[string]any{"type": "response", "command": "get_state", "success": true, "data": map[string]any{"sessionFile": "/tmp/pi.jsonl"}})
 		case "prompt", "steer":
 			out(map[string]any{"type": "agent_start"})
+			if msg, _ := m["message"].(string); msg == "danger" {
+				fakePiApproval(sc)
+				continue
+			}
 			out(map[string]any{"type": "message_start", "message": map[string]any{"role": "assistant"}})
 			out(map[string]any{"type": "message_update", "assistantMessageEvent": map[string]any{"type": "text_delta", "delta": "hi"}})
 			out(map[string]any{"type": "tool_execution_start", "toolCallId": "p1", "toolName": "write", "args": map[string]any{"path": "x.md"}})
@@ -205,6 +209,39 @@ func fakePi() {
 			out(map[string]any{"type": "agent_end"})
 		}
 	}
+}
+
+/**
+ * fakePiApproval：模拟审批扩展，与真实 Pi 一致：先发一个其他扩展的确认对话（应被取消），
+ * 再由审批扩展发选择请求；把两次回复写进工具结果，便于测试核对
+ */
+func fakePiApproval(sc *bufio.Scanner) {
+	ext := ""
+	for i, a := range os.Args {
+		if a == "-e" && i+1 < len(os.Args) {
+			ext = os.Args[i+1]
+		}
+	}
+	if b, err := os.ReadFile(ext); err != nil || !strings.Contains(string(b), "pocketdesk:approval") {
+		out(map[string]any{"type": "response", "command": "prompt", "success": false, "error": "未加载审批扩展"})
+		out(map[string]any{"type": "agent_end"})
+		return
+	}
+	read := func() map[string]any {
+		sc.Scan()
+		var r map[string]any
+		json.Unmarshal(sc.Bytes(), &r)
+		return r
+	}
+	out(map[string]any{"type": "extension_ui_request", "id": "n1", "method": "notify", "message": "忽略"})
+	out(map[string]any{"type": "extension_ui_request", "id": "c1", "method": "confirm", "title": "其他扩展", "message": "?"})
+	other := read()
+	out(map[string]any{"type": "tool_execution_start", "toolCallId": "b1", "toolName": "bash", "args": map[string]any{"command": "rm -rf tmp"}})
+	out(map[string]any{"type": "extension_ui_request", "id": "a1", "method": "select", "title": `pocketdesk:approval {"tool":"bash","kind":"command","summary":"rm -rf tmp","input":{"command":"rm -rf tmp"}}`, "options": []string{"allow", "deny"}})
+	ans := read()
+	text := fmt.Sprintf("%v/%v/%v", other["cancelled"], ans["id"], ans["value"])
+	out(map[string]any{"type": "tool_execution_end", "toolCallId": "b1", "toolName": "bash", "result": map[string]any{"content": []any{map[string]any{"type": "text", "text": text}}}})
+	out(map[string]any{"type": "agent_end"})
 }
 
 /** fakeACP：模拟 ACP 服务，包括审批请求 */
