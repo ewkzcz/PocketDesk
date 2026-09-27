@@ -69,7 +69,8 @@ func (s *Server) eventSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	conn := &wsConn{c: c}
 	defer c.Close()
-	sub := s.Hub.Subscribe(deviceOf(r).ID, 1024)
+	device := deviceOf(r).ID
+	sub := s.Hub.Subscribe(device, 1024)
 	defer s.Hub.Unsubscribe(sub)
 	s.Hub.PublishGlobal("host.status", map[string]any{"online": s.Hub.Devices()})
 	// 2、hello 与补发
@@ -98,14 +99,19 @@ func (s *Server) eventSocket(w http.ResponseWriter, r *http.Request) {
 		defer close(done)
 		for {
 			c.SetReadDeadline(time.Now().Add(readWait))
+			var raw json.RawMessage
+			if err := c.ReadJSON(&raw); err != nil {
+				return
+			}
 			var m struct {
 				Type string `json:"type"`
 			}
-			if err := c.ReadJSON(&m); err != nil {
-				return
-			}
-			if m.Type == "ping" {
+			json.Unmarshal(raw, &m)
+			switch m.Type {
+			case "ping":
 				conn.writeJSON(map[string]string{"type": "pong"})
+			case "phone.res":
+				s.onPhoneReply(device, raw)
 			}
 		}
 	}()

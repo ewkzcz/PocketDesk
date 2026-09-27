@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/url"
@@ -323,6 +324,8 @@ func TestEndToEnd(t *testing.T) {
 	t.Run("此电脑与位置管理", func(t *testing.T) { placesFlow(t, e) })
 	t.Run("上传与文件传输助手", func(t *testing.T) { uploadFlow(t, e) })
 	t.Run("发往手机", func(t *testing.T) { outboxFlow(t, e) })
+	t.Run("桌面端文件传输助手", func(t *testing.T) { desktopAssistantFlow(t, e) })
+	t.Run("桌面端管理手机文件", func(t *testing.T) { phoneFilesFlow(t, e) })
 	t.Run("会话与审批", func(t *testing.T) { sessionFlow(t, e) })
 	t.Run("终端", func(t *testing.T) { terminalFlow(t, e) })
 	t.Run("管理入口防护", func(t *testing.T) { adminGuardFlow(t, e) })
@@ -504,6 +507,162 @@ func outboxFlow(t *testing.T, e *env) {
 	}
 	if code := e.adminDo("POST", "/admin/api/send", map[string]any{"paths": []string{src}, "to": "不存在"}, nil); code != 404 {
 		t.Fatal("未知设备应报错")
+	}
+}
+
+/** adminRaw：带任意请求体调用管理接口 */
+func (e *env) adminRaw(method, path string, body io.Reader, ctype string) (int, []byte) {
+	e.t.Helper()
+	req, _ := http.NewRequest(method, e.admin+path, body)
+	req.Header.Set("X-PD-Key", e.a.AdminKey)
+	if ctype != "" {
+		req.Header.Set("Content-Type", ctype)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	defer res.Body.Close()
+	b, _ := io.ReadAll(res.Body)
+	return res.StatusCode, b
+}
+
+/** multipartFiles：构造上传表单 */
+func multipartFiles(files map[string]string) (io.Reader, string) {
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	for name, content := range files {
+		fw, _ := mw.CreateFormFile("file", name)
+		fw.Write([]byte(content))
+	}
+	mw.Close()
+	return &buf, mw.FormDataContentType()
+}
+
+/** desktopAssistantFlow：桌面端发文字、发文件，手机端收到记录，桌面端能取回记录里的文件 */
+func desktopAssistantFlow(t *testing.T, e *env) {
+	if code := e.adminDo("POST", "/admin/api/assistant/text", map[string]string{"text": "电脑这边发一句"}, nil); code != 200 {
+		t.Fatalf("发文字 %d", code)
+	}
+	body, ct := multipartFiles(map[string]string{"粘贴图片.png": "png-bytes"})
+	if code, b := e.adminRaw("POST", "/admin/api/assistant/files", body, ct); code != 200 || !strings.Contains(string(b), "粘贴图片.png") {
+		t.Fatalf("发文件 %d %s", code, b)
+	}
+	// 手机端的文件传输助手里能看到两条，文件同时留在电脑收件目录
+	_, evs := e.do("GET", "/api/sessions/assistant/events?after=0", nil, nil)
+	if !strings.Contains(string(evs), `"type":"msg.host"`) || !strings.Contains(string(evs), "电脑这边发一句") || !strings.Contains(string(evs), `"direction":"down"`) || !strings.Contains(string(evs), "粘贴图片.png") {
+		t.Fatalf("手机端记录 %s", evs)
+	}
+	if b, _ := os.ReadFile(filepath.Join(e.a.Cfg.Get().Transfer.InboxDir, time.Now().Format("20060102"), "粘贴图片.png")); string(b) != "png-bytes" {
+		t.Fatal("电脑收件目录里没有这份文件")
+	}
+	// 桌面端取记录与文件
+	var list []struct {
+		Seq  int64           `json:"seq"`
+		Type string          `json:"type"`
+		Data json.RawMessage `json:"data"`
+	}
+	if code := e.adminDo("GET", "/admin/api/assistant/events", nil, &list); code != 200 || len(list) == 0 {
+		t.Fatalf("桌面端记录 %d", code)
+	}
+	var seq int64
+	for _, ev := range list {
+		if ev.Type == "file" && strings.Contains(string(ev.Data), "粘贴图片.png") {
+			seq = ev.Seq
+		}
+	}
+	code, b := e.adminRaw("GET", fmt.Sprintf("/admin/api/assistant/file?seq=%d", seq), nil, "")
+	if code != 200 || string(b) != "png-bytes" {
+		t.Fatalf("桌面端取文件 %d %q", code, b)
+	}
+	if code, _ := e.adminRaw("GET", "/admin/api/assistant/file?seq=99999", nil, ""); code != 404 {
+		t.Fatal("不存在的记录应 404")
+	}
+}
+
+/**
+ * phoneFilesFlow：桌面端管理手机文件
+ *
+ * 处理流程：
+ * 1、手机不在线时直接报错
+ * 2、模拟手机：连上实时连接，按请求列目录、上传文件、收取文件
+ * 3、桌面端列目录、下载、上传，不支持的操作被拒绝
+ */
+func phoneFilesFlow(t *testing.T, e *env) {
+	var phones []struct {
+		ID     string `json:"id"`
+		Online bool   `json:"online"`
+	}
+	e.adminDo("GET", "/admin/api/phones", nil, &phones)
+	if len(phones) == 0 {
+		t.Fatal("没有已配对的手机")
+	}
+	dev := phones[0].ID
+	// 1、不在线
+	if code := e.adminDo("POST", "/admin/api/phone/"+dev+"/call", map[string]any{"op": "list", "args": map[string]string{"path": ""}}, nil); code != 409 {
+		t.Fatalf("手机不在线应报错 %d", code)
+	}
+	// 2、模拟手机
+	c := e.dial("/ws")
+	defer c.Close()
+	c.WriteJSON(map[string]any{"type": "hello", "cursors": map[string]int64{}})
+	readUntil(t, c, func(m wsMsg) bool { return m.Type == "ready" })
+	received := make(chan string, 1)
+	go func() {
+		for {
+			var m wsMsg
+			if c.ReadJSON(&m) != nil {
+				return
+			}
+			if m.Type != "phone.req" {
+				continue
+			}
+			var req struct {
+				ID   string         `json:"id"`
+				Op   string         `json:"op"`
+				Args map[string]any `json:"args"`
+			}
+			json.Unmarshal(m.Data, &req)
+			reply := map[string]any{"type": "phone.res", "id": req.ID, "ok": true}
+			switch req.Op {
+			case "list":
+				reply["data"] = map[string]any{"entries": []map[string]any{{"name": "照片.jpg", "isDir": false, "size": 3}}}
+			case "push":
+				e.do("PUT", "/api/phone/blob/"+req.Args["id"].(string), []byte("jpg"), nil)
+			case "pull":
+				_, b := e.do("GET", "/api/phone/blob/"+req.Args["id"].(string), nil, nil)
+				received <- req.Args["dir"].(string) + "/" + req.Args["name"].(string) + "=" + string(b)
+				reply["data"] = map[string]string{"name": req.Args["name"].(string)}
+			default:
+				reply = map[string]any{"type": "phone.res", "id": req.ID, "ok": false, "error": "手机上没有这个文件夹"}
+			}
+			c.WriteJSON(reply)
+		}
+	}()
+	// 3、桌面端操作
+	code, b := e.adminRaw("POST", "/admin/api/phone/"+dev+"/call", strings.NewReader(`{"op":"list","args":{"path":""}}`), "application/json")
+	if code != 200 || !strings.Contains(string(b), "照片.jpg") {
+		t.Fatalf("列目录 %d %s", code, b)
+	}
+	if code, b = e.adminRaw("GET", "/admin/api/phone/"+dev+"/file?path=照片.jpg", nil, ""); code != 200 || string(b) != "jpg" {
+		t.Fatalf("下载 %d %q", code, b)
+	}
+	body, ct := multipartFiles(map[string]string{"报告.pdf": "pdf"})
+	if code, b = e.adminRaw("POST", "/admin/api/phone/"+dev+"/upload?dir=资料", body, ct); code != 200 || !strings.Contains(string(b), "报告.pdf") {
+		t.Fatalf("上传 %d %s", code, b)
+	}
+	if got := <-received; got != "资料/报告.pdf=pdf" {
+		t.Fatalf("手机收到 %s", got)
+	}
+	if code, b = e.adminRaw("POST", "/admin/api/phone/"+dev+"/call", strings.NewReader(`{"op":"mkdir","args":{"path":"x","name":"y"}}`), "application/json"); code != 400 || !strings.Contains(string(b), "手机上没有这个文件夹") {
+		t.Fatalf("手机报错应原样返回 %d %s", code, b)
+	}
+	if code = e.adminDo("POST", "/admin/api/phone/"+dev+"/call", map[string]any{"op": "push"}, nil); code != 400 {
+		t.Fatal("不支持的操作应拒绝")
+	}
+	// 其他设备不能取走这次交换的文件
+	if res, _ := e.do("GET", "/api/phone/blob/不存在", nil, nil); res.StatusCode != 404 {
+		t.Fatal("不存在的交换应 404")
 	}
 }
 

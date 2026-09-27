@@ -53,6 +53,7 @@ type Server struct {
 	agents     []agent.Installed
 	pausedMu   sync.Mutex
 	pausedTill time.Time
+	phone      phoneBridge
 }
 
 /** Handler：手机端 HTTPS 入口 */
@@ -79,6 +80,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/ws/{id}/search", a(s.search))
 	// 传输
 	mux.Handle("/files/", s.auth(s.transferGate(s.Tus)))
+	mux.Handle("GET /api/phone/blob/{id}", a(s.phoneBlobGet))
+	mux.Handle("PUT /api/phone/blob/{id}", a(s.phoneBlobPut))
 	mux.Handle("GET /api/outbox", a(s.outboxList))
 	mux.Handle("GET /api/outbox/{id}/file", a(s.outboxFile))
 	mux.Handle("POST /api/outbox/{id}/ack", a(s.outboxAck))
