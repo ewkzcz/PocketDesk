@@ -5,6 +5,7 @@ package agent
 
 import (
 	"context"
+	"github.com/ewkzcz/pocketdesk/server/internal/sysenv"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -131,7 +132,7 @@ func Detect(commands map[string][]string) []Installed {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
 			cmd := exec.CommandContext(ctx, p, "--version")
-			cmd.Env = append(os.Environ(), EnvPath()...)
+			cmd.Env = append(sysenv.Login(), EnvPath()...)
 			if b, err := cmd.Output(); err == nil {
 				info.Version = strings.TrimSpace(strings.SplitN(string(b), "\n", 2)[0])
 			}

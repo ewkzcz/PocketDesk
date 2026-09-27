@@ -6,6 +6,7 @@
 package terminal
 
 import (
+	"github.com/ewkzcz/pocketdesk/server/internal/sysenv"
 	"os"
 	"os/exec"
 	"syscall"
@@ -21,14 +22,7 @@ type unixPty struct {
 
 /** defaultShell：用户登录 shell，找不到时退回 zsh 或 sh */
 func defaultShell() []string {
-	sh := os.Getenv("SHELL")
-	if sh == "" {
-		sh = "/bin/zsh"
-		if _, err := os.Stat(sh); err != nil {
-			sh = "/bin/sh"
-		}
-	}
-	return []string{sh, "-l"}
+	return []string{sysenv.Shell(), "-l"}
 }
 
 /**
@@ -42,7 +36,8 @@ func startPty(argv []string, cwd string, cols, rows int) (ptyProc, error) {
 	// 1、命令
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = cwd
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor")
+	// 等同于新开一个终端窗口：干净的基础环境，其余由用户的 shell 配置文件设置
+	cmd.Env = append(sysenv.Base(), "TERM=xterm-256color", "COLORTERM=truecolor")
 	// 2、启动
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
 	if err != nil {

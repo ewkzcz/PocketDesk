@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/ewkzcz/pocketdesk/server/internal/sysenv"
 	"os/exec"
 	"strings"
 	"sync"
@@ -35,7 +36,7 @@ func (PiDriver) Models(ctx context.Context, command []string) ([]string, error) 
 		return nil, err
 	}
 	cmd := exec.CommandContext(ctx, path, append(command[1:], "--list-models")...)
-	cmd.Env = append(childEnv(), EnvPath()...)
+	cmd.Env = append(sysenv.Login(), EnvPath()...)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
