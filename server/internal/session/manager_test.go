@@ -71,6 +71,15 @@ func (p *mockProc) Send(_ context.Context, m agent.Message) error {
 		case m.Text == "hang":
 			<-p.hang
 			p.emit(agent.EvTurnEnd)
+		case m.Text == "stream":
+			for i := 0; i < 50; i++ {
+				p.emit(agent.EvThinking, "id", "t", "text", "想", "delta", true)
+			}
+			for i := 0; i < 50; i++ {
+				p.emit(agent.EvDelta, "id", "x", "text", "a")
+			}
+			p.emit(agent.EvDone, "id", "x", "text", strings.Repeat("a", 50))
+			p.emit(agent.EvTurnEnd)
 		case m.Text == "stuck":
 		case m.Text == "crash":
 			p.crash(errors.New("segfault"))
@@ -633,3 +642,44 @@ func TestSnippet(t *testing.T) {
 
 /** jsonMarshal：测试用序列化 */
 func jsonMarshal(v any) ([]byte, error) { return json.Marshal(v) }
+
+func TestStreamDeltasCoalesced(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	s, _ := f.m.Create(ctx, "claude", "w1", ".", "")
+	f.m.Send(ctx, s.ID, Input{Text: "stream"})
+	f.waitState(t, s.ID, StateIdle)
+	var order []string
+	thinking, text := "", ""
+	for _, e := range f.events(t, s.ID) {
+		var d struct {
+			Text string `json:"text"`
+		}
+		json.Unmarshal(e.Data, &d)
+		switch e.Type {
+		case "thinking":
+			thinking += d.Text
+		case "msg.delta":
+			text += d.Text
+		}
+		if len(order) == 0 || order[len(order)-1] != e.Type {
+			order = append(order, e.Type)
+		}
+	}
+	// 连续片段合并成少量事件，内容与顺序不变
+	if thinking != strings.Repeat("想", 50) || text != strings.Repeat("a", 50) {
+		t.Fatalf("合并后内容不对：%q %q", thinking, text)
+	}
+	if strings.Join(order, ",") != "state,msg.user,state,thinking,msg.delta,msg.done,state" {
+		t.Fatalf("顺序 %v", order)
+	}
+	n := 0
+	for _, e := range f.events(t, s.ID) {
+		if e.Type == "thinking" || e.Type == "msg.delta" {
+			n++
+		}
+	}
+	if n > 4 {
+		t.Fatalf("100 个片段应合并为少量事件，实际 %d 条", n)
+	}
+}

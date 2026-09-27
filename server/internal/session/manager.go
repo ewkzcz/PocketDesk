@@ -371,14 +371,89 @@ func (m *Manager) startProc(ctx context.Context, rt *runtime, kind, cwd, resume,
 	return p, nil
 }
 
-/** pump：转发一个进程的全部事件，结束后处理退出 */
+/**
+ * pump：转发一个进程的全部事件，结束后处理退出
+ *
+ * 处理流程：
+ * 1、同一段回复或思考的连续流式片段合并后再写库推送（最多等 coalesceWait 或攒满 coalesceMax），
+ *    避免每个词一条事件撑大数据库、挤占手机端首屏
+ * 2、其他事件到达前先发出已合并的片段，保证顺序不变
+ * 3、事件通道关闭后处理退出
+ */
 func (m *Manager) pump(rt *runtime, p agent.Process, tag string) {
 	ctx := context.Background()
-	for e := range p.Events() {
-		m.handle(ctx, rt, p, tag, e)
+	var pend *agent.Event
+	var timer *time.Timer
+	var tick <-chan time.Time
+	flush := func() {
+		if pend != nil {
+			m.handle(ctx, rt, p, tag, *pend)
+			pend = nil
+		}
+		if timer != nil {
+			timer.Stop()
+			timer, tick = nil, nil
+		}
 	}
+	events := p.Events()
+	for events != nil {
+		select {
+		case e, ok := <-events:
+			if !ok {
+				events = nil
+				flush()
+				break
+			}
+			// 1、流式片段
+			if k := deltaKey(e); k != "" {
+				if pend != nil && deltaKey(*pend) == k {
+					text, _ := pend.Data["text"].(string)
+					add, _ := e.Data["text"].(string)
+					pend.Data["text"] = text + add
+					if len(text)+len(add) >= coalesceMax {
+						flush()
+					}
+					continue
+				}
+				flush()
+				data := make(map[string]any, len(e.Data))
+				for k, v := range e.Data {
+					data[k] = v
+				}
+				pend = &agent.Event{Type: e.Type, Data: data}
+				timer = time.NewTimer(coalesceWait)
+				tick = timer.C
+				continue
+			}
+			// 2、其他事件
+			flush()
+			m.handle(ctx, rt, p, tag, e)
+		case <-tick:
+			timer, tick = nil, nil
+			flush()
+		}
+	}
+	// 3、退出
 	<-p.Done()
 	m.onExit(ctx, rt, p)
+}
+
+/** 流式片段合并的等待时长与长度上限 */
+const (
+	coalesceWait = 120 * time.Millisecond
+	coalesceMax  = 4096
+)
+
+/** deltaKey：可合并的流式片段返回类型与 ID 组成的键，其他事件返回空 */
+func deltaKey(e agent.Event) string {
+	id, _ := e.Data["id"].(string)
+	switch {
+	case e.Type == agent.EvDelta:
+		return "d:" + id
+	case e.Type == agent.EvThinking && e.Data["delta"] == true:
+		return "t:" + id
+	}
+	return ""
 }
 
 /**
