@@ -319,6 +319,7 @@ func TestEndToEnd(t *testing.T) {
 	}
 
 	t.Run("工作区文件", func(t *testing.T) { workspaceFlow(t, e) })
+	t.Run("此电脑与位置管理", func(t *testing.T) { placesFlow(t, e) })
 	t.Run("上传与文件传输助手", func(t *testing.T) { uploadFlow(t, e) })
 	t.Run("发件箱", func(t *testing.T) { outboxFlow(t, e) })
 	t.Run("会话与审批", func(t *testing.T) { sessionFlow(t, e) })
@@ -710,4 +711,95 @@ func (j *cookieJar) has(name string) bool {
 		}
 	}
 	return false
+}
+
+/** placesFlow：「此电脑」可浏览任意目录；用文件夹添加、移除工作区；默认工作目录；收发目录立即生效 */
+func placesFlow(t *testing.T, e *env) {
+	type ws struct {
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		RootPath  string `json:"rootPath"`
+		IsDefault bool   `json:"isDefault"`
+		System    bool   `json:"system"`
+		Home      string `json:"home"`
+	}
+	list := func() []ws {
+		var l []ws
+		_, body := e.do("GET", "/api/ws", nil, nil)
+		json.Unmarshal(body, &l)
+		return l
+	}
+	// 1、第一个是此电脑，能列出工作区之外的目录
+	l := list()
+	if len(l) == 0 || !l[0].System || l[0].ID != "computer" || l[0].Home == "" {
+		t.Fatalf("工作区列表 %+v", l)
+	}
+	outside := t.TempDir()
+	os.WriteFile(filepath.Join(outside, "外部.txt"), []byte("x"), 0o644)
+	res, body := e.do("GET", "/api/ws/computer/list?path="+url.QueryEscape(strings.TrimPrefix(filepath.ToSlash(outside), "/")), nil, nil)
+	if res.StatusCode != 200 || !strings.Contains(string(body), "外部.txt") {
+		t.Fatalf("此电脑列目录 %d %s", res.StatusCode, body)
+	}
+	// 2、添加工作区：重复添加返回同一个，名称取文件夹名
+	proj := filepath.Join(t.TempDir(), "我的项目")
+	os.MkdirAll(proj, 0o755)
+	var added ws
+	res, body = e.do("POST", "/api/ws", map[string]string{"path": proj}, nil)
+	json.Unmarshal(body, &added)
+	if res.StatusCode != 201 || added.Name != "我的项目" {
+		t.Fatalf("添加 %d %s", res.StatusCode, body)
+	}
+	if res, _ = e.do("POST", "/api/ws", map[string]string{"path": proj}, nil); res.StatusCode != 200 {
+		t.Fatal("重复添加应返回已有工作区")
+	}
+	if res, _ = e.do("POST", "/api/ws", map[string]string{"path": "relative/dir"}, nil); res.StatusCode != 400 {
+		t.Fatal("相对路径应拒绝")
+	}
+	// 3、默认工作目录：设为新文件夹后排在此电脑之后，且不能移除
+	if res, body = e.do("PUT", "/api/ws/default", map[string]string{"path": proj}, nil); res.StatusCode != 200 {
+		t.Fatalf("设默认 %d %s", res.StatusCode, body)
+	}
+	l = list()
+	if len(l) < 2 || !l[1].IsDefault || l[1].RootPath != proj {
+		t.Fatalf("默认工作目录 %+v", l)
+	}
+	if res, _ = e.do("DELETE", "/api/ws/"+l[1].ID, nil, nil); res.StatusCode != 400 {
+		t.Fatal("默认工作目录不能移除")
+	}
+	if res, _ = e.do("DELETE", "/api/ws/computer", nil, nil); res.StatusCode != 400 {
+		t.Fatal("此电脑不能移除")
+	}
+	other := filepath.Join(t.TempDir(), "临时")
+	os.MkdirAll(other, 0o755)
+	var o ws
+	_, body = e.do("POST", "/api/ws", map[string]string{"path": other}, nil)
+	json.Unmarshal(body, &o)
+	if res, _ = e.do("DELETE", "/api/ws/"+o.ID, nil, nil); res.StatusCode != 200 {
+		t.Fatal("移除工作区失败")
+	}
+	// 4、收发目录：查看与更换，发件目录立即生效
+	var dirs map[string]string
+	_, body = e.do("GET", "/api/dirs", nil, nil)
+	json.Unmarshal(body, &dirs)
+	if dirs["inboxDir"] == "" || dirs["outboxDir"] == "" || dirs["defaultWorkspace"] != proj {
+		t.Fatalf("目录 %v", dirs)
+	}
+	newOut := filepath.Join(t.TempDir(), "发件")
+	if res, body = e.do("PUT", "/api/dirs", map[string]string{"outboxDir": newOut}, nil); res.StatusCode != 200 || !strings.Contains(string(body), "发件") {
+		t.Fatalf("更换发件目录 %d %s", res.StatusCode, body)
+	}
+	os.WriteFile(filepath.Join(newOut, "新发件.txt"), []byte("x"), 0o644)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		_, body = e.do("GET", "/api/outbox", nil, nil)
+		if strings.Contains(string(body), "新发件.txt") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("新发件目录没有生效 %s", body)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	// 临时目录随本段测试结束删除，改回原目录供后续流程使用
+	e.do("PUT", "/api/dirs", map[string]string{"outboxDir": dirs["outboxDir"]}, nil)
 }

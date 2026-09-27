@@ -235,16 +235,15 @@ func (a *App) Start(ctx context.Context) error {
 	return nil
 }
 
-/** defaultWorkspace：首次运行且 ~/Workspace 存在时登记为工作区 */
+/** defaultWorkspace：创建默认工作目录并登记为工作区 */
 func (a *App) defaultWorkspace(ctx context.Context) {
-	list, err := a.Store.Workspaces(ctx)
-	if err != nil || len(list) > 0 {
+	p := a.Cfg.Get().DefaultWorkspace
+	if err := os.MkdirAll(p, 0o755); err != nil {
+		slog.Warn("创建默认工作目录失败", "err", err)
 		return
 	}
-	home, _ := os.UserHomeDir()
-	p := filepath.Join(home, "Workspace")
-	if info, err := os.Stat(p); err == nil && info.IsDir() {
-		a.Store.SaveWorkspace(ctx, store.Workspace{ID: security.NewID()[:12], Name: "Workspace", RootPath: p})
+	if _, err := a.Store.EnsureDefault(ctx, p, security.NewID()[:12]); err != nil {
+		slog.Warn("登记默认工作目录失败", "err", err)
 	}
 }
 

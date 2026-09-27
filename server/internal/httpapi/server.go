@@ -66,6 +66,11 @@ func (s *Server) Handler() http.Handler {
 	// 电脑与工作区
 	mux.Handle("GET /api/host", a(s.host))
 	mux.Handle("GET /api/ws", a(s.workspaces))
+	mux.Handle("POST /api/ws", a(s.addWorkspace))
+	mux.Handle("PUT /api/ws/default", a(s.setDefaultWorkspace))
+	mux.Handle("DELETE /api/ws/{id}", a(s.removeWorkspace))
+	mux.Handle("GET /api/dirs", a(s.dirs))
+	mux.Handle("PUT /api/dirs", a(s.setDirs))
 	mux.Handle("GET /api/ws/{id}/list", a(s.list))
 	mux.Handle("GET /api/ws/{id}/file", a(s.readFile))
 	mux.Handle("HEAD /api/ws/{id}/file", a(s.readFile))

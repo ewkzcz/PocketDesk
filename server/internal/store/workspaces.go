@@ -1,5 +1,5 @@
 /**
- * 工作区表的读写。
+ * 工作区表的读写；另有内置的「此电脑」，从根目录起可访问电脑上的任意文件夹。
  */
 package store
 
@@ -7,8 +7,28 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 )
+
+/** ComputerID：内置「此电脑」工作区的 ID */
+const ComputerID = "computer"
+
+/** ComputerRoot：「此电脑」的根目录，Windows 为用户文件夹所在的盘 */
+func ComputerRoot() string {
+	if runtime.GOOS == "windows" {
+		home, _ := os.UserHomeDir()
+		return filepath.VolumeName(home) + `\`
+	}
+	return "/"
+}
+
+/** Computer：内置的「此电脑」工作区 */
+func Computer() Workspace {
+	return Workspace{ID: ComputerID, Name: "此电脑", RootPath: ComputerRoot()}
+}
 
 /** Workspace：被授权访问的根目录 */
 type Workspace struct {
@@ -55,6 +75,9 @@ func (s *Store) Workspaces(ctx context.Context) ([]Workspace, error) {
 
 /** Workspace：按 ID 查询 */
 func (s *Store) Workspace(ctx context.Context, id string) (Workspace, error) {
+	if id == ComputerID {
+		return Computer(), nil
+	}
 	var w Workspace
 	var ro int
 	err := s.db.QueryRowContext(ctx, `SELECT id,name,root_path,read_only FROM workspaces WHERE id=?`, id).
@@ -76,4 +99,35 @@ func (s *Store) DeleteWorkspace(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+/** DefaultWorkspaceName：默认工作目录在列表中的名称 */
+const DefaultWorkspaceName = "默认工作区"
+
+/**
+ * EnsureDefault：把默认工作目录登记为工作区
+ *
+ * 处理流程：
+ * 1、已有同一目录的工作区时直接返回
+ * 2、已有「默认工作区」时改为新目录，否则新建
+ */
+func (s *Store) EnsureDefault(ctx context.Context, root, newID string) (Workspace, error) {
+	list, err := s.Workspaces(ctx)
+	if err != nil {
+		return Workspace{}, err
+	}
+	// 1、同一目录
+	for _, w := range list {
+		if filepath.Clean(w.RootPath) == filepath.Clean(root) {
+			return w, nil
+		}
+	}
+	// 2、改目录或新建
+	w := Workspace{ID: newID, Name: DefaultWorkspaceName, RootPath: root}
+	for _, x := range list {
+		if x.Name == DefaultWorkspaceName {
+			w.ID, w.ReadOnly = x.ID, x.ReadOnly
+		}
+	}
+	return w, s.SaveWorkspace(ctx, w)
 }

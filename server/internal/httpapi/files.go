@@ -19,16 +19,6 @@ import (
 /** maxSaveBytes：单次保存的最大字节数 */
 const maxSaveBytes = 512 << 20
 
-/** workspaces：工作区列表 */
-func (s *Server) workspaces(w http.ResponseWriter, r *http.Request) {
-	list, err := s.Store.Workspaces(r.Context())
-	if err != nil {
-		writeErr(w, r, err)
-		return
-	}
-	writeJSON(w, 200, list)
-}
-
 /** wsOf：路径参数中的工作区 */
 func (s *Server) wsOf(r *http.Request) (store.Workspace, error) {
 	return s.Store.Workspace(r.Context(), r.PathValue("id"))

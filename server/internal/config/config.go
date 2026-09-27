@@ -41,6 +41,8 @@ type Config struct {
 	AdminPort         int                 `json:"adminPort"`
 	Features          Features            `json:"features"`
 	Transfer          Transfer            `json:"transfer"`
+	// DefaultWorkspace：默认工作目录，新建会话、终端时默认从这里开始
+	DefaultWorkspace string `json:"defaultWorkspace"`
 	Notify            Notify              `json:"notify"`
 	Agents            map[string][]string `json:"agents"`
 	Models            map[string][]string `json:"models"`
@@ -106,7 +108,7 @@ func DefaultDataDir() (string, error) {
  *
  * 处理流程：
  * 1、取主机名作为电脑名称
- * 2、收件、发件目录放在 ~/PocketDesk 下
+ * 2、收件、发件目录放在 ~/PocketDesk 下；默认工作目录优先用已有的 ~/Workspace，否则为 ~/PocketDesk/Workspace
  * 3、终端默认关闭，Agent 与文件编辑默认开启
  */
 func Default() Config {
@@ -118,6 +120,10 @@ func Default() Config {
 	// 2、收发目录
 	home, _ := os.UserHomeDir()
 	base := filepath.Join(home, "PocketDesk")
+	defaultWS := filepath.Join(base, "Workspace")
+	if info, err := os.Stat(filepath.Join(home, "Workspace")); err == nil && info.IsDir() {
+		defaultWS = filepath.Join(home, "Workspace")
+	}
 	// 3、组装默认值
 	return Config{
 		HostName:  name,
@@ -129,6 +135,7 @@ func Default() Config {
 			OutboxDir:        filepath.Join(base, "Outbox"),
 			UploadExpireDays: 7,
 		},
+		DefaultWorkspace:  defaultWS,
 		Agents:            DefaultAgents(),
 		Models:            DefaultModels(),
 		TerminalIdleHours: 24,
@@ -191,6 +198,9 @@ func normalize(c Config) Config {
 	}
 	if c.TerminalIdleHours <= 0 {
 		c.TerminalIdleHours = d.TerminalIdleHours
+	}
+	if c.DefaultWorkspace == "" {
+		c.DefaultWorkspace = d.DefaultWorkspace
 	}
 	if c.Agents == nil {
 		c.Agents = map[string][]string{}
