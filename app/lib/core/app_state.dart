@@ -141,7 +141,7 @@ class AppState extends ChangeNotifier {
       db: db,
       hostId: h.id,
       conn: conn,
-      saver: DirSaver(() async => paths.received),
+      saver: DownloadsSaver(DirSaver(() async => paths.received)),
       tempDir: () async => paths.temp.create(recursive: true),
       options: _options,
     );

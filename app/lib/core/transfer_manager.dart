@@ -8,6 +8,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import '../data/local_db.dart';
 import '../net/api.dart';
@@ -35,6 +36,26 @@ class DirSaver implements FileSaver {
   Future<String> save(File temp, String dateFolder, String name) async {
     final dir = Directory('${(await root()).path}${Platform.pathSeparator}$dateFolder');
     return (await naming.placeFile(temp, dir, name)).path;
+  }
+}
+
+/**
+ * DownloadsSaver：Android 11 起存到系统「下载/PocketDesk/日期/」，其他情况退回 [fallback]
+ */
+class DownloadsSaver implements FileSaver {
+  DownloadsSaver(this.fallback, {MethodChannel? channel, bool? android}) : _ch = channel ?? const MethodChannel('pocketdesk/downloads'), _android = android ?? Platform.isAndroid;
+
+  final FileSaver fallback;
+  final MethodChannel _ch;
+  final bool _android;
+  bool? _supported;
+
+  @override
+  Future<String> save(File temp, String dateFolder, String name) async {
+    _supported ??= _android && (await _ch.invokeMethod<bool>('supported') ?? false);
+    if (!_supported!) return fallback.save(temp, dateFolder, name);
+    final path = await _ch.invokeMethod<String>('save', {'src': temp.path, 'folder': dateFolder, 'name': naming.sanitize(name), 'mime': naming.mimeForName(name)});
+    return path!;
   }
 }
 

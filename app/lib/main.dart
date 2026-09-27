@@ -69,7 +69,8 @@ Future<void> main() async {
 
 /**
  * _receivedDir：电脑发来的文件保存位置
- * Android 为 App 专属外部存储下的 PocketDesk 目录（文件管理器可见）；iOS 为文档目录（「文件」App 中可见）
+ * Android 11 起存到系统「下载/PocketDesk」，更早的版本为 App 专属外部存储下的 PocketDesk 目录（文件管理器可见）；
+ * iOS 为文档目录（「文件」App 中可见）
  */
 Future<Directory> _receivedDir() async {
   if (Platform.isAndroid) {
