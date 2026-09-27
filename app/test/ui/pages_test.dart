@@ -67,10 +67,6 @@ void main() {
         await tester.tap(find.text('已完成'));
         await settle(tester);
         expect(find.text('周报草稿.docx'), findsOneWidget);
-        await tester.tap(find.text('收件箱'));
-        await settle(tester);
-        expect(find.text('白板照片.jpg'), findsOneWidget);
-        await shot(tester, '$tag-05-inbox');
 
         // 我
         await tester.tap(find.text('我').last);

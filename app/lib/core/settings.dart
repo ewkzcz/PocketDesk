@@ -54,6 +54,14 @@ class AppSettings extends ChangeNotifier {
   bool get autoReceive => _prefs.getBool('autoReceive') ?? true;
   set autoReceive(bool v) => _set('autoReceive', v);
 
+  /** phoneRoot：手机工作空间目录，未设置时用默认位置 */
+  String? get phoneRoot => _prefs.getString('phoneRoot');
+
+  set phoneRoot(String? v) {
+    v == null ? _prefs.remove('phoneRoot') : _prefs.setString('phoneRoot', v);
+    notifyListeners();
+  }
+
   /** biometric：打开 App、进入 Agent 会话或终端时验证 */
   bool get biometric => _prefs.getBool('biometric') ?? true;
   set biometric(bool v) => _set('biometric', v);

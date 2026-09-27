@@ -1,5 +1,5 @@
 /**
- * 我：当前电脑卡片（在线状态、连接方式、延迟）、配对新电脑、工作空间、传输设置、安全设置、外观、日志导出、关于。
+ * 我：当前电脑卡片（在线状态、连接方式、延迟）、配对新电脑、工作空间、手机工作空间、传输设置、安全设置、外观、日志导出、关于。
  */
 library;
 
@@ -86,6 +86,7 @@ class MePage extends StatelessWidget {
         ]),
         PdGroup(children: [
           PdCell(icon: LucideIcons.folderTree300, title: '工作空间', onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const WorkspacesPage()))),
+          PdCell(icon: LucideIcons.smartphone300, title: '手机工作空间', onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const PhoneSpacePage()))),
           PdCell(icon: LucideIcons.arrowUpDown300, title: '传输设置', onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const TransferSettingsPage()))),
           PdCell(icon: LucideIcons.shieldCheck300, title: '安全设置', onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SecuritySettingsPage()))),
           PdCell(icon: LucideIcons.palette300, title: '外观', value: settings.themeLabel, onTap: () => _theme(context)),

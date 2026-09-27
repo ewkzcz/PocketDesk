@@ -94,6 +94,9 @@ class HostConnection extends ChangeNotifier with SafeNotifier {
   /** events：事件流（跨重连保持同一个流） */
   Stream<PdEvent> get events => _eventsOut.stream;
 
+  /** send：通过实时连接向电脑发消息 */
+  void send(Map<String, dynamic> m) => _events?.send(m);
+
   /** online：事件通道已连通 */
   bool get online => link == LinkState.online;
 

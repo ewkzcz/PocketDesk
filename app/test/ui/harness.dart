@@ -100,7 +100,7 @@ class UiServer {
   static final pngBytes = base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
 
   /** 电脑上的收发目录 */
-  final dirs = <String, String>{'inboxDir': '/Users/me/PocketDesk/Inbox', 'outboxDir': '/Users/me/PocketDesk/Outbox', 'defaultWorkspace': '/Users/me/payments'};
+  final dirs = <String, String>{'inboxDir': '/Users/me/PocketDesk/Inbox', 'defaultWorkspace': '/Users/me/payments'};
 
   /** 读取工作区列表时模拟连不上电脑 */
   bool workspacesDown = false;

@@ -109,7 +109,7 @@ class FileItem extends ChatItem {
   final int size;
   final String relPath;
 
-  /** path：文件在电脑上的完整路径（手机发出的为收件目录中的位置，电脑发来的为发件目录中的位置） */
+  /** path：文件在电脑上的完整路径（手机发出的与电脑发来的都在电脑收件目录的日期文件夹） */
   final String path;
   final String outboxId;
   final String mime;

@@ -142,14 +142,14 @@ class PdApi {
   /** setDefaultWorkspace：更换默认工作目录 */
   Future<void> setDefaultWorkspace(String path) async => json('PUT', '/api/ws/default', body: {'path': path});
 
-  /** dirs：电脑上的收件、发件目录与默认工作目录 */
-  Future<({String inbox, String outbox, String defaultWorkspace})> dirs() async {
+  /** dirs：电脑上的收件目录与默认工作目录 */
+  Future<({String inbox, String defaultWorkspace})> dirs() async {
     final j = Json.map(await json('GET', '/api/dirs'));
-    return (inbox: Json.str(j['inboxDir']), outbox: Json.str(j['outboxDir']), defaultWorkspace: Json.str(j['defaultWorkspace']));
+    return (inbox: Json.str(j['inboxDir']), defaultWorkspace: Json.str(j['defaultWorkspace']));
   }
 
-  /** setDirs：更换电脑上的收件或发件目录，立即生效 */
-  Future<void> setDirs({String? inbox, String? outbox}) async => json('PUT', '/api/dirs', body: {'inboxDir': ?inbox, 'outboxDir': ?outbox});
+  /** setDirs：更换电脑上的收件目录，立即生效 */
+  Future<void> setDirs({String? inbox}) async => json('PUT', '/api/dirs', body: {'inboxDir': ?inbox});
 
   /** list：列目录 */
   Future<({List<FileEntry> entries, bool readOnly})> list(String ws, String path, {String sort = '', bool desc = false, bool hidden = false}) async {

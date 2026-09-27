@@ -1,5 +1,5 @@
 /**
- * 传输页：进行中（进度、速度、并行路数、剩余时间，可暂停、继续、取消）、已完成、收件箱（电脑发来的文件）。
+ * 传输页：进行中（进度、速度、并行路数、剩余时间，可暂停、继续、取消）、已完成。
  */
 library;
 
@@ -13,7 +13,6 @@ import 'package:provider/provider.dart';
 import '../../core/app_state.dart';
 import '../../core/transfer_manager.dart';
 import '../../data/models.dart';
-import '../../net/api.dart';
 import '../../transfer/task.dart';
 import '../file_kinds.dart';
 import '../format.dart';
@@ -35,24 +34,6 @@ class TransferPage extends StatefulWidget {
 
 class _TransferPageState extends State<TransferPage> {
   int _seg = 0;
-  List<OutboxItem> _outbox = [];
-  bool _outboxLoading = false;
-
-  /** _loadOutbox：读取电脑待发文件 */
-  Future<void> _loadOutbox() async {
-    final scope = context.read<AppState>().scope;
-    if (scope == null || !scope.conn.hasApi) return;
-    setState(() => _outboxLoading = true);
-    try {
-      final list = await scope.conn.api.outbox();
-      if (mounted) setState(() => _outbox = list);
-    } on ApiException catch (e) {
-      if (mounted) toast(context, e.message);
-    } finally {
-      if (mounted) setState(() => _outboxLoading = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final c = context.pd;
@@ -69,16 +50,13 @@ class _TransferPageState extends State<TransferPage> {
         Container(
           decoration: BoxDecoration(color: c.bar, border: Border(bottom: BorderSide(color: c.divider, width: PdSize.divider))),
           child: Row(children: [
-            for (final (i, label) in [(0, '进行中'), (1, '已完成'), (2, '收件箱')])
+            for (final (i, label) in [(0, '进行中'), (1, '已完成')])
               Expanded(
                 child: Semantics(
                   selected: _seg == i,
                   button: true,
                   child: InkWell(
-                    onTap: () {
-                      setState(() => _seg = i);
-                      if (i == 2) unawaited(_loadOutbox());
-                    },
+                    onTap: () => setState(() => _seg = i),
                     child: Container(
                       height: 42,
                       alignment: Alignment.center,
@@ -95,8 +73,7 @@ class _TransferPageState extends State<TransferPage> {
             listenable: m,
             builder: (context, _) => switch (_seg) {
               0 => _ActiveList(m: m),
-              1 => _DoneList(m: m),
-              _ => _InboxList(m: m, outbox: _outbox, loading: _outboxLoading, onRefresh: _loadOutbox),
+              _ => _DoneList(m: m),
             },
           ),
         ),
@@ -322,77 +299,6 @@ class _DoneCard extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/**
- * _InboxList：收件箱（电脑待发与已收到的文件）
- */
-class _InboxList extends StatelessWidget {
-  const _InboxList({required this.m, required this.outbox, required this.loading, required this.onRefresh});
-
-  final TransferManager m;
-  final List<OutboxItem> outbox;
-  final bool loading;
-  final Future<void> Function() onRefresh;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.pd;
-    final queuedIds = m.tasks.map((t) => t.source).toSet();
-    final pending = outbox.where((o) => !queuedIds.contains('outbox:${o.id}')).toList();
-    final received = m.done.where((t) => t.source.startsWith('outbox:')).toList();
-    final hostName = context.read<AppState>().host?.name ?? '电脑';
-    return RefreshIndicator(
-      color: c.accent,
-      onRefresh: onRefresh,
-      child: ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.only(top: 12), children: [
-        if (loading && outbox.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Center(child: CircularProgressIndicator(color: c.accent))),
-        if (!loading && pending.isEmpty && received.isEmpty)
-          const SizedBox(height: 360, child: EmptyHint(icon: LucideIcons.inbox300, text: '电脑发来的文件会出现在这里\n把文件放进电脑的发件目录即可发送')),
-        for (final o in pending)
-          _InboxCard(
-            name: o.name,
-            sub: '来自 $hostName · ${formatSize(o.size)}',
-            action: '下载',
-            onTap: () => m.download('outbox:${o.id}', o.name, o.size, sha: o.sha256),
-          ),
-        for (final t in received)
-          _InboxCard(name: t.name, sub: '来自 $hostName · ${formatSize(t.size)} · ${formatListTime(t.finishedAt)}', action: '打开', onTap: () => openLocal(context, t.result)),
-      ]),
-    );
-  }
-}
-
-/** _InboxCard：收件箱的一项 */
-class _InboxCard extends StatelessWidget {
-  const _InboxCard({required this.name, required this.sub, required this.action, required this.onTap});
-
-  final String name;
-  final String sub;
-  final String action;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.pd;
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: c.card, borderRadius: BorderRadius.circular(PdSize.cardRadius)),
-      child: Row(children: [
-        FileIcon(name: name, isDir: false),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, color: c.text)),
-            const SizedBox(height: 2),
-            Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.time, color: c.text3)),
-          ]),
-        ),
-        TextButton(onPressed: onTap, child: Text(action, style: const TextStyle(fontSize: PdFont.summary))),
-      ]),
     );
   }
 }

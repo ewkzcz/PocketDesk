@@ -15,6 +15,7 @@ import 'app_log.dart';
 import 'connection.dart';
 import 'device_signals.dart';
 import 'discovery.dart';
+import 'phone_space.dart';
 import 'sessions_store.dart';
 import 'settings.dart';
 import 'transfer_manager.dart';
@@ -73,7 +74,9 @@ class AppState extends ChangeNotifier {
     required this.signals,
     ConnectionFactory? connections,
     DiscoveryFactory? discovery,
-  })  : _connections = connections ?? ((h, t, c) => HostConnection(host: h, token: t, cursors: c)),
+    PhoneSpace? phone,
+  })  : phone = phone ?? PhoneSpace(settings: settings, fallbackRoot: paths.received),
+        _connections = connections ?? ((h, t, c) => HostConnection(host: h, token: t, cursors: c)),
         _discovery = discovery ?? Discovery.new;
 
   final AppSettings settings;
@@ -81,6 +84,9 @@ class AppState extends ChangeNotifier {
   final Vault vault;
   final AppPaths paths;
   final DeviceSignals signals;
+
+  /** 手机工作空间：电脑桌面端可管理，电脑发来的文件也存到这里 */
+  final PhoneSpace phone;
   final ConnectionFactory _connections;
   final DiscoveryFactory _discovery;
 
@@ -141,7 +147,7 @@ class AppState extends ChangeNotifier {
       db: db,
       hostId: h.id,
       conn: conn,
-      saver: DownloadsSaver(DirSaver(() async => paths.received)),
+      saver: PhoneSpaceSaver(phone, DownloadsSaver(DirSaver(() async => paths.received))),
       tempDir: () async => paths.temp.create(recursive: true),
       options: _options,
     );
@@ -167,6 +173,25 @@ class AppState extends ChangeNotifier {
         unawaited(s.transfers.pollOutbox());
       case 'host.status':
         unawaited(s.conn.refreshStatus());
+      case 'phone.req':
+        unawaited(_phoneReq(s, e.data));
+    }
+  }
+
+  /** _phoneReq：处理电脑桌面端对手机工作空间的请求并应答 */
+  Future<void> _phoneReq(HostScope s, Map<String, dynamic> d) async {
+    final id = Json.str(d['id']);
+    try {
+      final data = await phone.handle(Json.str(d['op']), Json.map(d['args']), s.conn);
+      s.conn.send({'type': 'phone.res', 'id': id, 'ok': true, 'data': data});
+    } on PhoneFsError catch (e) {
+      s.conn.send({'type': 'phone.res', 'id': id, 'ok': false, 'error': e.message});
+    } on FileSystemException catch (e) {
+      AppLog.w('phone', '手机文件操作失败：$e');
+      s.conn.send({'type': 'phone.res', 'id': id, 'ok': false, 'error': e.osError?.errorCode == 13 ? '手机没有授权访问这个文件夹' : '手机上操作失败：${e.message}'});
+    } catch (e) {
+      AppLog.w('phone', '手机文件操作失败：$e');
+      s.conn.send({'type': 'phone.res', 'id': id, 'ok': false, 'error': '手机上操作失败'});
     }
   }
 

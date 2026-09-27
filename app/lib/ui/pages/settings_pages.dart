@@ -3,6 +3,10 @@
  */
 library;
 
+import 'dart:async';
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -10,8 +14,8 @@ import 'package:provider/provider.dart';
 import '../../core/app_state.dart';
 import '../../core/auth_gate.dart';
 import '../../core/connection.dart';
+import '../../core/phone_space.dart';
 import '../../core/settings.dart';
-import '../../core/transfer_manager.dart';
 import '../../net/api.dart';
 import '../share.dart';
 import '../tokens.dart';
@@ -68,7 +72,7 @@ class TransferSettingsPage extends StatelessWidget {
           ],
         ),
         PdGroup(
-          footer: '关闭后，电脑发来的文件会留在「传输 → 收件箱」，点下载后再接收。',
+          footer: '关闭后，电脑发来的文件留在文件传输助手里，点一下再接收。',
           children: [
             PdCell(title: '自动接收电脑发来的文件', trailing: Switch(value: s.autoReceive, onChanged: (v) => s.autoReceive = v)),
           ],
@@ -80,7 +84,7 @@ class TransferSettingsPage extends StatelessWidget {
 }
 
 /**
- * _SaveLocations：文件保存位置——电脑上的收件、发件目录（可用文件夹选择器更换，立即生效）与手机上的保存位置
+ * _SaveLocations：文件保存位置——电脑收件目录（可用文件夹选择器更换，立即生效）与手机工作空间
  */
 class _SaveLocations extends StatefulWidget {
   const _SaveLocations();
@@ -90,8 +94,7 @@ class _SaveLocations extends StatefulWidget {
 }
 
 class _SaveLocationsState extends State<_SaveLocations> {
-  ({String inbox, String outbox, String defaultWorkspace})? _dirs;
-  String _phone = '';
+  ({String inbox, String defaultWorkspace})? _dirs;
 
   @override
   void initState() {
@@ -100,23 +103,20 @@ class _SaveLocationsState extends State<_SaveLocations> {
   }
 
   Future<void> _load() async {
-    final app = context.read<AppState>();
-    final phone = await phoneSaveLocation(app.paths.received);
-    if (mounted) setState(() => _phone = phone);
     try {
-      final d = await app.scope?.conn.api.dirs();
+      final d = await context.read<AppState>().scope?.conn.api.dirs();
       if (mounted && d != null) setState(() => _dirs = d);
     } on ApiException {
       // 电脑不在线时只显示手机上的位置
     }
   }
 
-  /** _change：用文件夹选择器更换收件或发件目录 */
-  Future<void> _change({required bool inbox}) async {
-    final p = await pickComputerFolder(context, title: inbox ? '电脑收件目录' : '电脑发件目录', action: '使用这个文件夹');
+  /** _change：用文件夹选择器更换电脑收件目录 */
+  Future<void> _change() async {
+    final p = await pickComputerFolder(context, title: '电脑收件目录', action: '使用这个文件夹');
     if (p == null || !mounted) return;
     try {
-      await context.read<AppState>().scope!.conn.api.setDirs(inbox: inbox ? p : null, outbox: inbox ? null : p);
+      await context.read<AppState>().scope!.conn.api.setDirs(inbox: p);
       if (mounted) toast(context, '已更换');
       await _load();
     } on ApiException catch (e) {
@@ -127,14 +127,91 @@ class _SaveLocationsState extends State<_SaveLocations> {
   @override
   Widget build(BuildContext context) {
     final d = _dirs;
+    final phone = context.watch<AppState>().phone;
     return PdGroup(
       header: '文件保存位置',
-      footer: '手机发的文件存到电脑收件目录下的日期文件夹；放进电脑发件目录的文件会自动发到手机。',
+      footer: '两边互传的文件分别存到电脑收件目录和手机工作空间下的日期文件夹。',
       children: [
-        PdCell(icon: LucideIcons.monitorDown300, title: '电脑收件目录', subtitle: d?.inbox ?? '电脑不在线', onTap: d == null ? null : () => _change(inbox: true)),
-        PdCell(icon: LucideIcons.monitorUp300, title: '电脑发件目录', subtitle: d?.outbox ?? '电脑不在线', onTap: d == null ? null : () => _change(inbox: false)),
-        PdCell(icon: LucideIcons.smartphone300, title: '手机保存位置', subtitle: _phone, arrow: false),
+        PdCell(icon: LucideIcons.monitorDown300, title: '电脑收件目录', subtitle: d?.inbox ?? '电脑不在线', onTap: d == null ? null : _change),
+        PdCell(icon: LucideIcons.smartphone300, title: '手机工作空间', subtitle: phone.root, onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const PhoneSpacePage()))),
       ],
+    );
+  }
+}
+
+/**
+ * PhoneSpacePage：手机工作空间——授权、查看与更换目录；电脑桌面端的「手机文件」管理的就是这个文件夹
+ */
+class PhoneSpacePage extends StatefulWidget {
+  const PhoneSpacePage({super.key});
+
+  @override
+  State<PhoneSpacePage> createState() => _PhoneSpacePageState();
+}
+
+class _PhoneSpacePageState extends State<PhoneSpacePage> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(context.read<AppState>().phone.refresh());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /** 从系统授权页回来时刷新授权状态 */
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(context.read<AppState>().phone.refresh());
+  }
+
+  /** _pick：用手机的文件夹选择器更换目录 */
+  Future<void> _pick() async {
+    final space = context.read<AppState>().phone;
+    final p = await FilePicker.getDirectoryPath(dialogTitle: '选择手机工作空间');
+    if (p == null || !mounted) return;
+    try {
+      await space.setRoot(p);
+      if (mounted) toast(context, '已更换');
+    } on PhoneFsError catch (e) {
+      if (mounted) toast(context, e.message);
+    } on FileSystemException {
+      if (mounted) toast(context, '没有权限使用这个文件夹');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final space = context.watch<AppState>().phone;
+    return ListenableBuilder(
+      listenable: space,
+      builder: (context, _) => Scaffold(
+        appBar: const PdBar(title: '手机工作空间'),
+        body: ListView(padding: const EdgeInsets.only(top: 16), children: [
+          PdGroup(
+            footer: '电脑发来的文件存到这里的日期文件夹；电脑桌面端的「手机文件」可以浏览、上传、删除、新建文件夹和编辑这里的文件。',
+            children: [
+              PdCell(icon: LucideIcons.folderOpen300, title: '目录', subtitle: space.root, arrow: false),
+              PdCell(
+                icon: space.permitted ? LucideIcons.shieldCheck300 : LucideIcons.shieldAlert300,
+                title: space.permitted ? '已授权访问手机存储' : '未授权访问手机存储',
+                subtitle: space.permitted ? '' : '授权后电脑才能管理这个文件夹',
+                trailing: space.permitted ? null : TextButton(onPressed: () => space.device.requestAllFiles(), child: const Text('去授权')),
+                arrow: false,
+              ),
+            ],
+          ),
+          PdGroup(children: [
+            PdCell(icon: LucideIcons.folderCog300, title: '更换目录', onTap: space.permitted ? _pick : null),
+            if (space.root != space.defaultRoot)
+              PdCell(icon: LucideIcons.rotateCcw300, title: '恢复默认目录', subtitle: space.defaultRoot, onTap: () => space.setRoot(space.defaultRoot)),
+          ]),
+        ]),
+      ),
     );
   }
 }

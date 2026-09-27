@@ -150,9 +150,9 @@ void main() {
     await settle(tester);
     await tester.tap(find.text('传输设置'));
     await settle(tester);
-    await tester.dragUntilVisible(find.text('手机保存位置'), find.byType(ListView).last, const Offset(0, -200));
+    await tester.dragUntilVisible(find.text('手机工作空间'), find.byType(ListView).last, const Offset(0, -200));
     expect(find.text('/Users/me/PocketDesk/Inbox'), findsOneWidget);
-    expect(find.text('/Users/me/PocketDesk/Outbox'), findsOneWidget);
+    expect(find.text('电脑发件目录'), findsNothing);
     await finish(tester, env);
   });
 
@@ -196,7 +196,7 @@ void main() {
     await settle(tester);
     await tester.tap(find.bySemanticsLabel('收发目录'));
     await settle(tester);
-    expect(find.text('电脑发件目录'), findsOneWidget);
+    expect(find.text('手机工作空间'), findsOneWidget);
     await finish(tester, env);
   });
 

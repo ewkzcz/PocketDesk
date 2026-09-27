@@ -103,6 +103,9 @@ class EventChannel {
     }
   }
 
+  /** send：向电脑发一条消息（如手机文件请求的应答），未连接时丢弃 */
+  void send(Map<String, dynamic> m) => _sendRaw(m);
+
   /** _sendRaw：发送文本帧 */
   void _sendRaw(Map<String, dynamic> m) {
     try {

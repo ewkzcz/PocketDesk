@@ -83,7 +83,7 @@ void main() {
           'port': _port,
           'adminPort': _adminPort,
           'features': {'agents': true, 'terminal': true, 'fileEdit': true},
-          'transfer': {'inboxDir': '${home.path}/Inbox', 'outboxDir': '${home.path}/Outbox', 'uploadExpireDays': 7},
+          'transfer': {'inboxDir': '${home.path}/Inbox', 'uploadExpireDays': 7},
         })));
     // 2、启动电脑端
     proc = await Process.start(_bin, ['serve'], environment: {'POCKETDESK_HOME': '${home.path}/data'});
@@ -195,15 +195,16 @@ void main() {
     final inbox = File('${home.path}/Inbox/${t1.dateFolder}/报告.bin');
     expect(sha256.convert(await inbox.readAsBytes()), sha256.convert(data));
     expect(t2.result, matches(RegExp(r'^\d{8}-\d{6}-\d{3}\.txt$')));
-    // 电脑端放入发件目录，手机收到通知后自动下载
+    // 电脑发给手机，手机收到通知后自动下载；电脑收件目录里留一份
     final out = randomBytes(700 * 1024, 9);
-    await File('${home.path}/Outbox/结果.bin').writeAsBytes(out);
+    final src = await File('${tmp.path}/结果.bin').writeAsBytes(out);
+    await admin('POST', '/admin/api/send', {'paths': [src.path]});
     await until(() => events.any((e) => e.type == 'outbox.new'));
     await m.pollOutbox();
     final task = m.tasks.firstWhere((t) => t.source.startsWith('outbox:'));
     expect((await m.wait(task)).status, TaskStatus.done, reason: task.error);
     expect(sha256.convert(await File(task.result).readAsBytes()), sha256.convert(out));
-    await until(() => !File('${home.path}/Outbox/结果.bin').existsSync());
+    expect(File('${home.path}/Inbox/${t1.dateFolder}/结果.bin').existsSync(), isTrue);
     m.dispose();
     await tmp.delete(recursive: true);
   }, skip: _bin.isEmpty, timeout: const Timeout(Duration(minutes: 2)));
