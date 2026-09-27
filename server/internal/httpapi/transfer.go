@@ -119,7 +119,7 @@ func (s *Server) OnUploadComplete(c tus.Completed) {
 	s.Store.Audit(ctx, c.DeviceID, "upload.complete", map[string]any{"name": c.Name, "path": c.RelPath, "target": c.Target, "size": c.Size})
 	// 2、文件传输助手
 	if c.Target == "" || c.Target == "inbox" || c.Target == AssistantID {
-		s.emit(ctx, AssistantID, "file", map[string]any{"direction": "up", "name": c.Name, "relPath": c.RelPath, "size": c.Size, "mime": c.Mime, "sha256": c.SHA256, "uploadId": c.UploadID}, filePreview(c.Name, c.Mime))
+		s.emit(ctx, AssistantID, "file", map[string]any{"direction": "up", "name": c.Name, "relPath": c.RelPath, "path": c.Path, "size": c.Size, "mime": c.Mime, "sha256": c.SHA256, "uploadId": c.UploadID}, filePreview(c.Name, c.Mime))
 	}
 	// 3、广播
 	s.Hub.PublishGlobal("transfer.done", c)
@@ -128,7 +128,7 @@ func (s *Server) OnUploadComplete(c tus.Completed) {
 /** OnOutboxNew：电脑有新文件要发给手机 */
 func (s *Server) OnOutboxNew(it store.OutboxItem) {
 	ctx := context.Background()
-	s.emit(ctx, AssistantID, "file", map[string]any{"direction": "down", "outboxId": it.ID, "name": it.Name, "size": it.Size, "sha256": it.SHA256, "targetDevice": it.TargetDevice}, filePreview(it.Name, ""))
+	s.emit(ctx, AssistantID, "file", map[string]any{"direction": "down", "outboxId": it.ID, "name": it.Name, "path": it.Path, "size": it.Size, "sha256": it.SHA256, "targetDevice": it.TargetDevice}, filePreview(it.Name, ""))
 	s.Hub.PublishGlobal("outbox.new", it)
 }
 
@@ -255,7 +255,7 @@ func (s *Server) assistantText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 3、事件
-	if err := s.emit(r.Context(), AssistantID, "msg.user", map[string]any{"text": in.Text, "clientId": in.ClientID, "file": map[string]string{"name": name, "relPath": date + "/" + name}}, "你："+firstLine(in.Text)); err != nil {
+	if err := s.emit(r.Context(), AssistantID, "msg.user", map[string]any{"text": in.Text, "clientId": in.ClientID, "file": map[string]string{"name": name, "relPath": date + "/" + name, "path": filepath.Join(dir, name)}}, "你："+firstLine(in.Text)); err != nil {
 		writeErr(w, r, err)
 		return
 	}

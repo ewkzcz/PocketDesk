@@ -450,7 +450,7 @@ func uploadFlow(t *testing.T, e *env) {
 		t.Fatal("发文字失败")
 	}
 	_, body := e.do("GET", "/api/sessions/assistant/events?after=0", nil, nil)
-	if !strings.Contains(string(body), `"type":"file"`) || !strings.Contains(string(body), "记一下") {
+	if !strings.Contains(string(body), `"type":"file"`) || !strings.Contains(string(body), "记一下") || !strings.Contains(string(body), `"path":"`+e.a.Cfg.Get().Transfer.InboxDir) {
 		t.Fatalf("文件传输助手事件 %s", body)
 	}
 	_, body = e.do("GET", "/api/sessions", nil, nil)

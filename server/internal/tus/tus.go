@@ -53,6 +53,8 @@ type Completed struct {
 	SHA256   string `json:"sha256"`
 	DeviceID string `json:"deviceId"`
 	Mime     string `json:"mime"`
+	// Path：落盘后在电脑上的完整路径
+	Path string `json:"path"`
 }
 
 /** Progress：上传进度，用于推送给手机和桌面端 */
@@ -511,7 +513,7 @@ func (s *Server) complete(ctx context.Context, u store.Upload, parts []store.Upl
 		return Completed{}, &failure{http.StatusInternalServerError, "io_error", "保存文件失败"}
 	}
 	s.store.SetUploadResult(ctx, u.ID, final)
-	c := Completed{UploadID: u.ID, Name: final, RelPath: path.Join(tgt.RelBase, final), Target: u.Target, Size: u.Length, SHA256: sum, DeviceID: u.DeviceID, Mime: md["filetype"]}
+	c := Completed{UploadID: u.ID, Name: final, RelPath: path.Join(tgt.RelBase, final), Target: u.Target, Size: u.Length, SHA256: sum, DeviceID: u.DeviceID, Mime: md["filetype"], Path: filepath.Join(tgt.Dir, final)}
 	// 4、清理与回调
 	for _, p := range parts {
 		os.Remove(s.dataPath(p.ID))
