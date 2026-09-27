@@ -1,5 +1,5 @@
 /**
- * 电脑端入口：serve 常驻服务，open 打开设置窗口，pair 在终端显示配对二维码，send 把文件发给手机，
+ * 电脑端入口：serve 常驻服务，app 打开桌面应用窗口，open 打开设置或配对窗口，pair 在终端显示配对二维码，send 把文件发给手机，
  * install / uninstall 管理开机自启，mcp-approve 为 Claude Code 提供审批工具。
  */
 package main
@@ -17,7 +17,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -28,6 +27,7 @@ import (
 	"github.com/ewkzcz/pocketdesk/server/internal/app"
 	"github.com/ewkzcz/pocketdesk/server/internal/autostart"
 	"github.com/ewkzcz/pocketdesk/server/internal/config"
+	"github.com/ewkzcz/pocketdesk/server/internal/desktop"
 	"github.com/ewkzcz/pocketdesk/server/internal/httpapi"
 )
 
@@ -39,7 +39,8 @@ const usage = `用法: pocketdesk <命令> [参数]
 
 命令:
   serve                 启动电脑端服务（默认）
-  open [tray|pair]      打开设置窗口、菜单面板或配对窗口
+  app                   打开桌面应用窗口，服务未运行时先在后台启动
+  open [pair]           打开设置窗口或配对窗口
   pair                  在终端显示配对二维码
   send <文件...> [--to 设备名]   把文件发给手机
   install               开机自动启动
@@ -52,6 +53,10 @@ const usage = `用法: pocketdesk <命令> [参数]
  */
 func main() {
 	cmd := "serve"
+	// 从 macOS 应用包双击启动时打开桌面应用
+	if exe, err := os.Executable(); err == nil && strings.Contains(exe, ".app/Contents/MacOS/") {
+		cmd = "app"
+	}
 	args := os.Args[1:]
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		cmd, args = args[0], args[1:]
@@ -63,8 +68,14 @@ func main() {
 	switch cmd {
 	case "serve":
 		err = serve(dataDir, args)
+	case "app":
+		err = desktopApp(dataDir, "settings/overview")
 	case "open":
-		err = openAdmin(dataDir, args)
+		page := "settings/overview"
+		if len(args) > 0 {
+			page = args[0]
+		}
+		err = desktopApp(dataDir, page)
 	case "pair":
 		err = pairCLI(dataDir)
 	case "send":
@@ -141,27 +152,63 @@ func adminBase(dataDir string) (string, string, error) {
 	return fmt.Sprintf("http://127.0.0.1:%d", cfg.Get().AdminPort), key, nil
 }
 
-/** openAdmin：用默认浏览器打开管理页面 */
-func openAdmin(dataDir string, args []string) error {
+/**
+ * desktopApp：桌面应用
+ *
+ * 处理流程：
+ * 1、服务未运行时在后台启动，最多等 15 秒
+ * 2、在独立窗口中打开管理界面，窗口关闭后服务继续在后台运行
+ * 3、系统没有可用的网页引擎时退回默认浏览器
+ */
+func desktopApp(dataDir, page string) error {
+	// 1、服务
+	if err := ensureService(dataDir); err != nil {
+		return err
+	}
 	base, key, err := adminBase(dataDir)
 	if err != nil {
 		return err
 	}
-	page := "settings/overview"
-	if len(args) > 0 {
-		page = args[0]
-	}
 	u := base + "/?k=" + key + "#" + page
-	var c *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		c = exec.Command("open", u)
-	case "windows":
-		c = exec.Command("rundll32", "url.dll,FileProtocolHandler", u)
-	default:
-		c = exec.Command("xdg-open", u)
+	// 2、窗口
+	w := desktop.Window{Title: "PocketDesk", URL: u, Width: 1100, Height: 720}
+	if page == "pair" {
+		w.Title, w.Width, w.Height = "配对新手机", 520, 680
 	}
-	return c.Start()
+	if err := desktop.Show(w); err != nil {
+		// 3、浏览器
+		return desktop.OpenBrowser(u)
+	}
+	return nil
+}
+
+/** serviceUp：本机管理接口是否可用 */
+func serviceUp(dataDir string) bool {
+	return adminCall(dataDir, "GET", "/admin/api/state", nil, nil) == nil
+}
+
+/** ensureService：服务未运行时以后台进程启动并等待就绪 */
+func ensureService(dataDir string) error {
+	if serviceUp(dataDir) {
+		return nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	c := exec.Command(exe, "serve")
+	detach(c)
+	if err := c.Start(); err != nil {
+		return fmt.Errorf("启动电脑端服务失败: %w", err)
+	}
+	go c.Wait()
+	for i := 0; i < 150; i++ {
+		if serviceUp(dataDir) {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return errors.New("电脑端服务启动超时，请查看日志")
 }
 
 /** adminCall：调用本机管理接口 */
