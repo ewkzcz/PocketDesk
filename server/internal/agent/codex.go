@@ -1,5 +1,5 @@
 /**
- * Codex 驱动：每轮以 exec --json 方式运行一次，靠线程 ID 续聊；沙箱限制为工作区可写。
+ * Codex 驱动：优先用 app-server（可逐条审批）；不可用时退回 exec --json，每轮运行一次，靠线程 ID 续聊，沙箱限制为工作区可写。
  */
 package agent
 
@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -22,14 +23,29 @@ func (CodexDriver) Kind() string { return KindCodex }
 /** SupportsSteer：不支持插话 */
 func (CodexDriver) SupportsSteer() bool { return false }
 
-/** Start：只保存参数，每次发送消息时再启动子进程 */
-func (CodexDriver) Start(_ context.Context, opt Options) (Process, error) {
+/**
+ * Start：启动会话
+ *
+ * 处理流程：
+ * 1、确认命令存在
+ * 2、优先启动 app-server 常驻进程
+ * 3、app-server 不可用（旧版本）时退回 exec 模式：只保存参数，每次发送消息时再启动子进程
+ */
+func (CodexDriver) Start(ctx context.Context, opt Options) (Process, error) {
+	// 1、命令
 	if len(opt.Command) == 0 {
 		opt.Command = []string{"codex"}
 	}
 	if _, err := LookPath(opt.Command[0]); err != nil {
 		return nil, fmt.Errorf("找不到 %s，请确认已安装", opt.Command[0])
 	}
+	// 2、app-server
+	app, err := startCodexApp(ctx, opt)
+	if err == nil {
+		return app, nil
+	}
+	slog.Warn("Codex app-server 不可用，改用 exec 模式", "err", err)
+	// 3、exec
 	return &codexProc{opt: opt, threadID: opt.ResumeID, events: make(chan Event, 256), done: make(chan struct{})}, nil
 }
 

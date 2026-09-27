@@ -21,6 +21,8 @@ func TestMain(m *testing.M) {
 		fakeClaude()
 	case "codex":
 		fakeCodex()
+	case "codexapp":
+		fakeCodexApp()
 	case "pi":
 		fakePi()
 	case "acp":
@@ -91,6 +93,13 @@ func fakeClaude() {
 
 /** fakeCodex：模拟 exec --json 单轮 */
 func fakeCodex() {
+	// 旧版本没有 app-server 子命令
+	for _, a := range os.Args {
+		if a == "app-server" {
+			fmt.Fprintln(os.Stderr, "error: unrecognized subcommand 'app-server'")
+			os.Exit(2)
+		}
+	}
 	prompt, _ := io.ReadAll(os.Stdin)
 	tid := "thread-1"
 	for i, a := range os.Args {
@@ -112,6 +121,67 @@ func fakeCodex() {
 	out(map[string]any{"type": "item.completed", "item": map[string]any{"id": "f1", "type": "file_change", "changes": []any{map[string]any{"path": "b.txt", "kind": "add"}}}})
 	out(map[string]any{"type": "item.completed", "item": map[string]any{"id": "a1", "type": "agent_message", "text": "echo:" + strings.TrimSpace(string(prompt))}})
 	out(map[string]any{"type": "turn.completed", "usage": map[string]any{"input_tokens": 3, "output_tokens": 4}})
+}
+
+/** fakeCodexApp：模拟 codex app-server，与真实抓包一致：审批请求只带条目 ID */
+func fakeCodexApp() {
+	cwd, _ := os.Getwd()
+	note := func(method string, params any) { out(map[string]any{"method": method, "params": params}) }
+	result := func(id any, r any) { out(map[string]any{"id": id, "result": r}) }
+	finish := func(status string) {
+		note("thread/tokenUsage/updated", map[string]any{"tokenUsage": map[string]any{"total": map[string]any{"inputTokens": 10, "outputTokens": 5}}})
+		note("turn/completed", map[string]any{"turn": map[string]any{"id": "tu1", "status": status}})
+	}
+	sc := bufio.NewScanner(os.Stdin)
+	for sc.Scan() {
+		var m map[string]any
+		json.Unmarshal(sc.Bytes(), &m)
+		id := m["id"]
+		params, _ := m["params"].(map[string]any)
+		switch m["method"] {
+		case "initialize":
+			result(id, map[string]any{"userAgent": "fake"})
+		case "thread/start":
+			result(id, map[string]any{"thread": map[string]any{"id": "th-new"}, "model": "gpt-x"})
+		case "thread/resume":
+			if params["threadId"] == "th-old" {
+				result(id, map[string]any{"thread": map[string]any{"id": "th-old"}, "model": "gpt-x"})
+			} else {
+				out(map[string]any{"id": id, "error": map[string]any{"code": -32600, "message": "thread not found"}})
+			}
+		case "turn/start":
+			text := params["input"].([]any)[0].(map[string]any)["text"].(string)
+			result(id, map[string]any{"turn": map[string]any{"id": "tu1", "status": "inProgress"}})
+			note("turn/started", map[string]any{"turn": map[string]any{"id": "tu1"}})
+			if strings.Contains(text, "slow") {
+				continue
+			}
+			note("item/started", map[string]any{"item": map[string]any{"type": "commandExecution", "id": "c1", "command": "/bin/zsh -lc 'rm -rf tmp'", "commandActions": []any{map[string]any{"type": "unknown", "command": "rm -rf tmp"}}}})
+			out(map[string]any{"id": 100, "method": "item/commandExecution/requestApproval", "params": map[string]any{"itemId": "c1", "command": "/bin/zsh -lc 'rm -rf tmp'"}})
+		case "turn/interrupt":
+			result(id, map[string]any{})
+			finish("interrupted")
+		case nil:
+			// 对审批请求的回复
+			res, _ := m["result"].(map[string]any)
+			decision := fmt.Sprint(res["decision"])
+			switch fmt.Sprint(id) {
+			case "100":
+				note("item/completed", map[string]any{"item": map[string]any{"type": "commandExecution", "id": "c1", "status": "completed", "aggregatedOutput": decision, "exitCode": 0}})
+				note("item/started", map[string]any{"item": map[string]any{"type": "fileChange", "id": "f1", "changes": []any{map[string]any{"path": cwd + "/b.txt", "diff": "x"}}, "status": "inProgress"}})
+				out(map[string]any{"id": 101, "method": "item/fileChange/requestApproval", "params": map[string]any{"itemId": "f1"}})
+			case "101":
+				status := "declined"
+				if decision == "accept" || decision == "acceptForSession" {
+					status = "completed"
+				}
+				note("item/completed", map[string]any{"item": map[string]any{"type": "fileChange", "id": "f1", "status": status, "changes": []any{map[string]any{"path": cwd + "/b.txt", "diff": "x"}}}})
+				note("item/agentMessage/delta", map[string]any{"itemId": "m1", "delta": "完成"})
+				note("item/completed", map[string]any{"item": map[string]any{"type": "agentMessage", "id": "m1", "text": "完成"}})
+				finish("completed")
+			}
+		}
+	}
 }
 
 /** fakePi：模拟 rpc 模式 */

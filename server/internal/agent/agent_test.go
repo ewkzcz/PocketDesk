@@ -356,3 +356,94 @@ func TestDetect(t *testing.T) {
 		t.Fatalf("探测结果 %+v", list)
 	}
 }
+
+/** approverSeq：按顺序返回预设决定，并记录请求 */
+type approverSeq struct {
+	mu   sync.Mutex
+	ds   []Decision
+	reqs []ApprovalRequest
+}
+
+func (a *approverSeq) RequestApproval(_ context.Context, r ApprovalRequest) (Decision, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.reqs = append(a.reqs, r)
+	d := a.ds[0]
+	a.ds = a.ds[1:]
+	return d, nil
+}
+
+func TestCodexAppApprovals(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		edit      Decision
+		wantWrite bool
+	}{{"允许改动", Decision{Allow: true}, true}, {"拒绝改动", Decision{}, false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			ap := &approverSeq{ds: []Decision{{Allow: true, Always: true}, tc.edit}}
+			opt := fakeOpts(t, "codexapp")
+			opt.Approver = ap
+			p, err := CodexDriver{}.Start(context.Background(), opt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer p.Close()
+			p.Send(context.Background(), Message{Text: "clean"})
+			evs := collect(t, p)
+			if s, _ := find(evs, EvSessionID); s.Data["id"] != "th-new" || s.Data["model"] != "gpt-x" {
+				t.Fatalf("线程 %+v", s.Data)
+			}
+			// 审批请求按条目 ID 补全命令与改动文件
+			if len(ap.reqs) != 2 || ap.reqs[0].Kind != "command" || ap.reqs[0].Summary != "rm -rf tmp" || ap.reqs[1].Kind != "edit" || ap.reqs[1].Summary != "b.txt" {
+				t.Fatalf("审批请求 %+v", ap.reqs)
+			}
+			if st, _ := find(evs, EvToolStart); st.Data["summary"] != "rm -rf tmp" {
+				t.Fatalf("工具开始 %+v", st.Data)
+			}
+			if end, _ := find(evs, EvToolEnd); end.Data["output"] != "acceptForSession" {
+				t.Fatalf("总是允许应回复 acceptForSession，实际 %v", end.Data["output"])
+			}
+			if _, ok := find(evs, EvFileWrite); ok != tc.wantWrite {
+				t.Fatalf("改动记录 %v，期望 %v", ok, tc.wantWrite)
+			}
+			if u, _ := find(evs, EvUsage); u.Data["inputTokens"] != int64(10) || u.Data["outputTokens"] != int64(5) {
+				t.Fatalf("用量 %+v", u.Data)
+			}
+			if d, _ := find(evs, EvDone); d.Data["text"] != "完成" {
+				t.Fatalf("回复 %+v", d.Data)
+			}
+		})
+	}
+}
+
+func TestCodexAppResume(t *testing.T) {
+	for resume, want := range map[string]string{"th-old": "th-old", "gone": "th-new"} {
+		opt := fakeOpts(t, "codexapp")
+		opt.ResumeID = resume
+		p, err := CodexDriver{}.Start(context.Background(), opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if e := <-p.Events(); e.Type != EvSessionID || e.Data["id"] != want {
+			t.Fatalf("续聊 %s 应得到线程 %s，实际 %+v", resume, want, e)
+		}
+		p.Close()
+	}
+}
+
+func TestCodexAppInterrupt(t *testing.T) {
+	p, err := CodexDriver{}.Start(context.Background(), fakeOpts(t, "codexapp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	p.Send(context.Background(), Message{Text: "slow"})
+	time.Sleep(100 * time.Millisecond)
+	if err := p.Interrupt(); err != nil {
+		t.Fatal(err)
+	}
+	evs := collect(t, p)
+	if e, _ := find(evs, EvTurnEnd); e.Data["stopReason"] != "interrupted" {
+		t.Fatalf("打断 %+v", e.Data)
+	}
+}
