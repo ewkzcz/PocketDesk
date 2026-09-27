@@ -83,7 +83,8 @@ void main() {
           'adminPort': _adminPort,
           'features': {'agents': true, 'terminal': true, 'fileEdit': true},
           'transfer': {'inboxDir': '${home.path}/Inbox', 'outboxDir': '${home.path}/Outbox', 'uploadExpireDays': 7},
-          'render': {'pageSize': 'mobile', 'browser': '/opt/pw-browsers/chromium'},
+          // 未指定时由电脑端自动查找本机的 Chrome 或 Edge
+          'render': {'pageSize': 'mobile', 'browser': Platform.environment['PD_E2E_BROWSER'] ?? ''},
         })));
     // 2、启动电脑端
     proc = await Process.start(_bin, ['serve'], environment: {'POCKETDESK_HOME': '${home.path}/data'});
