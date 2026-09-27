@@ -37,6 +37,8 @@ class ChatInputBar extends StatefulWidget {
     this.quote = '',
     this.onClearQuote,
     this.attachments = const [],
+    this.onPasteImage,
+    this.onImageInserted,
   });
 
   final TextEditingController controller;
@@ -48,6 +50,12 @@ class ChatInputBar extends StatefulWidget {
   final bool showSlash;
   final String quote;
   final VoidCallback? onClearQuote;
+
+  /** onPasteImage：长按输入框菜单里的「粘贴图片」 */
+  final VoidCallback? onPasteImage;
+
+  /** onImageInserted：输入法（剪贴板、表情图）插入的图片 */
+  final void Function(KeyboardInsertedContent content)? onImageInserted;
 
   /** 待发送的附件（名称与进度文字），点击移除 */
   final List<({String name, String status, VoidCallback remove})> attachments;
@@ -194,6 +202,23 @@ class _ChatInputBarState extends State<ChatInputBar> {
                           textInputAction: TextInputAction.newline,
                           keyboardType: TextInputType.multiline,
                           style: TextStyle(fontSize: PdFont.item, color: c.text, height: 1.35),
+                          contextMenuBuilder: (context, state) => AdaptiveTextSelectionToolbar.buttonItems(
+                            anchors: state.contextMenuAnchors,
+                            buttonItems: [
+                              ...state.contextMenuButtonItems,
+                              if (widget.onPasteImage != null)
+                                ContextMenuButtonItem(
+                                  label: '粘贴图片',
+                                  onPressed: () {
+                                    state.hideToolbar();
+                                    widget.onPasteImage!();
+                                  },
+                                ),
+                            ],
+                          ),
+                          contentInsertionConfiguration: widget.onImageInserted == null
+                              ? null
+                              : ContentInsertionConfiguration(allowedMimeTypes: const ['image/png', 'image/jpeg', 'image/gif', 'image/webp'], onContentInserted: widget.onImageInserted!),
                           decoration: InputDecoration(
                             hintText: '输入消息…',
                             fillColor: c.field,

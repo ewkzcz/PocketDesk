@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketdesk/net/events.dart' show LinkState;
 import 'package:pocketdesk/core/discovery.dart';
 import 'package:pocketdesk/data/models.dart';
+import 'package:pocketdesk/ui/chat/select_text_page.dart';
 import 'package:pocketdesk/ui/pages/diff_page.dart';
 import 'package:pocketdesk/ui/pages/pair_page.dart';
 import 'package:pocketdesk/ui/pages/terminal_page.dart';
@@ -167,6 +168,34 @@ void main() {
     final viewer = tester.widget<ImageViewerPage>(find.byType(ImageViewerPage));
     expect(viewer.ws.id, 'computer');
     expect(viewer.images.single.path, 'Users/me/PocketDesk/Inbox/20261001/截图.png');
+    await finish(tester, env);
+  });
+
+  testWidgets('消息可选择文字复制，删除后重新打开也不再出现', (tester) async {
+    final env = await start(tester);
+    await tester.tap(find.text('文件传输助手'));
+    await settle(tester);
+    await tester.longPress(find.text('这是今天的会议纪要链接'));
+    await settle(tester);
+    await tester.tap(find.text('选择文字'));
+    await settle(tester);
+    expect(find.byType(SelectTextPage), findsOneWidget);
+    expect(find.byType(SelectionArea), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('返回').last);
+    await settle(tester);
+    await tester.longPress(find.text('这是今天的会议纪要链接'));
+    await settle(tester);
+    await tester.tap(find.text('删除'));
+    await settle(tester);
+    expect(find.text('这是今天的会议纪要链接'), findsNothing);
+    await tester.tap(find.bySemanticsLabel('返回').last);
+    await settle(tester);
+    await tester.tap(find.text('文件传输助手'));
+    await settle(tester);
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+    await settle(tester);
+    expect(find.text('截图.png'), findsOneWidget);
+    expect(find.text('这是今天的会议纪要链接'), findsNothing);
     await finish(tester, env);
   });
 

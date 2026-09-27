@@ -29,13 +29,20 @@ class LocalDb {
     'CREATE TABLE IF NOT EXISTS drafts (host_id TEXT NOT NULL, session_id TEXT NOT NULL, text TEXT NOT NULL, PRIMARY KEY (host_id, session_id))',
     'CREATE TABLE IF NOT EXISTS phrases (id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT NOT NULL UNIQUE)',
     'CREATE TABLE IF NOT EXISTS hidden_sessions (host_id TEXT NOT NULL, session_id TEXT NOT NULL, PRIMARY KEY (host_id, session_id))',
+    'CREATE TABLE IF NOT EXISTS hidden_items (host_id TEXT NOT NULL, session_id TEXT NOT NULL, seq INTEGER NOT NULL, PRIMARY KEY (host_id, session_id, seq))',
   ];
 
   /** open：打开数据库并建表；factory 与路径可替换，测试时用内存库 */
   static Future<LocalDb> open(DatabaseFactory factory, String path) async {
     final db = await factory.openDatabase(path, options: OpenDatabaseOptions(
-      version: 1,
+      version: 2,
       onCreate: (db, _) async {
+        for (final q in _schema) {
+          await db.execute(q);
+        }
+      },
+      // 新版本只新增表，建表语句可重复执行
+      onUpgrade: (db, _, _) async {
         for (final q in _schema) {
           await db.execute(q);
         }
@@ -171,6 +178,21 @@ class LocalDb {
   Future<Set<String>> hiddenSessions(String hostId) async {
     final rows = await db.query('hidden_sessions', where: 'host_id=?', whereArgs: [hostId]);
     return rows.map((r) => r['session_id']! as String).toSet();
+  }
+
+  /** hideItems：在手机上删除几条消息（按消息的起始序号） */
+  Future<void> hideItems(String hostId, String sessionId, Iterable<int> seqs) async {
+    final b = db.batch();
+    for (final s in seqs) {
+      b.insert('hidden_items', {'host_id': hostId, 'session_id': sessionId, 'seq': s}, conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
+    await b.commit(noResult: true);
+  }
+
+  /** hiddenItems：会话里已在手机上删除的消息 */
+  Future<Set<int>> hiddenItems(String hostId, String sessionId) async {
+    final rows = await db.query('hidden_items', columns: ['seq'], where: 'host_id=? AND session_id=?', whereArgs: [hostId, sessionId]);
+    return rows.map((r) => r['seq']! as int).toSet();
   }
 
   /* ---------- 草稿与快捷短语 ---------- */

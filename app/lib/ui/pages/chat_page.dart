@@ -4,6 +4,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
@@ -18,11 +19,13 @@ import '../../core/transfer_manager.dart';
 import '../../data/chat.dart';
 import '../../data/models.dart';
 import '../../net/api.dart';
+import '../../transfer/naming.dart' as naming;
 import '../../transfer/task.dart';
 import '../agents.dart';
 import '../chat/commands.dart';
 import '../chat/input_bar.dart';
 import '../chat/items.dart';
+import '../chat/select_text_page.dart';
 import '../format.dart';
 import '../pick.dart';
 import '../share.dart';
@@ -58,6 +61,9 @@ typedef _Entry = ({ChatItem item, bool time, bool avatar});
 class _ChatPageState extends State<ChatPage> {
   HostScope? _scope;
   ChatLog? _log;
+
+  /** 在手机上删除的消息（按起始序号） */
+  Set<int> _hidden = {};
   final _input = TextEditingController();
   final _focus = FocusNode();
   final _scroll = ScrollController();
@@ -123,6 +129,7 @@ class _ChatPageState extends State<ChatPage> {
       }
     }
     final log = await scope.sessions.log(_id);
+    _hidden = await db.hiddenItems(scope.host.id, _id);
     if (!mounted) return;
     setState(() {
       _log = log;
@@ -380,6 +387,34 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  /** _pasteImage：发送剪贴板里的图片 */
+  Future<void> _pasteImage() async {
+    String? path;
+    try {
+      path = await context.read<AppState>().phone.device.clipboardImage();
+    } catch (_) {
+      path = null;
+    }
+    if (!mounted) return;
+    if (path == null) {
+      toast(context, '剪贴板里没有图片');
+      return;
+    }
+    await _attach([(path: path, name: path.split('/').last, mime: naming.mimeForName(path))]);
+  }
+
+  /** _imageInserted：输入法插入的图片存到缓存后发送 */
+  Future<void> _imageInserted(KeyboardInsertedContent c) async {
+    final data = c.data;
+    if (data == null || data.isEmpty) return;
+    final ext = c.mimeType.split('/').last.replaceAll('jpeg', 'jpg');
+    final dir = Directory('${context.read<AppState>().paths.temp.path}/paste');
+    await dir.create(recursive: true);
+    final f = File('${dir.path}/粘贴图片-${DateTime.now().millisecondsSinceEpoch}.$ext');
+    await f.writeAsBytes(data);
+    await _attach([(path: f.path, name: f.path.split('/').last, mime: c.mimeType)]);
+  }
+
   /**
    * _panel：扩展面板操作
    */
@@ -467,11 +502,19 @@ class _ChatPageState extends State<ChatPage> {
         final UserItem u => u.text,
         final AgentItem a => a.text,
         final SystemItem s => s.text,
+        final ThinkingItem t => t.text,
+        final ToolItem t => [t.summary, if (t.input.isNotEmpty) _toolInput(t.input), if (t.output.isNotEmpty) t.output].join('\n\n'),
         _ => '',
       };
 
+  /** _toolInput：工具参数的文字 */
+  static String _toolInput(Map<String, dynamic> input) {
+    final cmd = input['command'];
+    return cmd is String && input.length <= 2 ? cmd : const JsonEncoder.withIndent('  ').convert(input);
+  }
+
   /**
-   * _itemMenu：长按菜单（复制、引用回复、多选、转发、存为 md、删除）
+   * _itemMenu：长按菜单（复制、选择文字、复制全部对话、引用回复、多选、转发、存为 md、删除）
    */
   Future<void> _itemMenu(ChatItem it) async {
     final text = _textOf(it);
@@ -479,30 +522,37 @@ class _ChatPageState extends State<ChatPage> {
     unawaited(HapticFeedback.selectionClick());
     final i = await actionSheet(context, const [
       SheetAction('复制', icon: LucideIcons.copy300),
+      SheetAction('选择文字', icon: LucideIcons.textCursorInput300),
+      SheetAction('复制全部对话', icon: LucideIcons.copyPlus300),
       SheetAction('引用回复', icon: LucideIcons.messageSquareQuote300),
       SheetAction('多选', icon: LucideIcons.listChecks300),
       SheetAction('转发到其他会话', icon: LucideIcons.forward300),
       SheetAction('存为 md 文件', icon: LucideIcons.fileDown300),
       SheetAction('删除', icon: LucideIcons.trash2300, danger: true),
     ]);
+    if (!mounted) return;
     switch (i) {
       case 0:
         await _copy([it]);
       case 1:
+        await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => SelectTextPage(text: text, markdown: it is AgentItem || it is UserItem)));
+      case 2:
+        await _copy((_log?.items ?? const <ChatItem>[]).where((e) => !_hidden.contains(e.seq)));
+      case 3:
         setState(() => _quote = text.length > 200 ? '${text.substring(0, 200)}…' : text);
         _focus.requestFocus();
-      case 2:
+      case 4:
         setState(() {
           _selecting = true;
           _selected
             ..clear()
             ..add(it);
         });
-      case 3:
-        await _forward([it]);
-      case 4:
-        await _saveMd([it]);
       case 5:
+        await _forward([it]);
+      case 6:
+        await _saveMd([it]);
+      case 7:
         _remove([it]);
     }
   }
@@ -555,11 +605,13 @@ class _ChatPageState extends State<ChatPage> {
 
   /** _remove：只从手机上隐藏消息 */
   void _remove(Iterable<ChatItem> items) {
+    final seqs = items.map((e) => e.seq).toList();
     setState(() {
-      _log?.items.removeWhere(items.toSet().contains);
+      _hidden.addAll(seqs);
       _selecting = false;
       _selected.clear();
     });
+    unawaited(_scope!.sessions.db.hideItems(_scope!.host.id, _id, seqs));
   }
 
   /**
@@ -651,6 +703,7 @@ class _ChatPageState extends State<ChatPage> {
     var lastAt = 0;
     var lastAgent = false;
     for (final it in log.items) {
+      if (_hidden.contains(it.seq)) continue;
       final time = it.at > 0 && it.at - lastAt > 5 * 60 * 1000;
       if (it.at > 0) lastAt = it.at;
       final agentSide = it is AgentItem || it is ThinkingItem || it is ToolItem || it is ApprovalItem || it is DiffItem || (it is FileItem && !it.up);
@@ -675,7 +728,7 @@ class _ChatPageState extends State<ChatPage> {
       final SystemItem m => SystemNote(item: m, onRetry: () => _api.retry(_id).catchError((Object _) {})),
       final FileItem f => f.up ? FileBubble(item: f, status: _fileStatus(f), onTap: () => _fileTap(f)) : agent(FileBubble(item: f, status: _fileStatus(f), onTap: () => _fileTap(f))),
     };
-    final selectable = it is UserItem || it is AgentItem;
+    final selectable = it is UserItem || it is AgentItem || it is ToolItem || it is ThinkingItem;
     Widget row = GestureDetector(
       onLongPress: selectable && !_selecting ? () => _itemMenu(it) : null,
       onTap: _selecting && selectable
@@ -849,6 +902,8 @@ class _ChatPageState extends State<ChatPage> {
               showSlash: s.isAgent,
               quote: _quote,
               onClearQuote: () => setState(() => _quote = ''),
+              onPasteImage: _pasteImage,
+              onImageInserted: _imageInserted,
               attachments: [
                 for (final t in _pending)
                   (

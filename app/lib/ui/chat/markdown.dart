@@ -1,12 +1,15 @@
 /**
- * Markdown 渲染：Agent 回复按当前主题渲染标题、列表、表格、行内代码与代码块，代码使用等宽字体。
+ * Markdown 渲染：Agent 回复按当前主题渲染标题、列表、表格、行内代码与代码块，代码使用等宽字体；代码块可选择部分文字，右上角一键复制。
  */
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:markdown_widget/markdown_widget.dart';
 
 import '../tokens.dart';
+import '../widgets.dart';
 
 /**
  * MdText：渲染一段 Markdown
@@ -30,6 +33,7 @@ class MdText extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 6),
       textStyle: mono,
       decoration: BoxDecoration(color: c.tool, borderRadius: BorderRadius.circular(PdSize.smallRadius)),
+      wrapper: (child, code, _) => _CodeBlock(code: code, child: child),
     );
     return base.copy(configs: [
       PConfig(textStyle: text),
@@ -57,5 +61,35 @@ class MdText extends StatelessWidget {
     final cfg = config(context, fontSize: fontSize, color: color);
     final widgets = MarkdownGenerator(linesMargin: const EdgeInsets.symmetric(vertical: 3)).buildWidgets(data, config: cfg);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: widgets);
+  }
+}
+
+/** _CodeBlock：代码块可选择部分文字，右上角复制整段 */
+class _CodeBlock extends StatelessWidget {
+  const _CodeBlock({required this.code, required this.child});
+
+  final String code;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.pd;
+    return Stack(children: [
+      SelectionArea(child: child),
+      Positioned(
+        top: 8,
+        right: 2,
+        child: PdIconButton(
+          icon: LucideIcons.copy300,
+          tooltip: '复制代码',
+          size: 16,
+          color: c.text3,
+          onTap: () async {
+            await Clipboard.setData(ClipboardData(text: code));
+            if (context.mounted) toast(context, '已复制');
+          },
+        ),
+      ),
+    ]);
   }
 }
