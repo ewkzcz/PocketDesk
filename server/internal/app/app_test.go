@@ -722,6 +722,30 @@ func desktopSharedFlow(t *testing.T, e *env) {
 	if !strings.Contains(string(body), "桌面端共用接口发的") {
 		t.Fatalf("手机端应看到桌面端发的消息 %s", body)
 	}
+	// 桌面端新建 Agent 会话并添加附件，路径与手机端一致
+	var wsList []struct {
+		ID       string `json:"id"`
+		RootPath string `json:"rootPath"`
+		System   bool   `json:"system"`
+	}
+	e.adminDo("GET", "/admin/p/api/ws", nil, &wsList)
+	wsID := ""
+	for _, w := range wsList {
+		if _, err := os.Stat(w.RootPath); err == nil && !w.System {
+			wsID = w.ID
+		}
+	}
+	var sess struct {
+		ID string `json:"id"`
+	}
+	if code := e.adminDo("POST", "/admin/p/api/sessions", map[string]string{"kind": "claude", "workspaceId": wsID, "cwd": "."}, &sess); code != 201 && code != 200 {
+		t.Fatalf("桌面端新建会话 %d", code)
+	}
+	body2, ct := multipartFiles(map[string]string{"粘贴图片.png": "img"})
+	code, b := e.adminRaw("POST", "/admin/api/sessions/"+sess.ID+"/attach", body2, ct)
+	if code != 200 || !strings.Contains(string(b), ".pocketdesk/inbox/") || !strings.Contains(string(b), "粘贴图片.png") {
+		t.Fatalf("桌面端添加附件 %d %s", code, b)
+	}
 	// 未带管理凭证不能访问
 	res, err := http.Get(e.admin + "/admin/p/api/sessions")
 	if err != nil {

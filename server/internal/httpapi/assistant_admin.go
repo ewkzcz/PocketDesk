@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ewkzcz/pocketdesk/server/internal/naming"
 	"github.com/ewkzcz/pocketdesk/server/internal/store"
 )
 
@@ -213,4 +214,65 @@ func openLocal(p string, reveal bool) error {
 	}
 	go cmd.Wait()
 	return nil
+}
+
+/**
+ * adminAttach：桌面端给 Agent 会话添加附件（选择、拖入或粘贴的文件），存到会话目录，返回发消息时用的相对路径
+ *
+ * 处理流程：
+ * 1、按与手机相同的规则确定会话工作目录下的 .pocketdesk/inbox/日期文件夹
+ * 2、逐个落盘，重名加序号
+ */
+func (s *Server) adminAttach(w http.ResponseWriter, r *http.Request) {
+	// 1、位置
+	date := naming.DateFolder(time.Now())
+	tgt, err := UploadResolver(s.Cfg, s.Store)(r.Context(), "session:"+r.PathValue("id"), date)
+	if err != nil {
+		writeErr(w, r, errf(400, "bad_target", err.Error()))
+		return
+	}
+	mr, err := r.MultipartReader()
+	if err != nil {
+		writeErr(w, r, errf(400, "bad_form", "请选择文件"))
+		return
+	}
+	if err := os.MkdirAll(tgt.Dir, 0o755); err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	// 2、落盘
+	var paths []string
+	for {
+		part, err := mr.NextPart()
+		if err != nil {
+			break
+		}
+		name := filepath.Base(part.FileName())
+		if part.FormName() != "file" || name == "" || name == "." {
+			part.Close()
+			continue
+		}
+		tmp, err := os.CreateTemp(tgt.Dir, ".pd-attach-*")
+		if err != nil {
+			part.Close()
+			writeErr(w, r, err)
+			return
+		}
+		_, err = io.Copy(tmp, http.MaxBytesReader(w, part, 2<<30))
+		tmp.Close()
+		part.Close()
+		if err != nil {
+			os.Remove(tmp.Name())
+			writeErr(w, r, errf(400, "upload_failed", name+"：上传中断"))
+			return
+		}
+		final, err := naming.Place(tmp.Name(), tgt.Dir, name)
+		if err != nil {
+			os.Remove(tmp.Name())
+			writeErr(w, r, err)
+			return
+		}
+		paths = append(paths, tgt.RelBase+"/"+final)
+	}
+	writeJSON(w, 200, map[string]any{"paths": paths})
 }
