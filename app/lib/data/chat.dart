@@ -102,12 +102,15 @@ class SystemItem extends ChatItem {
 
 /** FileItem：文件消息（文件传输助手） */
 class FileItem extends ChatItem {
-  FileItem(super.seq, super.at, {required this.up, required this.name, required this.size, this.relPath = '', this.outboxId = '', this.mime = '', this.sha256 = ''});
+  FileItem(super.seq, super.at, {required this.up, required this.name, required this.size, this.relPath = '', this.path = '', this.outboxId = '', this.mime = '', this.sha256 = ''});
 
   final bool up;
   final String name;
   final int size;
   final String relPath;
+
+  /** path：文件在电脑上的完整路径（手机发出的为收件目录中的位置，电脑发来的为发件目录中的位置） */
+  final String path;
   final String outboxId;
   final String mime;
   final String sha256;
@@ -295,6 +298,7 @@ class ChatLog {
             name: str('name'),
             size: Json.integer(d['size']),
             relPath: str('relPath'),
+            path: str('path'),
             outboxId: str('outboxId'),
             mime: str('mime'),
             sha256: str('sha256')));

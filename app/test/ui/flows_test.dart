@@ -12,6 +12,7 @@ import 'package:pocketdesk/data/models.dart';
 import 'package:pocketdesk/ui/pages/diff_page.dart';
 import 'package:pocketdesk/ui/pages/pair_page.dart';
 import 'package:pocketdesk/ui/pages/terminal_page.dart';
+import 'package:pocketdesk/ui/viewers/image_viewer.dart';
 import 'package:pocketdesk/ui/viewers/text_viewer.dart';
 
 import '../core/services_test.dart' show FakeDiscovery;
@@ -143,6 +144,20 @@ void main() {
     await tester.dragUntilVisible(find.text('手机保存位置'), find.byType(ListView).last, const Offset(0, -200));
     expect(find.text('/Users/me/PocketDesk/Inbox'), findsOneWidget);
     expect(find.text('/Users/me/PocketDesk/Outbox'), findsOneWidget);
+    await finish(tester, env);
+  });
+
+  testWidgets('文件传输助手：显示文件存到了电脑哪里，点开在 App 内预览', (tester) async {
+    final env = await start(tester);
+    await tester.tap(find.text('文件传输助手'));
+    await settle(tester);
+    expect(find.textContaining('已存到电脑 Inbox/20261001'), findsOneWidget);
+    await tester.tap(find.text('截图.png'));
+    await settle(tester);
+    // 通过「此电脑」打开收件目录中的这张图
+    final viewer = tester.widget<ImageViewerPage>(find.byType(ImageViewerPage));
+    expect(viewer.ws.id, 'computer');
+    expect(viewer.images.single.path, 'Users/me/PocketDesk/Inbox/20261001/截图.png');
     await finish(tester, env);
   });
 

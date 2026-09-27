@@ -152,6 +152,16 @@ class Workspace {
       system: _b(j['system']),
       home: _s(j['home']));
 
+  /** relOf：电脑上的完整路径在本工作区中的相对路径，不在工作区内时为空 */
+  String relOf(String abs) {
+    final win = rootPath.contains('\\');
+    final sep = win ? '\\' : '/';
+    final root = rootPath.endsWith(sep) ? rootPath : rootPath + sep;
+    if (!abs.startsWith(root)) return '';
+    final rel = abs.substring(root.length);
+    return win ? rel.replaceAll(sep, '/') : rel;
+  }
+
   /** absPath：工作区内相对路径对应的电脑上的完整路径 */
   String absPath(String rel) {
     final r = rel == '.' ? '' : rel;

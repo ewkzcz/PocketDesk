@@ -28,6 +28,7 @@ import '../pick.dart';
 import '../share.dart';
 import '../tokens.dart';
 import '../widgets.dart';
+import '../viewers/open_file.dart';
 import 'diff_page.dart';
 import 'dir_picker.dart';
 import 'session_actions.dart';
@@ -560,11 +561,18 @@ class _ChatPageState extends State<ChatPage> {
     });
   }
 
-  /** _fileTap：点击文件消息 */
+  /**
+   * _fileTap：点击文件消息
+   *
+   * 处理流程：
+   * 1、发到电脑的文件：从电脑上读取，用 App 内阅读器预览
+   * 2、电脑发来的：已收到时打开手机上的文件，否则开始接收
+   */
   Future<void> _fileTap(FileItem f) async {
     final m = _scope!.transfers;
+    // 1、发到电脑的
     if (f.up) {
-      toast(context, f.relPath.isEmpty ? '已发送到电脑' : '已保存到电脑：${f.relPath}');
+      await _previewOnComputer(f);
       return;
     }
     final t = m.tasks.where((t) => t.source == 'outbox:${f.outboxId}').firstOrNull;
@@ -578,9 +586,36 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  /** _previewOnComputer：通过「此电脑」读取文件并在 App 内预览 */
+  Future<void> _previewOnComputer(FileItem f) async {
+    if (f.path.isEmpty) {
+      toast(context, f.relPath.isEmpty ? '已发送到电脑' : '已保存到电脑收件目录：${f.relPath}');
+      return;
+    }
+    try {
+      final list = await _api.workspaces();
+      final pc = list.where((w) => w.system).firstOrNull;
+      final rel = pc?.relOf(f.path) ?? '';
+      if (!mounted) return;
+      if (pc == null || rel.isEmpty) {
+        toast(context, '已保存到电脑：${f.path}');
+        return;
+      }
+      await openWorkspaceFile(context, ws: pc, entry: FileEntry(name: f.name, path: rel, isDir: false, size: f.size, modTime: 0), siblings: const []);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    }
+  }
+
+  /** _savedTo：发到电脑的文件所在文件夹，取最后两级（如 Inbox/20260927） */
+  static String _savedTo(FileItem f) {
+    final parts = f.path.replaceAll('\\', '/').split('/')..removeLast();
+    return parts.length >= 2 ? parts.sublist(parts.length - 2).join('/') : parts.join('/');
+  }
+
   /** _fileStatus：文件消息的状态文字 */
   String _fileStatus(FileItem f) {
-    if (f.up) return '已发送';
+    if (f.up) return f.path.isEmpty ? '已发送' : '已存到电脑 ${_savedTo(f)}';
     final t = _scope!.transfers.tasks.where((t) => t.source == 'outbox:${f.outboxId}').firstOrNull;
     if (t == null) return '点击接收';
     return switch (t.status) {
