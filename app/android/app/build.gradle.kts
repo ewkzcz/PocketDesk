@@ -6,7 +6,8 @@ plugins {
 
 android {
     namespace = "com.pocketdesk.pocketdesk"
-    compileSdk = flutter.compileSdkVersion
+    // receive_sharing_intent 要求以 Android 37 编译；只影响编译，不改变最低支持版本
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
