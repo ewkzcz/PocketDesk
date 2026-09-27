@@ -630,7 +630,11 @@ class _ChatPageState extends State<ChatPage> {
 
   /** _fileStatus：文件消息的状态文字 */
   String _fileStatus(FileItem f) {
-    if (f.up) return f.path.isEmpty ? '已发送' : '已存到电脑 ${_savedTo(f)}';
+    if (f.up) {
+      if (f.path.isNotEmpty) return '已存到电脑 ${_savedTo(f)}';
+      final i = f.relPath.lastIndexOf('/');
+      return i > 0 ? '已存到电脑 ${f.relPath.substring(0, i)}' : '已发送';
+    }
     final t = _scope!.transfers.tasks.where((t) => t.source == 'outbox:${f.outboxId}').firstOrNull;
     if (t == null) return '点击接收';
     return switch (t.status) {

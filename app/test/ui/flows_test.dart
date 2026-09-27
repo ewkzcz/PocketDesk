@@ -193,6 +193,7 @@ void main() {
     final env = await start(tester);
     await tester.tap(find.text('文件传输助手'));
     await settle(tester);
+    expect(find.text('2 KB · 已存到电脑 20260901'), findsOneWidget);
     await tester.tap(find.text('旧图.png'));
     await settle(tester);
     final viewer = tester.widget<ImageViewerPage>(find.byType(ImageViewerPage));
