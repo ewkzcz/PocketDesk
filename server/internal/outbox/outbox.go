@@ -117,9 +117,12 @@ func (s *Service) loop(ctx context.Context, w *fsnotify.Watcher) {
 				continue
 			}
 			if ev.Op&(fsnotify.Remove|fsnotify.Rename) != 0 {
-				// 与 Ack 共用锁，避免确认移动时误删刚标记的记录
+				// 与 Ack 共用锁，避免确认移动时误删刚标记的记录；
+				// macOS 上改名覆盖占位文件也会报删除，文件仍在时不删记录
 				s.mu.Lock()
-				s.store.DeleteOutboxByPath(ctx, ev.Name)
+				if _, err := os.Lstat(ev.Name); errors.Is(err, os.ErrNotExist) {
+					s.store.DeleteOutboxByPath(ctx, ev.Name)
+				}
 				s.mu.Unlock()
 				continue
 			}
