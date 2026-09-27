@@ -50,6 +50,7 @@ func (s *Server) AdminHandler() http.Handler {
 	mux.HandleFunc("GET /admin/api/phones", s.adminPhones)
 	mux.HandleFunc("POST /admin/api/phone/{dev}/call", s.adminPhoneCall)
 	mux.HandleFunc("GET /admin/api/phone/{dev}/file", s.adminPhoneFile)
+	mux.HandleFunc("POST /admin/api/phone/{dev}/fetch", s.adminPhoneFetch)
 	mux.HandleFunc("POST /admin/api/phone/{dev}/upload", s.adminPhoneUpload)
 	mux.HandleFunc("POST /admin/api/approve", s.adminApprove)
 	mux.HandleFunc("GET /admin/api/audit", s.adminAudit)

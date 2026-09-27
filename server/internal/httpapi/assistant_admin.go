@@ -161,26 +161,10 @@ func (s *Server) adminAssistantOpen(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, err)
 		return
 	}
-	var cmd *exec.Cmd
-	switch {
-	case runtime.GOOS == "darwin" && in.Reveal:
-		cmd = exec.Command("open", "-R", p)
-	case runtime.GOOS == "darwin":
-		cmd = exec.Command("open", p)
-	case runtime.GOOS == "windows" && in.Reveal:
-		cmd = exec.Command("explorer", "/select,", p)
-	case runtime.GOOS == "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", p)
-	case in.Reveal:
-		cmd = exec.Command("xdg-open", filepath.Dir(p))
-	default:
-		cmd = exec.Command("xdg-open", p)
-	}
-	if err := cmd.Start(); err != nil {
-		writeErr(w, r, errf(500, "open_failed", "无法打开文件"))
+	if err := s.open(p, in.Reveal); err != nil {
+		writeErr(w, r, err)
 		return
 	}
-	go cmd.Wait()
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
@@ -197,4 +181,36 @@ func serveUserFile(w http.ResponseWriter, r *http.Request, name string, mod time
 	w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'")
 	w.Header().Set("Content-Disposition", mime.FormatMediaType(disp, map[string]string{"filename": name}))
 	http.ServeContent(w, r, name, mod, f)
+}
+
+/** open：打开或定位电脑上的文件 */
+func (s *Server) open(p string, reveal bool) error {
+	if s.Opener != nil {
+		return s.Opener(p, reveal)
+	}
+	return openLocal(p, reveal)
+}
+
+/** openLocal：用默认程序打开电脑上的文件，reveal 为真时在文件管理器中显示 */
+func openLocal(p string, reveal bool) error {
+	var cmd *exec.Cmd
+	switch {
+	case runtime.GOOS == "darwin" && reveal:
+		cmd = exec.Command("open", "-R", p)
+	case runtime.GOOS == "darwin":
+		cmd = exec.Command("open", p)
+	case runtime.GOOS == "windows" && reveal:
+		cmd = exec.Command("explorer", "/select,", p)
+	case runtime.GOOS == "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", p)
+	case reveal:
+		cmd = exec.Command("xdg-open", filepath.Dir(p))
+	default:
+		cmd = exec.Command("xdg-open", p)
+	}
+	if err := cmd.Start(); err != nil {
+		return errf(500, "open_failed", "无法打开文件")
+	}
+	go cmd.Wait()
+	return nil
 }

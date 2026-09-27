@@ -47,6 +47,9 @@ type Server struct {
 	LogDir   string
 	Quit     func()
 
+	/** Opener：在电脑上打开或定位文件，为空时用系统默认方式（测试时替换） */
+	Opener func(path string, reveal bool) error
+
 	touch      touchCache
 	agentsMu   sync.Mutex
 	agentsAt   time.Time

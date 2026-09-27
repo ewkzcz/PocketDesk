@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ewkzcz/pocketdesk/server/internal/naming"
 	"github.com/ewkzcz/pocketdesk/server/internal/security"
 )
 
@@ -235,14 +236,13 @@ func (s *Server) adminPhoneCall(w http.ResponseWriter, r *http.Request) {
 }
 
 /**
- * adminPhoneFile：从手机取一个文件，用于预览、下载与编辑
+ * phonePull：请手机把一个文件上传过来，交给 sink 处理
  *
  * 处理流程：
- * 1、登记文件交换，请手机把文件上传过来
- * 2、收到上传后原样转给浏览器
+ * 1、登记文件交换，请手机上传
+ * 2、收到上传后交给 sink；手机报错或超时时返回错误
  */
-func (s *Server) adminPhoneFile(w http.ResponseWriter, r *http.Request) {
-	dev, p := r.PathValue("dev"), r.URL.Query().Get("path")
+func (s *Server) phonePull(r *http.Request, dev, p string, sink func(up phoneUpload) error) error {
 	// 1、请手机上传
 	in := make(chan phoneUpload)
 	id := s.addBlob(&phoneBlob{device: dev, in: in})
@@ -252,10 +252,27 @@ func (s *Server) adminPhoneFile(w http.ResponseWriter, r *http.Request) {
 		_, err := s.phoneCall(context.WithoutCancel(r.Context()), dev, "push", map[string]string{"id": id, "path": p}, phoneBlobWait)
 		errc <- err
 	}()
-	// 2、转给浏览器
+	// 2、交给 sink
 	select {
 	case up := <-in:
 		defer close(up.done)
+		return sink(up)
+	case err := <-errc:
+		if err == nil {
+			err = errf(502, "phone_error", "手机没有发送文件")
+		}
+		return err
+	case <-time.After(phoneCallWait):
+		return errf(504, "phone_timeout", "手机没有响应，请确认手机上的 PocketDesk 在前台")
+	case <-r.Context().Done():
+		return r.Context().Err()
+	}
+}
+
+/** adminPhoneFile：从手机取一个文件给浏览器，用于预览与编辑 */
+func (s *Server) adminPhoneFile(w http.ResponseWriter, r *http.Request) {
+	p := r.URL.Query().Get("path")
+	err := s.phonePull(r, r.PathValue("dev"), p, func(up phoneUpload) error {
 		name := path.Base(p)
 		w.Header().Set("Cache-Control", "no-store")
 		if up.size != "" {
@@ -266,21 +283,67 @@ func (s *Server) adminPhoneFile(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'")
-		disp := "inline"
-		if r.URL.Query().Get("dl") == "1" {
-			disp = "attachment"
-		}
-		w.Header().Set("Content-Disposition", mime.FormatMediaType(disp, map[string]string{"filename": name}))
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": name}))
 		io.Copy(w, up.body)
-	case err := <-errc:
-		if err == nil {
-			err = errf(502, "phone_error", "手机没有发送文件")
-		}
+		return nil
+	})
+	if err != nil && r.Context().Err() == nil {
 		writeErr(w, r, err)
-	case <-time.After(phoneCallWait):
-		writeErr(w, r, errf(504, "phone_timeout", "手机没有响应，请确认手机上的 PocketDesk 在前台"))
-	case <-r.Context().Done():
 	}
+}
+
+/**
+ * adminPhoneFetch：把手机上的文件存到电脑收件目录的日期文件夹，open 为真时用默认程序打开，否则在文件管理器中显示
+ *
+ * 处理流程：
+ * 1、手机上传的内容先写临时文件，按命名规则落盘
+ * 2、打开或定位
+ */
+func (s *Server) adminPhoneFetch(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Path string `json:"path"`
+		Open bool   `json:"open"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	// 1、落盘
+	dir := filepath.Join(s.Cfg.Get().Transfer.InboxDir, naming.DateFolder(time.Now()))
+	var saved string
+	err := s.phonePull(r, r.PathValue("dev"), in.Path, func(up phoneUpload) error {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+		tmp, err := os.CreateTemp(dir, ".pd-phone-*")
+		if err != nil {
+			return err
+		}
+		_, err = io.Copy(tmp, up.body)
+		tmp.Close()
+		if err != nil {
+			os.Remove(tmp.Name())
+			return errf(502, "phone_error", "接收中断，请重试")
+		}
+		name, err := naming.Place(tmp.Name(), dir, path.Base(in.Path))
+		if err != nil {
+			os.Remove(tmp.Name())
+			return err
+		}
+		saved = filepath.Join(dir, name)
+		return nil
+	})
+	if err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	// 2、打开或定位
+	if err := s.open(saved, !in.Open); err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	s.audit(r, "phone.fetch", map[string]string{"path": in.Path, "saved": saved})
+	writeJSON(w, 200, map[string]string{"path": saved})
 }
 
 /**

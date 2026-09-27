@@ -653,12 +653,27 @@ func phoneFilesFlow(t *testing.T, e *env) {
 		}
 	}()
 	// 3、桌面端操作
+	var opened []string
+	e.a.API.Opener = func(p string, reveal bool) error {
+		opened = append(opened, fmt.Sprintf("%s %v", filepath.Base(p), reveal))
+		return nil
+	}
 	code, b := e.adminRaw("POST", "/admin/api/phone/"+dev+"/call", strings.NewReader(`{"op":"list","args":{"path":""}}`), "application/json")
 	if code != 200 || !strings.Contains(string(b), "照片.jpg") {
 		t.Fatalf("列目录 %d %s", code, b)
 	}
 	if code, b = e.adminRaw("GET", "/admin/api/phone/"+dev+"/file?path=照片.jpg", nil, ""); code != 200 || string(b) != "jpg" {
 		t.Fatalf("下载 %d %q", code, b)
+	}
+	// 存到电脑收件目录并在文件管理器中显示
+	var saved struct {
+		Path string `json:"path"`
+	}
+	if code = e.adminDo("POST", "/admin/api/phone/"+dev+"/fetch", map[string]any{"path": "照片.jpg"}, &saved); code != 200 {
+		t.Fatalf("存到电脑 %d", code)
+	}
+	if b, _ := os.ReadFile(saved.Path); string(b) != "jpg" || !strings.HasPrefix(saved.Path, e.a.Cfg.Get().Transfer.InboxDir) || len(opened) != 1 || opened[0] != "照片.jpg true" {
+		t.Fatalf("存到电脑 %s %v", saved.Path, opened)
 	}
 	body, ct := multipartFiles(map[string]string{"报告.pdf": "pdf"})
 	if code, b = e.adminRaw("POST", "/admin/api/phone/"+dev+"/upload?dir=资料", body, ct); code != 200 || !strings.Contains(string(b), "报告.pdf") {
