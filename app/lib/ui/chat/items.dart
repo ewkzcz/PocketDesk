@@ -4,6 +4,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -507,5 +508,42 @@ class FileBubble extends StatelessWidget {
       ),
     );
     return item.up ? Row(mainAxisAlignment: MainAxisAlignment.end, children: [card]) : card;
+  }
+}
+
+/**
+ * ImageBubble：图片消息直接显示缩略图，点击查看大图；取不到图片时退回文件卡片
+ */
+class ImageBubble extends StatelessWidget {
+  const ImageBubble({super.key, required this.image, required this.fallback, this.onTap});
+
+  /** image：图片在手机上的文件（取不到时为空） */
+  final Future<File?> image;
+  final Widget fallback;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.pd;
+    return FutureBuilder<File?>(
+      future: image,
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return Container(width: 140, height: 140, decoration: BoxDecoration(color: c.card, borderRadius: BorderRadius.circular(PdSize.bubbleRadius)));
+        }
+        final f = snap.data;
+        if (f == null) return fallback;
+        return GestureDetector(
+          onTap: onTap,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(PdSize.bubbleRadius),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 200, maxHeight: 220, minWidth: 60, minHeight: 40),
+              child: Image.file(f, fit: BoxFit.cover, cacheWidth: 480, errorBuilder: (_, _, _) => fallback),
+            ),
+          ),
+        );
+      },
+    );
   }
 }

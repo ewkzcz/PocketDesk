@@ -31,6 +31,8 @@ import '../pick.dart';
 import '../share.dart';
 import '../tokens.dart';
 import '../widgets.dart';
+import '../file_kinds.dart';
+import '../viewers/fetch.dart';
 import '../viewers/open_file.dart';
 import 'diff_page.dart';
 import 'dir_picker.dart';
@@ -680,6 +682,56 @@ class _ChatPageState extends State<ChatPage> {
     return parts.length >= 2 ? parts.sublist(parts.length - 2).join('/') : parts.join('/');
   }
 
+  /** 图片消息的缩略图，按消息序号缓存，避免每次重绘都重新读取 */
+  final Map<int, Future<File?>> _thumbs = {};
+
+  /** _fileBubble：图片显示缩略图，其他文件显示卡片 */
+  Widget _fileBubble(FileItem f) {
+    final card = FileBubble(item: f, status: _fileStatus(f), onTap: () => _fileTap(f));
+    if (viewKindOf(f.name) != ViewKind.image) return card;
+    final bubble = ImageBubble(image: _thumbs[f.seq] ??= _thumb(f), fallback: card, onTap: () => _fileTap(f));
+    return f.up ? Row(mainAxisAlignment: MainAxisAlignment.end, children: [bubble]) : bubble;
+  }
+
+  /**
+   * _thumb：图片在手机上的文件
+   *
+   * 处理流程：
+   * 1、电脑发来的：已接收的直接用手机上的文件
+   * 2、发到电脑的：通过「此电脑」取一份到缓存
+   */
+  Future<File?> _thumb(FileItem f) async {
+    final scope = _scope!;
+    final app = context.read<AppState>();
+    // 1、电脑发来的
+    if (!f.up) {
+      final t = scope.transfers.tasks.where((t) => t.source == 'outbox:${f.outboxId}').firstOrNull;
+      if (t == null || t.status != TaskStatus.done) {
+        _thumbs.removeWhere((k, _) => k == f.seq);
+        return null;
+      }
+      final file = File(t.result);
+      return await file.exists() ? file : null;
+    }
+    // 2、发到电脑的
+    try {
+      var abs = f.path;
+      if (abs.isEmpty && f.relPath.isNotEmpty) {
+        final inbox = (await _api.dirs()).inbox;
+        final sep = inbox.contains('\\') ? '\\' : '/';
+        abs = '$inbox$sep${f.relPath.replaceAll('/', sep)}';
+      }
+      final list = _workspaces.isNotEmpty ? _workspaces : await _api.workspaces();
+      final pc = list.where((w) => w.system).firstOrNull;
+      final rel = pc?.relOf(abs) ?? '';
+      if (pc == null || rel.isEmpty) return null;
+      return (await fetchWsFile(scope, pc.id, rel, cacheFileFor(app, pc.id, rel, sub: 'thumb'))).file;
+    } catch (_) {
+      _thumbs.removeWhere((k, _) => k == f.seq);
+      return null;
+    }
+  }
+
   /** _fileStatus：文件消息的状态文字 */
   String _fileStatus(FileItem f) {
     if (f.up) {
@@ -726,7 +778,7 @@ class _ChatPageState extends State<ChatPage> {
       final ApprovalItem a => agent(ApprovalCard(item: a, onDecide: (x) => _decide(a, x))),
       final DiffItem d => agent(DiffCard(item: d, onOpen: (f) => _openDiff(f, d.files))),
       final SystemItem m => SystemNote(item: m, onRetry: () => _api.retry(_id).catchError((Object _) {})),
-      final FileItem f => f.up ? FileBubble(item: f, status: _fileStatus(f), onTap: () => _fileTap(f)) : agent(FileBubble(item: f, status: _fileStatus(f), onTap: () => _fileTap(f))),
+      final FileItem f => f.up ? _fileBubble(f) : agent(_fileBubble(f)),
     };
     final selectable = it is UserItem || it is AgentItem || it is ToolItem || it is ThinkingItem;
     Widget row = GestureDetector(
