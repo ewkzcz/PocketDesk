@@ -171,7 +171,7 @@ func desktopApp(dataDir, page string) error {
 	}
 	u := base + "/?k=" + key + "#" + page
 	// 2、窗口
-	w := desktop.Window{Title: "PocketDesk", URL: u, Width: 1100, Height: 720}
+	w := desktop.Window{Title: "PocketDesk", URL: u, Width: 900, Height: 600}
 	if page == "pair" {
 		w.Title, w.Width, w.Height = "配对新手机", 520, 680
 	}
