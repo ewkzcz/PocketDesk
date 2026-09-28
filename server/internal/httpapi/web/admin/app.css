@@ -357,7 +357,10 @@ select.pd-input { cursor: pointer; }
 .pd-stats b { display: block; font-size: 20px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .pd-stats span { font-size: 12px; color: var(--pd-text-3); }
 .pd-agents { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
-.pd-agent { display: flex; gap: 10px; align-items: center; padding: 12px; background: var(--pd-panel); border-radius: 8px; }
+.pd-agent { display: flex; gap: 10px; align-items: center; padding: 12px; background: var(--pd-panel); border-radius: 8px; border: 0; text-align: left; color: var(--pd-text); cursor: pointer; transition: background .12s ease-out, transform .1s ease-out; }
+.pd-agent:hover { background: var(--pd-list-hover); }
+.pd-agent:active { transform: scale(.98); }
+.pd-agent:disabled { cursor: default; transform: none; background: var(--pd-panel); }
 .pd-agent.off .pd-avatar { filter: grayscale(.9); opacity: .55; }
 .pd-crumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; margin: 0 0 10px; }
 .pd-crumbs span { color: var(--pd-text-4); }
@@ -384,6 +387,11 @@ select.pd-input { cursor: pointer; }
 .pd-preview-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 配对 */
+.pd-pair-dialog { width: 440px; max-height: calc(100vh - 32px); background: var(--pd-chat); }
+.pd-pair-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.pd-pair-dialog .pd-pair-title { display: none; }
+.pd-pair-dialog .pd-pair-body { padding: 4px 20px 20px; gap: 12px; }
+.pd-pair-dialog .pd-qr { width: 168px; height: 168px; }
 .pd-pair { height: 100%; overflow-y: auto; display: flex; background: var(--pd-chat); }
 .pd-pair-body { margin: auto; width: 100%; max-width: 420px; padding: 28px 24px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
 .pd-pair-title { font-size: 19px; font-weight: 500; }

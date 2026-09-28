@@ -824,7 +824,7 @@
     if (!ph.phones) { return '<div class="pd-empty">正在读取…</div>'; }
     if (!ph.phones.length) { return '<div class="pd-empty">没有在线的手机<br>在手机上打开 PocketDesk 后会出现在这里</div>'; }
     return ph.phones.map(function (p) {
-      return '<button class="pd-row' + (p.id === ph.dev ? ' active' : '') + '" data-act="phone-pick" data-id="' + esc(p.id) + '"><div class="pd-row-avatar">' + avatarHtml('phone') + '</div>' +
+      return '<button class="pd-row' + (p.id === ph.dev ? ' active' : '') + '" data-act="phone-pick" data-id="' + esc(p.id) + '" data-phone="' + esc(p.id) + '" data-name="' + esc(p.name) + '"><div class="pd-row-avatar">' + avatarHtml('phone') + '</div>' +
         '<div class="pd-row-main"><div class="pd-row-line"><span class="pd-row-title">' + esc(p.name) + '</span></div><div class="pd-row-sub">' + (p.online ? '在线' : '不在线') + '</div></div></button>';
     }).join('');
   }
@@ -834,7 +834,8 @@
     var head = '<header class="pd-head"><div class="pd-head-main"><div class="pd-head-title">手机文件</div><div class="pd-head-sub pd-mono">' + esc(ph.root || '管理手机上的工作空间') + '</div></div><div class="pd-head-acts">' +
       (ready ? '<button class="pd-btn" data-act="phone-root">' + icon('folder-search', 16) + '更换目录</button><button class="pd-btn" data-act="phone-mkdir">' + icon('folder-plus', 16) + '新建文件夹</button>' +
         '<button class="pd-btn pd-btn-primary" data-act="phone-upload">' + icon('upload', 16) + '上传</button>' : '') +
-      '<button class="pd-icon-btn" data-act="phone-refresh" title="刷新" aria-label="刷新">' + icon('refresh-cw', 16) + '</button></div></header>';
+      '<button class="pd-icon-btn" data-act="phone-refresh" title="刷新" aria-label="刷新">' + icon('refresh-cw', 16) + '</button>' +
+      (ph.dev ? '<button class="pd-icon-btn" data-act="phone-kick" title="移除这台手机" aria-label="移除这台手机">' + icon('trash', 16) + '</button>' : '') + '</div></header>';
     var body;
     if (!ph.phones) { body = '<div class="pd-empty">正在连接手机…</div>'; }
     else if (!ph.phones.length) { body = '<div class="pd-empty">没有在线的手机，在手机上打开 PocketDesk 即可管理它的文件</div>'; }
@@ -964,7 +965,10 @@
       return '<div><span class="pd-mono">' + esc(a.ip) + '</span> <span class="pd-tag' + (a.kind === 'tailscale' ? '' : ' pd-tag-ok') + '">' + (a.kind === 'tailscale' ? 'Tailscale' : '局域网') + '</span></div>';
     }).join('') || '<span class="pd-muted">未检测到局域网或 Tailscale 地址</span>';
     var agents = (host.agents || []).map(function (a) {
-      return '<div class="pd-agent' + (a.installed ? '' : ' off') + '">' + avatarHtml(a.kind) + '<div style="min-width:0"><div>' + esc(a.label) + '</div><div class="pd-muted" style="font-size:12px">' + (a.installed ? esc(a.version || '已安装') : '未安装') + '</div></div></div>';
+      var n = sessions.filter(function (s) { return s.kind === a.kind; }).length;
+      return '<button class="pd-agent' + (a.installed ? '' : ' off') + '" data-act="agent" data-kind="' + esc(a.kind) + '"' + (a.installed ? '' : ' disabled') + '>' + avatarHtml(a.kind) +
+        '<div style="min-width:0;flex:1"><div>' + esc(a.label) + '</div><div class="pd-muted" style="font-size:12px">' + (a.installed ? esc(a.version || '已安装') + (n ? ' · ' + n + ' 个会话' : '') : '未安装') + '</div></div>' +
+        (a.installed ? '<span class="pd-muted">' + icon('chevron-right', 16) + '</span>' : '') + '</button>';
     }).join('');
     return ['<div class="pd-hero"><div class="pd-hero-icon">' + icon('monitor', 26) + '</div><div><div class="pd-hero-name">' + esc(host.host.name) + '</div><div class="pd-hero-state"><i></i>运行中 · 端口 ' + host.host.port + '</div></div>' +
       '<div class="pd-stats"><div><b>' + online + '</b><span>在线手机</span></div><div><b>' + paired + '</b><span>已配对</span></div><div><b>' + host.workspaces.length + '</b><span>工作区</span></div></div></div>' +
@@ -1080,9 +1084,12 @@
       pairTimer = setInterval(function () { var el = document.getElementById('pair-left'); if (el) { el.innerHTML = countdownText(); } }, 1000);
     }).catch(function (e) { toast(e.message); });
   }
+  /** showPair：主窗口里以弹窗显示（标题栏可关闭，内容可滚动），独立配对窗口占满 */
   function showPair() {
     if (route().page === 'pair') { render(); return; }
-    modalRoot.innerHTML = '<div class="pd-scrim"><div class="pd-dialog" style="width:460px;background:var(--pd-chat)">' + pairBody() + '</div></div>';
+    modalRoot.innerHTML = '<div class="pd-scrim" data-act="pair-close"><div class="pd-dialog pd-pair-dialog" role="dialog" aria-modal="true" aria-label="配对新手机">' +
+      '<div class="pd-dialog-head"><div class="pd-dialog-title">配对新手机</div><button class="pd-icon-btn" data-act="pair-close" aria-label="关闭">' + icon('x', 18) + '</button></div>' +
+      '<div class="pd-pair-scroll">' + pairBody() + '</div></div></div>';
   }
   function closePair() {
     api('POST', '/admin/api/pair/cancel').catch(function () {});
@@ -1183,7 +1190,10 @@
         break;
       case 'pair': startPair(); break;
       case 'pair-refresh': startPair(); break;
-      case 'pair-close': closePair(); break;
+      case 'pair-close':
+        if (t.classList.contains('pd-scrim') && e.target !== t) { return; }
+        closePair();
+        break;
       case 'req':
         api('POST', '/admin/api/pair/' + encodeURIComponent(id), { allow: t.dataset.allow === '1' }).then(function () {
           closeModal();
@@ -1236,6 +1246,19 @@
           newSession(p[1], p[0] === 'auto');
         });
         break;
+      case 'agent':
+        var kind = t.dataset.kind, ra = t.getBoundingClientRect();
+        var recent = sessions.filter(function (s) { return s.kind === kind; }).sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); }).slice(0, 5);
+        var opts = recent.map(function (s) { return ['open:' + s.id, title(s), false, 'message-circle']; });
+        if (opts.length) { opts.push('-'); }
+        opts.push(['new', '新建 ' + AGENT[kind] + ' 会话', false, 'plus']);
+        if (kind === 'claude' || kind === 'codex') { opts.push(['auto', AGENT[kind] + ' 免审批', false, 'shield-alert']); }
+        popMenu(ra.left, ra.bottom + 4, opts).then(function (k) {
+          if (!k) { return; }
+          if (k.indexOf('open:') === 0) { location.hash = 'chat/' + encodeURIComponent(k.slice(5)); return; }
+          newSession(kind, k === 'auto');
+        });
+        break;
       case 'ws-pick':
         Array.prototype.forEach.call(modalRoot.querySelectorAll('[data-act="ws-pick"]'), function (b) { b.classList.toggle('active', b === t); });
         break;
@@ -1250,6 +1273,10 @@
       // 手机文件
       case 'phone-pick': ph.dev = id; ph.path = ''; phoneLoad(); break;
       case 'phone-refresh': phoneLoad(); break;
+      case 'phone-kick':
+        var cur = (ph.phones || []).filter(function (p) { return p.id === ph.dev; })[0];
+        if (cur) { kickPhone(cur.id, cur.name); }
+        break;
       case 'phone-cd': ph.path = t.dataset.path; phoneLoad(); break;
       case 'phone-open':
         if (t.dataset.dir === '1') { ph.path = t.dataset.path; phoneLoad(); } else { phoneOpen(t.dataset.path); }
@@ -1343,6 +1370,16 @@
     }
   });
 
+  /** kickPhone：移除一台手机——先断开并吊销，再从列表删除，需要重新扫码配对才能再连接 */
+  function kickPhone(id, name) {
+    confirmBox('移除手机', '移除「' + esc(name) + '」后它会立即断开，需要重新扫码配对才能再连接。', '移除', function () {
+      api('DELETE', '/admin/api/devices/' + encodeURIComponent(id))
+        .then(function () { return api('POST', '/admin/api/devices/' + encodeURIComponent(id) + '/remove'); })
+        .then(function () { toast('已移除'); if (ph.dev === id) { ph.dev = ''; } phoneLoad(); loadHost(); })
+        .catch(function (er) { toast(er.message); });
+    });
+  }
+
   /** chatMenu：聊天窗口右上角菜单 */
   function chatMenu(k, sid) {
     var s = session(sid);
@@ -1356,6 +1393,12 @@
   document.addEventListener('contextmenu', function (e) {
     var msg = e.target.closest('.pd-msg,.pd-sys');
     var row = e.target.closest('.pd-row[data-sid]');
+    var phone = e.target.closest('.pd-row[data-phone]');
+    if (phone) {
+      e.preventDefault();
+      popMenu(e.clientX, e.clientY, [['kick', '移除这台手机', true, 'trash']]).then(function (k) { if (k === 'kick') { kickPhone(phone.dataset.phone, phone.dataset.name); } });
+      return;
+    }
     // 输入框保留系统菜单（粘贴等），其他地方不显示网页引擎自带的「返回、重新载入」
     if (!msg && !row) {
       if (!e.target.closest('input,textarea,[contenteditable]')) { e.preventDefault(); }
