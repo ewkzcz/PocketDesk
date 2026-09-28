@@ -59,6 +59,8 @@ func (s *Server) AdminHandler() http.Handler {
 	mux.HandleFunc("GET /admin/api/audit", s.adminAudit)
 	mux.HandleFunc("POST /admin/api/open", s.adminOpen)
 	mux.HandleFunc("POST /admin/api/pick-folder", s.adminPickFolder)
+	mux.HandleFunc("GET /admin/api/remote", s.adminRemote)
+	mux.HandleFunc("POST /admin/api/remote/download", s.adminTailscaleDownload)
 	mux.HandleFunc("POST /admin/api/transfers/pause", s.adminPause)
 	mux.HandleFunc("POST /admin/api/quit", s.adminQuit)
 	// 桌面端与手机端共用会话、聊天、审批、工作区等接口
@@ -169,6 +171,7 @@ func (s *Server) adminState(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{
 		"host":            map[string]any{"name": cfg.HostName, "os": runtime.GOOS, "version": s.Version, "fingerprint": s.Identity.Fingerprint, "port": cfg.Port},
 		"addresses":       netutil.Private(),
+		"remote":          remoteStatus(),
 		"devices":         ds,
 		"workspaces":      ws,
 		"config":          cfg,

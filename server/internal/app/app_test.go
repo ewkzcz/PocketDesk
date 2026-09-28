@@ -793,6 +793,16 @@ func desktopSharedFlow(t *testing.T, e *env) {
 	if code != 200 || !strings.Contains(string(b), ".pocketdesk/inbox/") || !strings.Contains(string(b), "粘贴图片.png") {
 		t.Fatalf("桌面端添加附件 %d %s", code, b)
 	}
+	// 异地连接状态：桌面端与手机端都能看到
+	var remote struct {
+		State string `json:"state"`
+	}
+	if code := e.adminDo("GET", "/admin/api/remote", nil, &remote); code != 200 || (remote.State != "missing" && remote.State != "offline" && remote.State != "ready") {
+		t.Fatalf("异地连接状态 %d %+v", code, remote)
+	}
+	if _, body := e.do("GET", "/api/host", nil, nil); !strings.Contains(string(body), `"remote":{`) {
+		t.Fatalf("手机端电脑信息应带异地连接状态 %s", body)
+	}
 	// 选择文件夹：由电脑端弹出系统窗口，返回完整路径与文件夹名
 	e.a.API.FolderPicker = func(_ context.Context, prompt string) (string, error) { return "/Users/me/项目", nil }
 	var picked struct {

@@ -154,6 +154,7 @@ func (s *Server) host(w http.ResponseWriter, r *http.Request) {
 		"addresses":   netutil.Private(),
 		"port":        cfg.Port,
 		"deviceId":    deviceOf(r).ID,
+		"remote":      remoteStatus(),
 	})
 }
 

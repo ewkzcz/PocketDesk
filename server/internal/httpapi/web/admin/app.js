@@ -973,8 +973,27 @@
     return ['<div class="pd-hero"><div class="pd-hero-icon">' + icon('monitor', 26) + '</div><div><div class="pd-hero-name">' + esc(host.host.name) + '</div><div class="pd-hero-state"><i></i>运行中 · 端口 ' + host.host.port + '</div></div>' +
       '<div class="pd-stats"><div><b>' + online + '</b><span>在线手机</span></div><div><b>' + paired + '</b><span>已配对</span></div><div><b>' + host.workspaces.length + '</b><span>工作区</span></div></div></div>' +
       '<div class="pd-h2">连接</div><div class="pd-card"><dl class="pd-kv"><dt>访问地址</dt><dd>' + addrs + '</dd><dt>证书指纹</dt><dd class="pd-mono" style="font-size:12px">' + esc(fmtFp(host.host.fingerprint)) + '</dd></dl></div>' +
+      remoteCard() +
       '<div class="pd-h2">AI 编程工具</div><div class="pd-agents">' + agents + '</div>',
       '<button class="pd-btn pd-btn-primary" data-act="pair">' + icon('qr-code', 16) + '配对新手机</button>'];
+  }
+
+  /** remoteCard：异地连接（Tailscale）状态与下载入口 */
+  function remoteCard() {
+    var r = host.remote || { state: 'missing', addresses: [] };
+    var desc, act = '';
+    if (r.state === 'ready') {
+      desc = '已连通，手机在外面用流量也能连接：' + r.addresses.map(function (ip) { return '<span class="pd-mono">' + esc(ip) + '</span>'; }).join('、');
+    } else if (r.state === 'offline') {
+      desc = '已安装 Tailscale，但还没登录或没打开。打开 Tailscale 并登录后，这里会显示 Tailscale 地址。';
+      act = '<button class="pd-btn" data-act="remote-check">' + icon('refresh-cw', 16) + '重新检测</button>';
+    } else {
+      desc = '不在同一个局域网时，电脑和手机都装上 Tailscale（基于 WireGuard 的加密组网，免费）并登录同一个账号即可连接。';
+      act = '<button class="pd-btn pd-btn-primary" data-act="remote-download">' + icon('download', 16) + '下载 Tailscale</button>';
+    }
+    var tag = { ready: '<span class="pd-tag pd-tag-ok">已连通</span>', offline: '<span class="pd-tag">未登录</span>', missing: '<span class="pd-tag">未安装</span>' }[r.state];
+    return '<div class="pd-h2">异地连接</div><div class="pd-card"><div class="pd-setting">' + tileHtml('wifi', 'var(--pd-tile-blue)') +
+      '<div class="pd-setting-text"><div>Tailscale ' + tag + '</div><div class="pd-setting-desc">' + desc + '</div></div>' + act + '</div></div>';
   }
 
   function workspacesView() {
@@ -1258,6 +1277,12 @@
           if (k.indexOf('open:') === 0) { location.hash = 'chat/' + encodeURIComponent(k.slice(5)); return; }
           newSession(kind, k === 'auto');
         });
+        break;
+      case 'remote-download':
+        api('POST', '/admin/api/remote/download').then(function () { toast('已在浏览器打开 Tailscale 官方下载页'); }).catch(function (er) { toast(er.message); });
+        break;
+      case 'remote-check':
+        loadHost().then(function () { renderMain(); toast(host.remote && host.remote.state === 'ready' ? '已连通' : '还没有检测到 Tailscale 地址'); });
         break;
       case 'ws-pick':
         Array.prototype.forEach.call(modalRoot.querySelectorAll('[data-act="ws-pick"]'), function (b) { b.classList.toggle('active', b === t); });
