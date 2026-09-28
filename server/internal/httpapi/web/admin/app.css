@@ -213,6 +213,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 select.pd-input { cursor: pointer; }
 .pd-field { display: flex; flex-direction: column; gap: 6px; }
 .pd-field label { font-size: 12px; color: var(--pd-text-3); }
+/* 文件选择控件：Safari 内核不会为完全隐藏的控件弹出选择框，只做视觉隐藏 */
+.pd-file-input { position: fixed; left: -10000px; top: 0; width: 1px; height: 1px; opacity: 0; }
 .pd-check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
 .pd-check input { accent-color: var(--pd-accent); }
 .pd-switch { position: relative; width: 42px; height: 24px; flex-shrink: 0; }

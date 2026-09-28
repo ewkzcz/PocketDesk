@@ -563,7 +563,7 @@
       '</div><div class="pd-pending" id="pending"></div><textarea id="input" placeholder=""></textarea>' +
       '<div class="pd-composer-foot"><span class="pd-hint">Enter 发送，Shift + Enter 换行；可直接粘贴或拖入图片、文件</span>' +
       '<button class="pd-btn pd-btn-primary" id="send" data-act="send" disabled>发送</button></div>' +
-      '<input type="file" id="file-any" multiple hidden><input type="file" id="file-img" accept="image/*" multiple hidden></div>';
+      '<input type="file" id="file-any" class="pd-file-input" multiple tabindex="-1" aria-hidden="true"><input type="file" id="file-img" class="pd-file-input" accept="image/*" multiple tabindex="-1" aria-hidden="true"></div>';
     el.innerHTML = '<header class="pd-head" id="head"></header><div class="pd-msgs" id="msgs"><div class="pd-empty">正在加载…</div></div>' + composer;
     renderHead();
     renderPending();
@@ -857,7 +857,7 @@
         '<div class="pd-card pd-drop">' + (rows ? '<table class="pd-table"><tr><th>名称</th><th class="pd-hide-s" style="width:90px">大小</th><th class="pd-hide-s" style="width:140px">修改时间</th><th style="width:190px">操作</th></tr>' + rows + '</table>' :
           '<div class="pd-empty">这个文件夹是空的，把文件拖进来即可上传到手机</div>') + '</div>';
     }
-    return head + '<div class="pd-page"><div class="pd-page-inner" style="max-width:none">' + body + '</div></div><input type="file" id="phone-file" multiple hidden>';
+    return head + '<div class="pd-page"><div class="pd-page-inner" style="max-width:none">' + body + '</div></div><input type="file" id="phone-file" class="pd-file-input" multiple tabindex="-1" aria-hidden="true">';
   }
 
   function phoneCall(op, args) { return api('POST', '/admin/api/phone/' + encodeURIComponent(ph.dev) + '/call', { op: op, args: args || {} }); }
@@ -1002,7 +1002,7 @@
     var c = host.config, n = c.notify || {};
     return ['<div class="pd-h2">收件目录</div><div class="pd-card"><div class="pd-form-grid" style="grid-template-columns:1fr">' +
       '<div class="pd-form-row"><div class="pd-field"><label for="inbox">两端互传的文件存到这里的日期文件夹</label><input class="pd-input pd-mono" id="inbox" value="' + esc(c.transfer.inboxDir) + '"></div>' +
-      '<button class="pd-btn" data-act="open-inbox" aria-label="打开收件目录">' + icon('folder-open', 16) + '</button></div></div>' +
+      '<button class="pd-btn" data-act="open-inbox" title="在访达中打开" aria-label="打开收件目录">' + icon('folder-open', 16) + '</button></div></div>' +
       '<div class="pd-setting">' + tileHtml('pause', 'var(--pd-tile-amber)') + '<div class="pd-setting-text"><div>暂停所有传输</div><div class="pd-setting-desc">暂停期间手机会自动等待，恢复后继续</div></div>' + toggle('pause-all', host.transfersPaused) + '</div></div>' +
       '<div class="pd-h2">后台通知</div><div class="pd-card"><div class="pd-form-grid">' +
       '<div class="pd-field"><label for="nkind">推送方式</label><select class="pd-input" id="nkind"><option value="">不推送</option><option value="ntfy"' + (n.kind === 'ntfy' ? ' selected' : '') + '>ntfy</option><option value="bark"' + (n.kind === 'bark' ? ' selected' : '') + '>Bark</option></select></div>' +
