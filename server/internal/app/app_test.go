@@ -122,7 +122,7 @@ func start(t *testing.T) *env {
 	dir := t.TempDir()
 	port, adminPort := freePort(t), freePort(t)
 	home := t.TempDir()
-	cfg := map[string]any{"hostName": "TestMac", "port": port, "adminPort": adminPort, "transfer": map[string]any{"inboxDir": filepath.Join(home, "Inbox")}}
+	cfg := map[string]any{"hostName": "TestMac", "port": port, "adminPort": adminPort, "transfer": map[string]any{"inboxDir": filepath.Join(home, "Inbox")}, "defaultWorkspace": filepath.Join(home, "Workspace")}
 	b, _ := json.Marshal(cfg)
 	os.WriteFile(filepath.Join(dir, "config.json"), b, 0o600)
 	a, err := New(Options{DataDir: dir, Version: "test", Registry: agent.NewRegistry(echoDriver{}), ListenAddr: func() []string { return []string{"127.0.0.1"} }, NoMDNS: true})
@@ -745,6 +745,15 @@ func desktopSharedFlow(t *testing.T, e *env) {
 	code, b := e.adminRaw("POST", "/admin/api/sessions/"+sess.ID+"/attach", body2, ct)
 	if code != 200 || !strings.Contains(string(b), ".pocketdesk/inbox/") || !strings.Contains(string(b), "粘贴图片.png") {
 		t.Fatalf("桌面端添加附件 %d %s", code, b)
+	}
+	// 选择文件夹：由电脑端弹出系统窗口，返回完整路径与文件夹名
+	e.a.API.FolderPicker = func(_ context.Context, prompt string) (string, error) { return "/Users/me/项目", nil }
+	var picked struct {
+		Path string `json:"path"`
+		Name string `json:"name"`
+	}
+	if code := e.adminDo("POST", "/admin/api/pick-folder", map[string]string{"prompt": "选择工作区文件夹"}, &picked); code != 200 || picked.Path != "/Users/me/项目" || picked.Name != "项目" {
+		t.Fatalf("选择文件夹 %d %+v", code, picked)
 	}
 	// 未带管理凭证不能访问
 	res, err := http.Get(e.admin + "/admin/p/api/sessions")

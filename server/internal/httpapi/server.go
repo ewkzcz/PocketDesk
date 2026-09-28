@@ -7,8 +7,8 @@ import (
 	"context"
 	"github.com/ewkzcz/pocketdesk/server/internal/idem"
 	"net/http"
-	"strings"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -50,6 +50,9 @@ type Server struct {
 
 	/** Opener：在电脑上打开或定位文件，为空时用系统默认方式（测试时替换） */
 	Opener func(path string, reveal bool) error
+
+	/** FolderPicker：弹出系统的文件夹选择窗口，为空时用系统默认方式（测试时替换） */
+	FolderPicker func(ctx context.Context, prompt string) (string, error)
 
 	touch      touchCache
 	agentsMu   sync.Mutex

@@ -1002,6 +1002,7 @@
     var c = host.config, n = c.notify || {};
     return ['<div class="pd-h2">收件目录</div><div class="pd-card"><div class="pd-form-grid" style="grid-template-columns:1fr">' +
       '<div class="pd-form-row"><div class="pd-field"><label for="inbox">两端互传的文件存到这里的日期文件夹</label><input class="pd-input pd-mono" id="inbox" value="' + esc(c.transfer.inboxDir) + '"></div>' +
+      '<button class="pd-btn" data-act="pick-folder" data-target="inbox" data-prompt="选择收件目录">' + icon('folder-search', 16) + '选择…</button>' +
       '<button class="pd-btn" data-act="open-inbox" title="在访达中打开" aria-label="打开收件目录">' + icon('folder-open', 16) + '</button></div></div>' +
       '<div class="pd-setting">' + tileHtml('pause', 'var(--pd-tile-amber)') + '<div class="pd-setting-text"><div>暂停所有传输</div><div class="pd-setting-desc">暂停期间手机会自动等待，恢复后继续</div></div>' + toggle('pause-all', host.transfersPaused) + '</div></div>' +
       '<div class="pd-h2">后台通知</div><div class="pd-card"><div class="pd-form-grid">' +
@@ -1113,7 +1114,8 @@
     w = w || { id: '', name: '', rootPath: '', readOnly: false };
     modal(w.id ? '编辑工作区' : '添加工作区',
       '<div class="pd-field"><label for="wname">名称</label><input class="pd-input" id="wname" value="' + esc(w.name) + '"></div>' +
-      '<div class="pd-field"><label for="wpath">文件夹路径</label><input class="pd-input pd-mono" id="wpath" value="' + esc(w.rootPath) + '" placeholder="/Users/me/Projects/demo"></div>' +
+      '<div class="pd-form-row"><div class="pd-field"><label for="wpath">文件夹路径</label><input class="pd-input pd-mono" id="wpath" value="' + esc(w.rootPath) + '" placeholder="点右侧按钮选择文件夹"></div>' +
+      '<button class="pd-btn" data-act="pick-folder" data-target="wpath" data-name="wname" data-prompt="选择工作区文件夹">' + icon('folder-open', 16) + '选择…</button></div>' +
       '<label class="pd-check"><input type="checkbox" id="wro"' + (w.readOnly ? ' checked' : '') + '>只读（手机上不能修改）</label>',
       '<button class="pd-btn" data-act="modal-close">取消</button><button class="pd-btn pd-btn-primary" data-act="ws-save" data-id="' + esc(w.id) + '">保存</button>');
   }
@@ -1290,6 +1292,15 @@
         break;
       // 设置
       case 'theme': save('pd.theme', t.dataset.theme); applyTheme(); renderMain(); break;
+      case 'pick-folder':
+        api('POST', '/admin/api/pick-folder', { prompt: t.dataset.prompt }).then(function (r) {
+          if (!r.path) { return; }
+          var input = document.getElementById(t.dataset.target);
+          if (input) { input.value = r.path; }
+          var name = t.dataset.name && document.getElementById(t.dataset.name);
+          if (name && !name.value.trim()) { name.value = r.name; }
+        }).catch(function (er) { toast(er.message); });
+        break;
       case 'open-inbox': api('POST', '/admin/api/open', { which: 'inbox' }).catch(function (er) { toast(er.message); }); break;
       case 'save-transfer':
         api('PATCH', '/admin/api/config', {
