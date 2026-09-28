@@ -307,13 +307,23 @@ func (s *Server) adminRevokeDevice(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
-/** adminRemoveDevice：从列表中删除已吊销的设备 */
+/** adminRemoveDevice：移除不在线的设备，令牌失效并从列表删除；在线的设备需先吊销 */
 func (s *Server) adminRemoveDevice(w http.ResponseWriter, r *http.Request) {
-	if err := s.Store.DeleteRevokedDevice(r.Context(), r.PathValue("id")); err != nil {
-		writeErr(w, r, errf(400, "not_revoked", "只能删除已吊销的设备"))
+	id := r.PathValue("id")
+	d, err := s.Store.Device(r.Context(), id)
+	if err != nil {
+		writeErr(w, r, err)
 		return
 	}
-	s.Store.Audit(r.Context(), r.PathValue("id"), "device.remove", map[string]string{"by": "host"})
+	if !d.Revoked && s.Hub.Devices()[id] {
+		writeErr(w, r, errf(400, "online", "这台手机在线，请先吊销"))
+		return
+	}
+	if err := s.Store.DeleteDevice(r.Context(), id); err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	s.Store.Audit(r.Context(), id, "device.remove", map[string]string{"by": "host", "name": d.Name})
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 

@@ -343,16 +343,31 @@ func TestEndToEnd(t *testing.T) {
 		} `json:"devices"`
 	}
 	e.adminDo("GET", "/admin/api/state", nil, &st)
+	// 在线的手机不能直接移除，需先吊销
+	c := e.dial("/ws")
+	c.WriteJSON(map[string]any{"type": "hello", "cursors": map[string]int64{}})
+	readUntil(t, c, func(m wsMsg) bool { return m.Type == "ready" })
 	if code := e.adminDo("POST", "/admin/api/devices/"+st.Devices[0].ID+"/remove", nil, nil); code != 400 {
-		t.Fatal("未吊销的设备不能直接删除")
+		t.Fatal("在线的设备不能直接移除")
 	}
+	c.Close()
 	e.adminDo("DELETE", "/admin/api/devices/"+st.Devices[0].ID, nil, nil)
 	if res, _ := e.do("GET", "/api/host", nil, nil); res.StatusCode != 401 {
 		t.Fatal("吊销后应无法访问")
 	}
-	// 吊销后可以从列表中删除
+	// 吊销后可以从列表中移除
 	if code := e.adminDo("POST", "/admin/api/devices/"+st.Devices[0].ID+"/remove", nil, nil); code != 200 {
-		t.Fatalf("删除已吊销设备 %d", code)
+		t.Fatalf("移除已吊销设备 %d", code)
+	}
+	// 不在线的设备可以直接移除，令牌立即失效
+	e.token = e.pair("旧手机")
+	st.Devices = nil
+	e.adminDo("GET", "/admin/api/state", nil, &st)
+	if code := e.adminDo("POST", "/admin/api/devices/"+st.Devices[0].ID+"/remove", nil, nil); code != 200 {
+		t.Fatalf("移除不在线设备 %d", code)
+	}
+	if res, _ := e.do("GET", "/api/host", nil, nil); res.StatusCode != 401 {
+		t.Fatal("移除后应无法访问")
 	}
 	st.Devices = nil
 	e.adminDo("GET", "/admin/api/state", nil, &st)
