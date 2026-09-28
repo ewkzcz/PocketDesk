@@ -822,7 +822,7 @@
 
   function phoneRows() {
     if (!ph.phones) { return '<div class="pd-empty">正在读取…</div>'; }
-    if (!ph.phones.length) { return '<div class="pd-empty">还没有配对的手机</div>'; }
+    if (!ph.phones.length) { return '<div class="pd-empty">没有在线的手机<br>在手机上打开 PocketDesk 后会出现在这里</div>'; }
     return ph.phones.map(function (p) {
       return '<button class="pd-row' + (p.id === ph.dev ? ' active' : '') + '" data-act="phone-pick" data-id="' + esc(p.id) + '"><div class="pd-row-avatar">' + avatarHtml('phone') + '</div>' +
         '<div class="pd-row-main"><div class="pd-row-line"><span class="pd-row-title">' + esc(p.name) + '</span></div><div class="pd-row-sub">' + (p.online ? '在线' : '不在线') + '</div></div></button>';
@@ -837,7 +837,7 @@
       '<button class="pd-icon-btn" data-act="phone-refresh" title="刷新" aria-label="刷新">' + icon('refresh-cw', 16) + '</button></div></header>';
     var body;
     if (!ph.phones) { body = '<div class="pd-empty">正在连接手机…</div>'; }
-    else if (!ph.phones.length) { body = '<div class="pd-empty">还没有配对的手机</div>'; }
+    else if (!ph.phones.length) { body = '<div class="pd-empty">没有在线的手机，在手机上打开 PocketDesk 即可管理它的文件</div>'; }
     else if (ph.error) { body = '<div class="pd-warn">' + icon('alert-triangle', 16) + '<div>' + esc(ph.error) + '</div></div>'; }
     else {
       var parts = ph.path ? ph.path.split('/') : [];
@@ -870,15 +870,13 @@
     ph.loading = true;
     phoneRedraw();
     return api('GET', '/admin/api/phones').then(function (list) {
-      ph.phones = list || [];
+      // 只列出在线的手机，不在线的无法管理
+      ph.phones = (list || []).filter(function (p) { return p.online; });
       if (!ph.phones.some(function (p) { return p.id === ph.dev; })) {
-        var on = ph.phones.filter(function (p) { return p.online; })[0] || ph.phones[0];
-        ph.dev = on ? on.id : '';
+        ph.dev = ph.phones.length ? ph.phones[0].id : '';
         ph.path = '';
       }
-      if (!ph.dev) { return; }
-      var cur = ph.phones.filter(function (p) { return p.id === ph.dev; })[0];
-      if (!cur.online) { ph.error = '手机不在线，请在手机上打开 PocketDesk'; return; }
+      if (!ph.dev) { ph.error = ''; return; }
       return phoneCall('list', { path: ph.path }).then(function (r) {
         ph.entries = r.entries || [];
         ph.root = r.root || '';
@@ -1358,7 +1356,11 @@
   document.addEventListener('contextmenu', function (e) {
     var msg = e.target.closest('.pd-msg,.pd-sys');
     var row = e.target.closest('.pd-row[data-sid]');
-    if (!msg && !row) { return; }
+    // 输入框保留系统菜单（粘贴等），其他地方不显示网页引擎自带的「返回、重新载入」
+    if (!msg && !row) {
+      if (!e.target.closest('input,textarea,[contenteditable]')) { e.preventDefault(); }
+      return;
+    }
     e.preventDefault();
     if (msg) {
       var sid = route().sid, seq = +msg.dataset.seq;
