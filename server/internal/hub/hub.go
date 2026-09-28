@@ -105,6 +105,21 @@ func (h *Hub) Devices() map[string]bool {
 	return out
 }
 
+/** Drop：断开某台设备的全部连接（吊销或移除后立即踢下线） */
+func (h *Hub) Drop(device string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for s := range h.subs {
+		if s.Device == device {
+			delete(h.subs, s)
+			if !s.closed {
+				s.closed = true
+				close(s.C)
+			}
+		}
+	}
+}
+
 /** PublishTo：只发给某台设备的连接，返回是否有在线连接 */
 func (h *Hub) PublishTo(device, typ string, data any) bool {
 	raw, err := json.Marshal(data)

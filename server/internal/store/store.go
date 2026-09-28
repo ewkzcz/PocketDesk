@@ -120,6 +120,7 @@ var migrations = []string{
 /** columns：后来新增的列，已有数据库启动时按需补上 */
 var columns = []struct{ table, name, def string }{
 	{"sessions", "auto_approve", "INTEGER NOT NULL DEFAULT 0"},
+	{"devices", "install_id", "TEXT NOT NULL DEFAULT ''"},
 }
 
 /**

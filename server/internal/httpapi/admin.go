@@ -303,6 +303,7 @@ func (s *Server) adminRevokeDevice(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, err)
 		return
 	}
+	s.Hub.Drop(r.PathValue("id"))
 	s.Store.Audit(r.Context(), r.PathValue("id"), "device.revoke", map[string]string{"by": "host"})
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
@@ -323,6 +324,7 @@ func (s *Server) adminRemoveDevice(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, err)
 		return
 	}
+	s.Hub.Drop(id)
 	s.Store.Audit(r.Context(), id, "device.remove", map[string]string{"by": "host", "name": d.Name})
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }

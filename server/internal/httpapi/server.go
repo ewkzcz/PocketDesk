@@ -6,6 +6,7 @@ package httpapi
 import (
 	"context"
 	"github.com/ewkzcz/pocketdesk/server/internal/idem"
+	"log/slog"
 	"net/http"
 	"runtime"
 	"strings"
@@ -164,6 +165,8 @@ func (s *Server) pair(w http.ResponseWriter, r *http.Request) {
 		Code     string `json:"code"`
 		Name     string `json:"name"`
 		Platform string `json:"platform"`
+		// InstallID：手机这次安装的固定编号，同一台手机重新配对时替换旧记录
+		InstallID string `json:"installId"`
 	}
 	if err := readJSON(r, &in); err != nil {
 		writeErr(w, r, err)
@@ -177,6 +180,13 @@ func (s *Server) pair(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Store.Audit(r.Context(), res.DeviceID, "device.pair", map[string]string{"name": in.Name, "platform": in.Platform})
+	if old, err := s.Store.ReplaceInstall(r.Context(), res.DeviceID, in.InstallID); err != nil {
+		slog.Warn("清理旧设备记录失败", "err", err)
+	} else {
+		for _, id := range old {
+			s.Hub.Drop(id)
+		}
+	}
 	writeJSON(w, 200, map[string]any{"token": res.Token, "deviceId": res.DeviceID, "host": map[string]string{"name": s.Cfg.Get().HostName, "fingerprint": s.Identity.Fingerprint}})
 }
 

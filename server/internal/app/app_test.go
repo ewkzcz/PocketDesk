@@ -207,7 +207,10 @@ func (e *env) adminDo(method, path string, body any, out any) int {
 /**
  * pair：桌面生成配对码，手机提交，桌面允许，手机拿到令牌
  */
-func (e *env) pair(name string) string {
+func (e *env) pair(name string) string { return e.pairInstall(name, "") }
+
+/** pairInstall：以指定安装编号配对（同一台手机重新配对） */
+func (e *env) pairInstall(name, install string) string {
 	e.t.Helper()
 	var p struct {
 		Code   string `json:"code"`
@@ -231,7 +234,7 @@ func (e *env) pair(name string) string {
 	go func() {
 		save := e.token
 		e.token = ""
-		res, body := e.do("POST", "/api/pair", map[string]string{"code": p.Code, "name": name, "platform": "android"}, nil)
+		res, body := e.do("POST", "/api/pair", map[string]string{"code": p.Code, "name": name, "platform": "android", "installId": install}, nil)
 		e.token = save
 		var out struct {
 			Token string `json:"token"`
@@ -359,6 +362,35 @@ func TestEndToEnd(t *testing.T) {
 	if code := e.adminDo("POST", "/admin/api/devices/"+st.Devices[0].ID+"/remove", nil, nil); code != 200 {
 		t.Fatalf("移除已吊销设备 %d", code)
 	}
+	// 同一台手机重新配对：旧记录被替换，旧令牌失效，列表里只剩一条
+	first := e.pairInstall("我的手机", "inst-1")
+	second := e.pairInstall("我的手机", "inst-1")
+	st.Devices = nil
+	e.adminDo("GET", "/admin/api/state", nil, &st)
+	if len(st.Devices) != 1 {
+		t.Fatalf("重新配对后应只剩一条记录: %d", len(st.Devices))
+	}
+	e.token = first
+	if res, _ := e.do("GET", "/api/host", nil, nil); res.StatusCode != 401 {
+		t.Fatal("旧令牌应失效")
+	}
+	// 吊销时正在连着的实时通道立即被断开
+	e.token = second
+	live := e.dial("/ws")
+	live.WriteJSON(map[string]any{"type": "hello", "cursors": map[string]int64{}})
+	readUntil(t, live, func(m wsMsg) bool { return m.Type == "ready" })
+	e.adminDo("DELETE", "/admin/api/devices/"+st.Devices[0].ID, nil, nil)
+	live.SetReadDeadline(time.Now().Add(3 * time.Second))
+	for {
+		var m wsMsg
+		if err := live.ReadJSON(&m); err != nil {
+			if ne, ok := err.(interface{ Timeout() bool }); ok && ne.Timeout() {
+				t.Fatal("吊销后连接应被断开")
+			}
+			break
+		}
+	}
+	e.adminDo("POST", "/admin/api/devices/"+st.Devices[0].ID+"/remove", nil, nil)
 	// 不在线的设备可以直接移除，令牌立即失效
 	e.token = e.pair("旧手机")
 	st.Devices = nil

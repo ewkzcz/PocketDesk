@@ -81,6 +81,38 @@ func (s *Store) DeleteDevice(ctx context.Context, id string) error {
 	return nil
 }
 
+/**
+ * ReplaceInstall：同一台手机重新配对后，删除它以前留下的设备记录
+ *
+ * 同一次安装的手机带同一个安装编号；没有安装编号（旧版 App）时不处理。返回删除的设备 ID。
+ */
+func (s *Store) ReplaceInstall(ctx context.Context, keepID, installID string) ([]string, error) {
+	if installID == "" {
+		return nil, nil
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE devices SET install_id=? WHERE id=?`, installID, keepID); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM devices WHERE install_id=? AND id<>?`, installID, keepID)
+	if err != nil {
+		return nil, err
+	}
+	var old []string
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			old = append(old, id)
+		}
+	}
+	rows.Close()
+	for _, id := range old {
+		if _, err := s.db.ExecContext(ctx, `DELETE FROM devices WHERE id=?`, id); err != nil {
+			return old, err
+		}
+	}
+	return old, nil
+}
+
 /** RevokeDevice：吊销设备令牌 */
 func (s *Store) RevokeDevice(ctx context.Context, id string) error {
 	res, err := s.db.ExecContext(ctx, `UPDATE devices SET revoked=1 WHERE id=?`, id)
