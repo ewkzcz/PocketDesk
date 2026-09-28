@@ -60,7 +60,7 @@ Future<void> main() async {
   final vault = SecureVault();
   final app = AppState(settings: settings, db: db, vault: vault, paths: AppPaths(temp: cache, received: received), signals: SystemSignals());
   final gate = AuthGate(auth: LocalAuthenticator(), enabled: () => settings.biometric, graceMinutes: () => settings.graceMinutes);
-  final pairing = PairingService(db: db, vault: vault, deviceName: Platform.isIOS ? 'iPhone' : 'Android 手机', platform: Platform.operatingSystem);
+  final pairing = PairingService(db: db, vault: vault, deviceName: Platform.isIOS ? 'iPhone' : 'Android 手机', platform: Platform.operatingSystem, installId: settings.installId);
   AppLog.i('app', '启动 ${Platform.operatingSystem} ${Platform.operatingSystemVersion}');
   // 4、启动
   unawaited(app.init());

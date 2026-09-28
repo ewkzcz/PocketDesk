@@ -73,7 +73,7 @@ void main() {
   late LocalDb db;
   late MemoryVault vault;
 
-  PairingService service() => PairingService(db: db, vault: vault, deviceName: '我的手机', platform: 'android', clients: (a, s) => HttpClient(), scheme: 'http');
+  PairingService service() => PairingService(db: db, vault: vault, deviceName: '我的手机', platform: 'android', installId: 'inst-9', clients: (a, s) => HttpClient(), scheme: 'http');
 
   setUp(() async {
     host = FakeHost();
@@ -98,6 +98,7 @@ void main() {
       expect(h.addresses, contains('127.0.0.3'));
       expect(h.deviceId, 'dev1');
       expect(await vault.token(h.id), 'tok0');
+      expect(host.lastPair['installId'], 'inst-9', reason: '带上安装编号，电脑据此替换同一台手机的旧记录');
       expect((await db.hosts()).single.id, h.id);
       // 重新配对覆盖同一台电脑
       await service().pairTicket(ticket());

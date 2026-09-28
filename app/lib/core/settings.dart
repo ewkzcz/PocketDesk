@@ -3,6 +3,8 @@
  */
 library;
 
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -60,6 +62,17 @@ class AppSettings extends ChangeNotifier {
   set phoneRoot(String? v) {
     v == null ? _prefs.remove('phoneRoot') : _prefs.setString('phoneRoot', v);
     notifyListeners();
+  }
+
+  /** installId：这次安装的固定编号，重新配对同一台电脑时电脑据此替换旧记录 */
+  String get installId {
+    var id = _prefs.getString('installId');
+    if (id == null || id.isEmpty) {
+      final r = Random.secure();
+      id = List.generate(16, (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+      _prefs.setString('installId', id);
+    }
+    return id;
   }
 
   /** biometric：打开 App、进入 Agent 会话或终端时验证 */

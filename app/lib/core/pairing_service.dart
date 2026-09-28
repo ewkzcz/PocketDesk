@@ -31,13 +31,16 @@ typedef PairClientFactory = HttpClient Function(bool Function(String fp) accept,
  * PairingService：执行配对
  */
 class PairingService {
-  PairingService({required this.db, required this.vault, required this.deviceName, required this.platform, PairClientFactory? clients, this.scheme = 'https'})
+  PairingService({required this.db, required this.vault, required this.deviceName, required this.platform, this.installId = '', PairClientFactory? clients, this.scheme = 'https'})
       : _clients = clients ?? _defaultClient;
 
   final LocalDb db;
   final Vault vault;
   final String deviceName;
   final String platform;
+
+  /** installId：这次安装的固定编号，电脑据此把同一台手机的旧记录替换掉 */
+  final String installId;
   final PairClientFactory _clients;
   final String scheme;
 
@@ -103,7 +106,7 @@ class PairingService {
         // 2、提交配对码
         final ({String token, String deviceId, String hostName, String fingerprint}) res;
         try {
-          res = await api.pair(code, deviceName, platform);
+          res = await api.pair(code, deviceName, platform, installId: installId);
         } on ApiException catch (e) {
           throw PairError(_message(e));
         }

@@ -54,6 +54,9 @@ class FakeHost {
 
   /** 配对：正确的配对码、证书指纹与已发出的令牌 */
   String pairCode = 'K7M29QXA';
+
+  /** 最近一次配对请求的内容 */
+  Map<String, dynamic> lastPair = {};
   String fingerprint = 'ab' * 32;
 
   /** 电脑上报的地址（如后来装好的 Tailscale 地址） */
@@ -265,6 +268,7 @@ class FakeHost {
     }
     if (path == '/api/pair') {
       final j = jsonDecode(await utf8.decodeStream(req)) as Map;
+      lastPair = j.cast<String, dynamic>();
       if (j['code'] != pairCode) {
         res.statusCode = 401;
         res.write(jsonEncode({'code': 'invalid_code', 'message': '配对码错误或已过期'}));
