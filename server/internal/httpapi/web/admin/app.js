@@ -989,12 +989,13 @@
   function devicesView() {
     var rows = host.devices.map(function (d) {
       var status = d.revoked ? '<span class="pd-tag">已吊销</span>' : d.online ? '<span class="pd-tag pd-tag-ok">在线</span>' : '<span class="pd-muted">' + ago(d.lastSeen) + '</span>';
-      var act = d.revoked ? '<button class="pd-link pd-link-danger" data-act="dev-remove" data-id="' + esc(d.id) + '" data-name="' + esc(d.name) + '">删除</button>'
-        : '<button class="pd-link pd-link-danger" data-act="dev-revoke" data-id="' + esc(d.id) + '" data-name="' + esc(d.name) + '">吊销</button>';
+      var act = d.online && !d.revoked ? '<button class="pd-link pd-link-danger" data-act="dev-revoke" data-id="' + esc(d.id) + '" data-name="' + esc(d.name) + '">吊销</button>'
+        : '<button class="pd-link pd-link-danger" data-act="dev-remove" data-id="' + esc(d.id) + '" data-name="' + esc(d.name) + '">移除</button>';
       return '<tr><td><div class="pd-name">' + tileHtml('smartphone', d.revoked ? 'var(--pd-tile-ink)' : 'var(--pd-tile-teal)') + esc(d.name) + '</div></td><td class="pd-muted pd-hide-s">' + esc(platformName(d.platform)) + '</td><td>' + status + '</td><td>' + act + '</td></tr>';
     }).join('');
     return ['<div class="pd-card">' + (rows ? '<table class="pd-table"><tr><th>名称</th><th class="pd-hide-s">系统</th><th>状态</th><th style="width:70px">操作</th></tr>' + rows + '</table>' : '<div class="pd-empty">还没有配对的手机</div>') + '</div>' +
-      '<div class="pd-muted" style="font-size:12px;margin:10px 2px">吊销后该手机需要重新扫码配对；已吊销的设备可以从列表中删除。</div>',
+      '<div class="pd-muted" style="font-size:12px;margin:10px 2px">移除或吊销后，这台手机需要重新扫码配对才能再连接。</div>',
+      (host.devices.some(function (d) { return !d.online || d.revoked; }) ? '<button class="pd-btn" data-act="dev-remove-offline">' + icon('trash', 16) + '移除全部不在线设备</button>' : '') +
       '<button class="pd-btn pd-btn-primary" data-act="pair">' + icon('qr-code', 16) + '配对新手机</button>'];
   }
 
@@ -1330,8 +1331,15 @@
         });
         break;
       case 'dev-remove':
-        confirmBox('删除设备', '从列表中删除「' + esc(t.dataset.name) + '」的记录。', '删除', function () {
-          api('POST', '/admin/api/devices/' + encodeURIComponent(id) + '/remove').then(function () { toast('已删除'); loadHost().then(renderMain); }).catch(function (er) { toast(er.message); });
+        confirmBox('移除设备', '移除「' + esc(t.dataset.name) + '」后，它需要重新扫码配对才能再连接。', '移除', function () {
+          api('POST', '/admin/api/devices/' + encodeURIComponent(id) + '/remove').then(function () { toast('已移除'); loadHost().then(renderMain); }).catch(function (er) { toast(er.message); });
+        });
+        break;
+      case 'dev-remove-offline':
+        var off = host.devices.filter(function (d) { return !d.online || d.revoked; });
+        confirmBox('移除全部不在线设备', '将移除 ' + off.length + ' 台不在线的设备，它们需要重新扫码配对才能再连接。', '移除', function () {
+          Promise.all(off.map(function (d) { return api('POST', '/admin/api/devices/' + encodeURIComponent(d.id) + '/remove').catch(function () {}); }))
+            .then(function () { toast('已移除'); loadHost().then(renderMain); });
         });
         break;
     }
