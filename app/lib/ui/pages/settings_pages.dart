@@ -401,3 +401,88 @@ class AboutPage extends StatelessWidget {
     );
   }
 }
+
+/**
+ * RemotePage：异地连接——不在同一个局域网时通过 Tailscale（基于 WireGuard 的加密组网）连接电脑
+ */
+class RemotePage extends StatefulWidget {
+  const RemotePage({super.key});
+
+  @override
+  State<RemotePage> createState() => _RemotePageState();
+}
+
+class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
+  bool? _phoneReady;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _check();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /** 从应用商店或 Tailscale 回来时重新检测 */
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _check();
+  }
+
+  /** _check：手机上是否已有 Tailscale 地址，并刷新电脑端状态 */
+  Future<void> _check() async {
+    final conn = context.read<AppState>().scope?.conn;
+    var ready = false;
+    try {
+      for (final nic in await NetworkInterface.list()) {
+        if (nic.addresses.any((a) => isTailscale(a.address))) ready = true;
+      }
+    } catch (_) {
+      ready = false;
+    }
+    if (mounted) setState(() => _phoneReady = ready);
+    if (conn != null) unawaited(conn.refreshStatus());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final conn = app.scope?.conn;
+    return ListenableBuilder(
+      listenable: conn ?? ValueNotifier(0),
+      builder: (context, _) {
+        final st = conn?.status;
+        final pc = switch (st?.remoteState) {
+          'ready' => '已连通 · ${st!.remoteAddresses.join('、')}',
+          'offline' => '已安装，还没登录',
+          'missing' => '还没安装，在电脑端「设置 → 概览」里点「下载 Tailscale」',
+          _ => conn?.online == true ? '电脑端版本较旧，无法检测' : '电脑不在线',
+        };
+        final phone = switch (_phoneReady) { true => '已连通', false => '还没安装或没登录', null => '检测中…' };
+        return Scaffold(
+          appBar: const PdBar(title: '异地连接'),
+          body: ListView(padding: const EdgeInsets.only(top: 16), children: [
+            PdGroup(
+              footer: '不在同一个局域网时，电脑和手机都装上 Tailscale 并登录同一个账号，就能在外面用流量连接电脑；手机会先试局域网，连不上自动改走 Tailscale。',
+              children: [
+                PdCell(icon: LucideIcons.monitor300, title: '电脑', subtitle: pc, arrow: false),
+                PdCell(icon: LucideIcons.smartphone300, title: '本机', subtitle: phone, arrow: false),
+                if (conn?.online == true) PdCell(icon: LucideIcons.route300, title: '当前连接方式', subtitle: conn!.kindLabel, arrow: false),
+              ],
+            ),
+            PdGroup(children: [
+              PdCell(icon: LucideIcons.download300, title: '下载 Tailscale', subtitle: '打开应用商店；没有应用商店时打开官方下载页', onTap: () => app.phone.device.openTailscaleStore()),
+              PdCell(icon: LucideIcons.refreshCw300, title: '重新检测', onTap: _check),
+            ]),
+          ]),
+        );
+      },
+    );
+  }
+}
+

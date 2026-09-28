@@ -148,6 +148,7 @@ class UiServer {
         'name': 'MacBook Pro', 'os': 'darwin', 'version': '1.0.0', 'fingerprint': 'ab' * 32, 'port': 8443, //
         'agents': [for (final k in ['claude', 'codex', 'pi', 'dsh']) {'kind': k, 'label': k, 'installed': true}],
         'features': {'agents': true, 'terminal': true, 'fileEdit': true},
+        'remote': {'state': 'missing', 'addresses': []},
       });
     }
     if (p == '/api/sessions' && req.method == 'GET') return _json(sessions);

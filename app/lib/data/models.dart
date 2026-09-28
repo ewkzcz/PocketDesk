@@ -61,6 +61,8 @@ class HostStatus {
     required this.addresses,
     required this.port,
     required this.deviceId,
+    this.remoteState = '',
+    this.remoteAddresses = const [],
   });
 
   final String name;
@@ -74,6 +76,12 @@ class HostStatus {
   final int port;
   final String deviceId;
 
+  /** remoteState：电脑上的异地连接（Tailscale）：missing 未安装、offline 未登录、ready 已连通；旧版电脑端为空 */
+  final String remoteState;
+
+  /** remoteAddresses：电脑的 Tailscale 地址 */
+  final List<String> remoteAddresses;
+
   /** fromJson：解析 */
   factory HostStatus.fromJson(Map<String, dynamic> j) => HostStatus(
         name: _s(j['name']),
@@ -86,6 +94,8 @@ class HostStatus {
         addresses: _l(j['addresses']).map((e) => HostAddress.fromJson(_m(e))).toList(),
         port: _i(j['port'], 8443),
         deviceId: _s(j['deviceId']),
+        remoteState: _s(_m(j['remote'])['state']),
+        remoteAddresses: _l(_m(j['remote'])['addresses']).map((e) => e.toString()).toList(),
       );
 
   /** agentInstalled：某个 Agent 是否已安装 */

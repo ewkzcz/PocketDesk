@@ -41,6 +41,11 @@ class DeviceBridge {
     if (Platform.isAndroid) await _ch.invokeMethod<void>('cancelNotify', {'id': id});
   }
 
+  /** openTailscaleStore：打开应用商店里的 Tailscale，没有应用商店时打开官方下载页 */
+  Future<void> openTailscaleStore() async {
+    if (Platform.isAndroid) await _ch.invokeMethod<void>('openTailscale');
+  }
+
   /** clipboardImage：剪贴板里的图片存到缓存后的路径，没有图片时为空 */
   Future<String?> clipboardImage() async => Platform.isAndroid ? _ch.invokeMethod<String>('clipboardImage') : null;
 }

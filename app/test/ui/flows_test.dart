@@ -199,6 +199,18 @@ void main() {
     await finish(tester, env);
   });
 
+  testWidgets('异地连接页显示电脑与本机的 Tailscale 状态并可去下载', (tester) async {
+    final env = await start(tester);
+    await tester.tap(find.text('我').last);
+    await settle(tester);
+    await tester.tap(find.text('异地连接'));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+    await settle(tester);
+    expect(find.textContaining('还没安装'), findsWidgets);
+    expect(find.text('下载 Tailscale'), findsOneWidget);
+    await finish(tester, env);
+  });
+
   testWidgets('从会话返回后首页标题栏不出现返回按钮', (tester) async {
     final env = await start(tester);
     expect(find.bySemanticsLabel('返回'), findsNothing);
