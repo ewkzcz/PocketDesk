@@ -496,6 +496,7 @@
     var el = document.getElementById('list');
     if (!el) { return; }
     var r = route();
+    el.classList.toggle('narrow', r.page === 'settings');
     if (r.page === 'chat') {
       var body = document.getElementById('rows');
       if (!body) {

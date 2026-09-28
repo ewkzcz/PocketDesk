@@ -45,6 +45,7 @@
 
   --pd-rail-w: 60px;
   --pd-list-w: 250px;
+  --pd-list-narrow-w: 125px;
   --pd-head-h: 56px;
   --pd-row-h: 64px;
   --pd-avatar: 40px;
@@ -149,6 +150,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .pd-rail-gap { flex: 1; }
 
 .pd-list { width: var(--pd-list-w); flex-shrink: 0; background: var(--pd-list); border-right: 1px solid var(--pd-line); display: flex; flex-direction: column; min-height: 0; }
+.pd-list.narrow { width: var(--pd-list-narrow-w); }
+.pd-list.narrow .pd-row { padding: 0 10px; gap: 8px; }
 .pd-list-top { height: var(--pd-head-h); flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px; }
 .pd-list-title { font-size: 16px; font-weight: 500; flex: 1; padding-left: 4px; }
 .pd-search { flex: 1; height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border-radius: 6px; background: var(--pd-input); color: var(--pd-text-3); }
