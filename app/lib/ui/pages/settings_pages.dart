@@ -428,7 +428,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  /** 从应用商店或 Tailscale 回来时重新检测 */
+  /** 从浏览器或 Tailscale 回来时重新检测 */
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) _check();
@@ -476,7 +476,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
               ],
             ),
             PdGroup(children: [
-              PdCell(icon: LucideIcons.download300, title: '下载 Tailscale', subtitle: '打开应用商店；没有应用商店时打开官方下载页', onTap: () => app.phone.device.openTailscaleStore()),
+              PdCell(icon: LucideIcons.download300, title: '下载 Tailscale', subtitle: '在浏览器打开 Tailscale 安卓版下载页', onTap: () => app.phone.device.openTailscaleStore()),
               PdCell(icon: LucideIcons.refreshCw300, title: '重新检测', onTap: _check),
             ]),
           ]),

@@ -41,7 +41,7 @@ class DeviceBridge {
     if (Platform.isAndroid) await _ch.invokeMethod<void>('cancelNotify', {'id': id});
   }
 
-  /** openTailscaleStore：打开应用商店里的 Tailscale，没有应用商店时打开官方下载页 */
+  /** openTailscaleStore：在浏览器打开 Tailscale 安卓版的 GitHub 页面 */
   Future<void> openTailscaleStore() async {
     if (Platform.isAndroid) await _ch.invokeMethod<void>('openTailscale');
   }

@@ -81,12 +81,7 @@ class MainActivity : FlutterFragmentActivity() {
                     result.success(null)
                 }
                 "openTailscale" -> {
-                    // 优先打开应用商店，没有应用商店时打开官方下载页
-                    try {
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.tailscale.ipn")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                    } catch (e: Exception) {
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://tailscale.com/download/android")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                    }
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/tailscale/tailscale-android")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     result.success(null)
                 }
                 "clipboardImage" -> io.execute {
