@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#26D97D"/><stop offset="1" stop-color="#06A455"/></linearGradient></defs><rect width="1024" height="1024" fill="url(#g)"/><defs>
+<mask id="cut" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><rect width="1024" height="1024" fill="#fff"/><rect x="548" y="412" width="316" height="476" rx="84" fill="#000"/></mask>
+</defs>
+<g transform="translate(-5,-33)" fill="#fff">
+<g mask="url(#cut)">
+<path fill-rule="evenodd" d="M234 230h556a64 64 0 0 1 64 64v302a64 64 0 0 1-64 64H234a64 64 0 0 1-64-64V294a64 64 0 0 1 64-64zM246 270a36 36 0 0 0-36 36v278a36 36 0 0 0 36 36h532a36 36 0 0 0 36-36V306a36 36 0 0 0-36-36z"/>
+<rect x="372" y="660" width="76" height="64"/>
+<rect x="290" y="712" width="240" height="48" rx="24"/>
+<path d="M300 380l90 60-90 60M420 510h100" fill="none" stroke="#fff" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<path fill-rule="evenodd" d="M632 440h148a56 56 0 0 1 56 56v308a56 56 0 0 1-56 56H632a56 56 0 0 1-56-56V496a56 56 0 0 1 56-56zM638 482a32 32 0 0 0-32 32v272a32 32 0 0 0 32 32h136a32 32 0 0 0 32-32V514a32 32 0 0 0-32-32z"/>
+<circle cx="706" cy="660" r="34"/>
+</g></svg>
