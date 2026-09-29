@@ -138,18 +138,20 @@ function main(config) {
   const exclude = new Set(config.tun['route-exclude-address'] || []);
   ['100.64.0.0/10', 'fd7a:115c:a1e0::/48'].forEach((x) => exclude.add(x));
   config.tun['route-exclude-address'] = Array.from(exclude);
-  // 嗅探：浏览器自带加密 DNS 时连接只有 IP，从 TLS / HTTP 里认出域名，谷歌、Claude 才能按域名走住宅出口
-  // 认出的域名只用来匹配规则，仍连接程序原本选的 IP：微信等应用的连接绑定在具体服务器上，改连域名解析出的其他服务器会导致消息、图片、文件发不出去
+  // 嗅探：连接只有 IP 时（浏览器自带加密 DNS、Tailscale 接管了系统 DNS），从 TLS / HTTP 里认出域名，按域名分流，
+  // 并把目标换成域名交给出口去解析：住宅代理只支持 IPv4，拿到真实 IPv6 地址会连不上（Claude 显示 CONNECTION CLOSED）
   config.sniffer = config.sniffer || {};
   Object.assign(config.sniffer, {
     enable: true,
     'force-dns-mapping': true,
     'parse-pure-ip': true,
-    'override-destination': false,
+    'override-destination': true,
     sniff: { HTTP: { ports: [80, '8080-8880'] }, TLS: { ports: [443, 8443] }, QUIC: { ports: [443, 8443] } }
   });
+  // 不改写的域名：微信、QQ 等腾讯应用的连接绑定在程序选定的服务器上，换成域名重新解析会连到别的服务器，消息、图片、文件发不出去
   const skip = new Set(config.sniffer['skip-domain'] || []);
-  skip.add('+.ts.net');
+  ['+.ts.net', '+.qq.com', '+.weixin.qq.com', '+.wechat.com', '+.weixin.com', '+.tencent.com', '+.qpic.cn', '+.qlogo.cn',
+    '+.gtimg.com', '+.gtimg.cn', '+.tenpay.com', '+.wechatpay.cn', '+.myqcloud.com', '+.tencent-cloud.net', '+.qcloud.com'].forEach((x) => skip.add(x));
   config.sniffer['skip-domain'] = Array.from(skip);
   return config;
 }
