@@ -5,6 +5,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ContentValues
 import android.content.Context
@@ -84,6 +85,17 @@ class MainActivity : FlutterFragmentActivity() {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/tailscale/tailscale-android")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     result.success(null)
                 }
+                "canInstall" -> result.success(Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls())
+                "openInstallSettings" -> {
+                    startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    result.success(null)
+                }
+                "copyImage" -> try {
+                    copyImage(File(call.argument<String>("path")!!), call.argument<String>("mime") ?: "image/*")
+                    result.success(true)
+                } catch (e: Exception) {
+                    result.success(false)
+                }
                 "clipboardImage" -> io.execute {
                     val path = try { clipboardImage() } catch (e: Exception) { null }
                     runOnUiThread { result.success(path) }
@@ -138,6 +150,17 @@ class MainActivity : FlutterFragmentActivity() {
             .setAutoCancel(true)
             .build()
         nm.notify(id, n)
+    }
+
+    /** 把图片以图片形式放进系统剪贴板，可直接粘贴到聊天软件；先复制到缓存目录再授权读取 */
+    private fun copyImage(src: File, mime: String) {
+        val dir = File(cacheDir, "clip").apply { mkdirs() }
+        dir.listFiles()?.forEach { it.delete() }
+        val copy = File(dir, src.name)
+        src.copyTo(copy, overwrite = true)
+        val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.clip", copy)
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newUri(contentResolver, "image", uri))
     }
 
     /** 剪贴板里的图片复制到缓存目录，返回路径；没有图片时返回 null */

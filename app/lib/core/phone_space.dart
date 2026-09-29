@@ -42,6 +42,17 @@ class DeviceBridge {
     if (Platform.isAndroid) await _ch.invokeMethod<void>('cancelNotify', {'id': id});
   }
 
+  /** canInstall：是否已允许本应用安装 apk（非安卓视为可以） */
+  Future<bool> canInstall() async => !Platform.isAndroid || (await _ch.invokeMethod<bool>('canInstall') ?? false);
+
+  /** openInstallSettings：打开系统里「允许安装未知应用」的设置页 */
+  Future<void> openInstallSettings() async {
+    if (Platform.isAndroid) await _ch.invokeMethod<void>('openInstallSettings');
+  }
+
+  /** copyImage：把图片放进系统剪贴板，成功返回 true */
+  Future<bool> copyImage(String path, {String mime = 'image/*'}) async => Platform.isAndroid && (await _ch.invokeMethod<bool>('copyImage', {'path': path, 'mime': mime}) ?? false);
+
   /** openTailscaleStore：安卓在浏览器打开 Tailscale 的 GitHub 页面，iPhone 打开 App Store 里的 Tailscale */
   Future<void> openTailscaleStore() async {
     if (Platform.isAndroid) {

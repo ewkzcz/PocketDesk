@@ -7,6 +7,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:provider/provider.dart';
 
@@ -14,6 +15,7 @@ import '../../core/app_state.dart';
 import '../../data/models.dart';
 import '../../net/api.dart';
 import '../file_kinds.dart';
+import '../share.dart';
 import '../tokens.dart';
 import '../widgets.dart';
 import 'fetch.dart';
@@ -67,12 +69,44 @@ Future<void> openWorkspaceFile(BuildContext context, {required Workspace ws, req
     // 4、其他
     default:
       if (isPhoneWs(ws.id)) {
-        final r = await OpenFilex.open(cacheFileFor(context.read<AppState>(), ws.id, entry.path).path);
-        if (r.type != ResultType.done && context.mounted) toast(context, r.type == ResultType.noAppToOpen ? '手机上没有能打开这个文件的应用' : '无法打开文件');
+        await openWithOtherApp(context, cacheFileFor(context.read<AppState>(), ws.id, entry.path).path);
       } else {
         await openExternally(context, ws: ws, entry: entry, readOnly: readOnly);
       }
   }
+}
+
+/**
+ * openWithOtherApp：交给手机上的其他应用打开，成功打开返回 true
+ *
+ * 处理流程：
+ * 1、apk 还没有安装权限时，让用户选择去系统设置允许，或用其他应用（文件管理器、安装器）打开
+ * 2、其他无法直接打开的情况，弹出系统的应用选择器；仍然没有应用时提示
+ */
+Future<bool> openWithOtherApp(BuildContext context, String path) async {
+  final device = context.read<AppState>().phone.device;
+  // 1、apk 的安装权限
+  if (path.toLowerCase().endsWith('.apk') && !await device.canInstall()) {
+    if (!context.mounted) return false;
+    final i = await actionSheet(context, const [
+      SheetAction('去设置里允许安装', icon: LucideIcons.shieldCheck300, subtitle: '允许 PocketDesk 安装应用后，再点一次文件'),
+      SheetAction('用其他应用打开', icon: LucideIcons.externalLink300, subtitle: '选择文件管理器、系统安装器等'),
+    ], title: '需要允许安装应用');
+    if (i == 0) await device.openInstallSettings();
+    if (i != 1 || !context.mounted) return false;
+    await shareFile(path, title: path.split(Platform.pathSeparator).last);
+    return false;
+  }
+  // 2、打开
+  final r = await OpenFilex.open(path);
+  if (r.type == ResultType.done) return true;
+  if (!context.mounted) return false;
+  if (r.type == ResultType.noAppToOpen) {
+    toast(context, '手机上没有能打开这个文件的应用');
+  } else {
+    await shareFile(path, title: path.split(Platform.pathSeparator).last);
+  }
+  return false;
 }
 
 /**
@@ -144,12 +178,7 @@ Future<void> openExternally(BuildContext context, {required Workspace ws, requir
   if (canceled || !context.mounted) return;
   Navigator.of(context).pop();
   final before = await f.file.lastModified();
-  final r = await OpenFilex.open(f.file.path);
-  if (!context.mounted) return;
-  if (r.type != ResultType.done) {
-    toast(context, r.type == ResultType.noAppToOpen ? '手机上没有能打开这个文件的应用' : '无法打开文件');
-    return;
-  }
+  if (!await openWithOtherApp(context, f.file.path) || !context.mounted) return;
   final canEdit = !readOnly && !ws.readOnly && (scope.conn.status?.features.fileEdit ?? true);
   if (canEdit) _EditWatcher(context, ws: ws, path: entry.path, file: f.file, etag: f.etag, before: before).start();
 }
