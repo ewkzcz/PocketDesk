@@ -8,6 +8,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../transfer/naming.dart' as naming;
 import 'connection.dart';
@@ -41,9 +42,13 @@ class DeviceBridge {
     if (Platform.isAndroid) await _ch.invokeMethod<void>('cancelNotify', {'id': id});
   }
 
-  /** openTailscaleStore：在浏览器打开 Tailscale 安卓版的 GitHub 页面 */
+  /** openTailscaleStore：安卓在浏览器打开 Tailscale 的 GitHub 页面，iPhone 打开 App Store 里的 Tailscale */
   Future<void> openTailscaleStore() async {
-    if (Platform.isAndroid) await _ch.invokeMethod<void>('openTailscale');
+    if (Platform.isAndroid) {
+      await _ch.invokeMethod<void>('openTailscale');
+    } else if (Platform.isIOS) {
+      await launchUrl(Uri.parse('https://apps.apple.com/app/tailscale/id1470499037'), mode: LaunchMode.externalApplication);
+    }
   }
 
   /** clipboardImage：剪贴板里的图片存到缓存后的路径，没有图片时为空 */

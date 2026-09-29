@@ -508,7 +508,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
               ],
             ),
             PdGroup(children: [
-              PdCell(icon: LucideIcons.download300, title: '下载 Tailscale', subtitle: '在浏览器打开 Tailscale 安卓版下载页', onTap: () => app.phone.device.openTailscaleStore()),
+              PdCell(icon: LucideIcons.download300, title: '下载 Tailscale', subtitle: '打开 Tailscale 的下载页面', onTap: () => app.phone.device.openTailscaleStore()),
               PdCell(icon: LucideIcons.refreshCw300, title: '重新检测', onTap: _check),
             ]),
           ]),

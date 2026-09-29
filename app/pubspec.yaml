@@ -47,6 +47,7 @@ dependencies:
   archive: ^4.3.0
   flutter_svg: ^2.3.0
   webview_flutter: ^4.14.1
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
