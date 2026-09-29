@@ -11,6 +11,7 @@ import "net/http"
  *
  * 只做放行，不改代理节点：
  * 1、Tailscale 网段与 Tailscale 自己的进程、域名直连，隧道才能建立并保持直连
+ *    不放行 PocketDesk 自己的进程：手机发来的请求是入站连接，靠网段规则和 TUN 排除即可，进程直连规则只会多出泄露真实 IP 的风险
  * 2、TUN 不接管 Tailscale 网段，手机发来的请求与电脑的回包不经过代理
  * 3、Tailscale 域名不走 fake-ip，避免被解析成假地址
  * Claude Code 的流量没有被放行，仍然走原来的规则与住宅出口。
@@ -30,8 +31,6 @@ function main(config) {
     'PROCESS-NAME,Tailscale,DIRECT',
     'PROCESS-NAME,tailscaled.exe,DIRECT',
     'PROCESS-NAME,tailscale-ipn.exe,DIRECT',
-    'PROCESS-NAME,PocketDesk,DIRECT',
-    'PROCESS-NAME,PocketDesk.exe,DIRECT',
   ];
   // 放在最前面（Clash 按顺序匹配）；已经有的不重复添加
   const rest = (config.rules || []).filter((r) => !direct.includes(r));
