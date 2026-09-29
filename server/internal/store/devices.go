@@ -84,16 +84,23 @@ func (s *Store) DeleteDevice(ctx context.Context, id string) error {
 /**
  * ReplaceInstall：同一台手机重新配对后，删除它以前留下的设备记录
  *
- * 同一次安装的手机带同一个安装编号；没有安装编号（旧版 App）时不处理。返回删除的设备 ID。
+ * 处理流程：
+ * 1、有安装编号时，删除带同一个编号的旧记录
+ * 2、还没有安装编号的旧版记录，按同名同系统视为同一台手机一并删除
+ * 返回删除的设备 ID。
  */
-func (s *Store) ReplaceInstall(ctx context.Context, keepID, installID string) ([]string, error) {
+func (s *Store) ReplaceInstall(ctx context.Context, keepID, installID, name, platform string) ([]string, error) {
 	if installID == "" {
 		return nil, nil
 	}
+	// 1、记录编号
 	if _, err := s.db.ExecContext(ctx, `UPDATE devices SET install_id=? WHERE id=?`, installID, keepID); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id FROM devices WHERE install_id=? AND id<>?`, installID, keepID)
+	// 2、找出旧记录
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id FROM devices WHERE id<>? AND (install_id=? OR (install_id='' AND name=? AND platform=?))`,
+		keepID, installID, name, platform)
 	if err != nil {
 		return nil, err
 	}

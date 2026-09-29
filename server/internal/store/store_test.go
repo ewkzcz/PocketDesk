@@ -49,6 +49,34 @@ func TestDevices(t *testing.T) {
 	}
 }
 
+func TestReplaceInstall(t *testing.T) {
+	s, ctx := openTest(t), context.Background()
+	mk := func(id, name string) {
+		if _, err := s.CreateDevice(ctx, Device{ID: id, Name: name, Platform: "android", TokenHash: "h-" + id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("old-tagged", "Android 手机")
+	mk("legacy", "Android 手机")
+	mk("other", "iPhone")
+	if _, err := s.ReplaceInstall(ctx, "old-tagged", "inst-1", "Android 手机", "android"); err != nil {
+		t.Fatal(err)
+	}
+	// 旧版没有编号的同名记录被归并，其他手机不受影响
+	mk("new", "Android 手机")
+	gone, err := s.ReplaceInstall(ctx, "new", "inst-1", "Android 手机", "android")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gone) != 1 || gone[0] != "old-tagged" {
+		t.Fatalf("同一安装编号的旧记录应被替换: %v", gone)
+	}
+	list, _ := s.Devices(ctx)
+	if len(list) != 2 {
+		t.Fatalf("应剩 2 台设备: %d", len(list))
+	}
+}
+
 func TestAppendEventThenKeepsOrder(t *testing.T) {
 	// 并发写入同一会话时，回调（推送）顺序必须与序号一致
 	s, ctx := openTest(t), context.Background()

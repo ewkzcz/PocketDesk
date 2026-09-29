@@ -181,7 +181,7 @@ func (s *Server) pair(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Store.Audit(r.Context(), res.DeviceID, "device.pair", map[string]string{"name": in.Name, "platform": in.Platform})
-	if old, err := s.Store.ReplaceInstall(r.Context(), res.DeviceID, in.InstallID); err != nil {
+	if old, err := s.Store.ReplaceInstall(r.Context(), res.DeviceID, in.InstallID, strings.TrimSpace(in.Name), in.Platform); err != nil {
 		slog.Warn("清理旧设备记录失败", "err", err)
 	} else {
 		for _, id := range old {
