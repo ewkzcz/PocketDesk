@@ -28,8 +28,12 @@ type wsView struct {
 
 /** computerRel：电脑上的绝对路径转为「此电脑」中的相对路径 */
 func computerRel(abs string) string {
-	root := filepath.ToSlash(store.ComputerRoot())
-	return strings.TrimPrefix(strings.TrimPrefix(filepath.ToSlash(abs), root), "/")
+	root, p := filepath.ToSlash(store.ComputerRoot()), filepath.ToSlash(abs)
+	// Windows 的盘符大小写不固定（c: 与 C:），按不区分大小写比较前缀
+	if len(p) >= len(root) && strings.EqualFold(p[:len(root)], root) {
+		p = p[len(root):]
+	}
+	return strings.TrimPrefix(p, "/")
 }
 
 /**
