@@ -1,4 +1,4 @@
-// PocketDesk 分流脚本（放在 Clash Verge 的「全局扩展脚本」里）
+// 住宅出口分流脚本（HomeGuard、PocketDesk 通用，放在 Clash Verge 的「全局扩展脚本」里）
 //
 // 效果：
 //   · Claude 桌面端、Claude Code、Codex 桌面端、Codex CLI、ChatGPT 桌面端发出的全部请求 → 住宅出口
