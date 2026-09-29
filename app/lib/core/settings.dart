@@ -75,6 +75,14 @@ class AppSettings extends ChangeNotifier {
     return id;
   }
 
+  /** manualAddress：某台电脑手动选定的连接地址，为空时自动选择 */
+  String manualAddress(String hostId) => _prefs.getString('addr:$hostId') ?? '';
+
+  void setManualAddress(String hostId, String v) {
+    v.isEmpty ? _prefs.remove('addr:$hostId') : _prefs.setString('addr:$hostId', v);
+    notifyListeners();
+  }
+
   /** biometric：打开 App、进入 Agent 会话或终端时验证 */
   bool get biometric => _prefs.getBool('biometric') ?? true;
   set biometric(bool v) => _set('biometric', v);

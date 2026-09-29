@@ -283,42 +283,74 @@ class ComputersPage extends StatelessWidget {
     final app = context.watch<AppState>();
     final c = context.pd;
     final current = app.host;
-    final status = app.scope?.conn.status;
+    final conn = app.scope?.conn;
+    final status = conn?.status;
+    final manual = conn?.manualAddress ?? '';
     return Scaffold(
       appBar: const PdBar(title: '已配对的电脑'),
       body: ListView(padding: const EdgeInsets.only(top: 16), children: [
         if (app.hosts.isEmpty) const SizedBox(height: 240, child: EmptyHint(icon: LucideIcons.laptop300, text: '还没有配对电脑')),
         if (app.hosts.isNotEmpty)
           PdGroup(
-            header: '点击切换当前电脑',
+            header: '点击切换电脑；点当前电脑重新连接',
             children: [
               for (final h in app.hosts)
                 PdCell(
                   icon: LucideIcons.laptop300,
                   title: h.name,
-                  subtitle: '${h.addresses.length} 个连接地址',
+                  subtitle: h.id == current?.id
+                      ? (conn?.online == true ? '在线 · ${conn!.kindLabel}' : (conn?.probing == true ? '连接中…' : '离线，点击重新连接'))
+                      : '${h.addresses.length} 个连接地址',
                   arrow: false,
                   trailing: h.id == current?.id ? Icon(LucideIcons.check300, color: c.accent, size: 20) : null,
-                  onTap: () => app.switchHost(h.id),
+                  onTap: () async {
+                    if (h.id != current?.id) {
+                      await app.switchHost(h.id);
+                      return;
+                    }
+                    toast(context, '正在连接…');
+                    final ok = await app.reconnect();
+                    if (context.mounted) toast(context, ok ? '已连接' : (app.scope?.conn.lastError.isNotEmpty == true ? app.scope!.conn.lastError : '连接不上电脑'));
+                  },
                 ),
             ],
           ),
         if (current != null)
           PdGroup(
-            header: '连接地址（按局域网优先、延迟最低自动选择）',
+            header: '连接地址（默认自动选择，也可以点一个地址指定它）',
             footer: '不在同一网络时：电脑和手机都安装并登录同一个 Tailscale 账号，连接后会自动记住电脑的 Tailscale 地址；也可以手动添加 Tailscale 名称或自建隧道的地址。',
             children: [
-              for (final a in app.scope?.conn.host.addresses ?? current.addresses)
+              PdCell(
+                icon: LucideIcons.route300,
+                title: '自动选择',
+                subtitle: '局域网优先，延迟最低的地址',
+                arrow: false,
+                trailing: manual.isEmpty ? Icon(LucideIcons.check300, color: c.accent, size: 20) : null,
+                onTap: () async {
+                  if (manual.isEmpty) return;
+                  final ok = await app.useAddress('');
+                  if (context.mounted) toast(context, ok ? '已改为自动选择' : '连接不上电脑');
+                },
+              ),
+              for (final a in conn?.host.addresses ?? current.addresses)
                 PdCell(
                   title: a,
                   value: [
-                    if (app.scope?.conn.online == true && app.scope?.conn.address == a) '正在使用',
+                    if (conn?.online == true && conn?.address == a) '正在使用',
+                    if (manual == a) '已指定',
                     isTailscale(a) ? 'Tailscale' : '局域网',
                   ].join(' · '),
                   arrow: false,
                   onTap: () async {
-                    final i = await actionSheet(context, const [SheetAction('删除这个地址', danger: true)], title: a);
-                    if (i == 0 && !await app.removeAddress(a) && context.mounted) toast(context, '至少需要保留一个地址');
+                    final i = await actionSheet(context, const [SheetAction('使用这个地址连接'), SheetAction('删除这个地址', danger: true)], title: a);
+                    if (!context.mounted) return;
+                    if (i == 0) {
+                      toast(context, '正在连接…');
+                      final ok = await app.useAddress(a);
+                      if (context.mounted) toast(context, ok ? '已连接到 $a' : '连不上这个地址');
+                    } else if (i == 1 && !await app.removeAddress(a) && context.mounted) {
+                      toast(context, '至少需要保留一个地址');
+                    }
                   },
                 ),
               PdCell(

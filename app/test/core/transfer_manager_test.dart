@@ -64,6 +64,19 @@ void main() {
     await tmp.delete(recursive: true);
   });
 
+  test('手动指定连接地址：连不上时保持原连接，改回自动后重新选择', () async {
+    expect(conn.address, '127.0.0.1');
+    conn.manualAddress = '127.0.0.3';
+    expect(await conn.reconnect(), isFalse);
+    expect(conn.lastError, isNotEmpty);
+    expect(conn.address, '127.0.0.1');
+    conn.manualAddress = '127.0.0.1';
+    expect(await conn.reconnect(), isTrue);
+    conn.manualAddress = '';
+    expect(await conn.reconnect(), isTrue);
+    expect(conn.address, '127.0.0.1');
+  });
+
   test('探测跳过不可达地址并建立事件通道', () async {
     expect(conn.address, '127.0.0.1');
     expect(conn.kindLabel, '局域网');

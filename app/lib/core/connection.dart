@@ -77,6 +77,9 @@ class HostConnection extends ChangeNotifier with SafeNotifier {
   LinkState link = LinkState.offline;
   bool probing = false;
   String lastError = '';
+
+  /** manualAddress：手动选定的连接地址，为空时按局域网优先、延迟最低自动选择 */
+  String manualAddress = '';
   Timer? _reprobe;
   final _eventsOut = StreamController<PdEvent>.broadcast();
   StreamSubscription<PdEvent>? _eventSub;
@@ -120,11 +123,12 @@ class HostConnection extends ChangeNotifier with SafeNotifier {
    *
    * 处理流程：
    * 1、每个地址请求 /api/host，3 秒超时
-   * 2、局域网地址优先，同类地址中选延迟最低的
+   * 2、手动选定了地址时只探测它；否则局域网地址优先，同类地址中选延迟最低的
    */
   Future<Probe?> probeAll() async {
     // 1、探测
-    final results = await Future.wait(host.addresses.map((addr) async {
+    final manual = host.addresses.contains(manualAddress) ? manualAddress : '';
+    final results = await Future.wait((manual.isEmpty ? host.addresses : [manual]).map((addr) async {
       final a = newApi(addr);
       final sw = Stopwatch()..start();
       try {
@@ -140,7 +144,10 @@ class HostConnection extends ChangeNotifier with SafeNotifier {
     }));
     // 2、选择
     final ok = results.whereType<Probe>().toList();
-    if (ok.isEmpty) return null;
+    if (ok.isEmpty) {
+      if (manual.isNotEmpty && lastError.isEmpty) lastError = '连不上指定的地址，可在「已配对的电脑」里改回自动选择';
+      return null;
+    }
     ok.sort((a, b) {
       final ta = isTailscale(a.address) ? 1 : 0;
       final tb = isTailscale(b.address) ? 1 : 0;
@@ -168,6 +175,32 @@ class HostConnection extends ChangeNotifier with SafeNotifier {
         return false;
       }
       _use(p);
+      return true;
+    } finally {
+      probing = false;
+      notifyListeners();
+    }
+  }
+
+  /**
+   * reconnect：马上重新探测并连接（点击连接或切换地址时用），成功返回 true
+   */
+  Future<bool> reconnect() async {
+    if (disposed) return false;
+    if (probing) return hasApi;
+    probing = true;
+    lastError = '';
+    notifyListeners();
+    try {
+      final p = await probeAll();
+      if (disposed) return false;
+      if (p == null) {
+        if (lastError.isEmpty) lastError = '电脑不在线';
+        _scheduleReprobe();
+        return false;
+      }
+      _use(p);
+      _events?.reconnectNow();
       return true;
     } finally {
       probing = false;
@@ -266,6 +299,7 @@ class HostConnection extends ChangeNotifier with SafeNotifier {
   bool removeAddress(String ip) {
     if (!host.addresses.contains(ip) || host.addresses.length <= 1) return false;
     host = host.copyWith(addresses: host.addresses.where((a) => a != ip).toList());
+    if (manualAddress == ip) manualAddress = '';
     notifyListeners();
     return true;
   }

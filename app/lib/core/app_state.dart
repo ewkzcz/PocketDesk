@@ -141,7 +141,7 @@ class AppState extends ChangeNotifier {
     }
     // 2、创建
     late final SessionsStore sessions;
-    final conn = _connections(h, token, () => sessions.cursors());
+    final conn = _connections(h, token, () => sessions.cursors())..manualAddress = settings.manualAddress(h.id);
     sessions = SessionsStore(db: db, hostId: h.id, api: () => conn.api)..onRead = _clearNotify;
     final transfers = TransferManager(
       db: db,
@@ -274,9 +274,33 @@ class AppState extends ChangeNotifier {
   Future<bool> removeAddress(String address) async {
     final s = scope;
     if (s == null || !s.conn.removeAddress(address)) return false;
+    if (settings.manualAddress(s.host.id) == address) settings.setManualAddress(s.host.id, '');
     await _saveAddresses(s);
     return true;
   }
+
+  /**
+   * useAddress：手动指定连接地址（空为自动选择）并立即连接
+   *
+   * 连不上时恢复原来的选择，返回 false
+   */
+  Future<bool> useAddress(String address) async {
+    final s = scope;
+    if (s == null) return false;
+    final before = s.conn.manualAddress;
+    s.conn.manualAddress = address;
+    final ok = await s.conn.reconnect();
+    if (ok) {
+      settings.setManualAddress(s.host.id, address);
+    } else {
+      s.conn.manualAddress = before;
+    }
+    notifyListeners();
+    return ok;
+  }
+
+  /** reconnect：手动点击连接当前电脑 */
+  Future<bool> reconnect() async => await scope?.conn.reconnect() ?? false;
 
   /** _onSignal：网络或电量变化 */
   void _onSignal(({NetState state, bool networkChanged}) x) {
