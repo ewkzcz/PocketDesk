@@ -58,7 +58,7 @@ iconutil -c icns "$set_dir" -o "$app/Contents/Resources/AppIcon.icns"
 
 # 4、本机签名（未上架分发时系统要求至少有本地签名才能运行）
 codesign --force --deep -s - "$app"
-echo "已打包：$app（版本 $version）"
+echo "已打包：${app}（版本 ${version}）"
 
 # 5、安装
 if [ "${1:-}" = "--install" ]; then
