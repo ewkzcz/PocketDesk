@@ -16,7 +16,9 @@ import "net/http"
  * Claude Code 的流量没有被放行，仍然走原来的规则与住宅出口。
  */
 const clashScript = `// PocketDesk：让 Tailscale 与 Clash TUN 共存
-// 使用：Clash Verge → 订阅 → 右键「扩展脚本」→ 粘贴保存。不改节点，也不影响 Claude Code 走住宅出口。
+// 使用：Clash Verge → 订阅页 → 「全局扩展脚本」→ 粘贴保存（不要粘贴到某个订阅自己的「扩展脚本」里，会覆盖你原来的脚本）。
+// 它和你订阅里的脚本各自独立运行，只往配置里追加放行规则；不改节点，也不影响 Claude Code 走住宅出口。
+// 如果你的客户端没有「全局扩展脚本」，就把下面 main 里的内容原样放进你自己 main 的最前面，不要出现两个 main。
 function main(config) {
   const direct = [
     'IP-CIDR,100.64.0.0/10,DIRECT,no-resolve',
@@ -31,7 +33,9 @@ function main(config) {
     'PROCESS-NAME,PocketDesk,DIRECT',
     'PROCESS-NAME,PocketDesk.exe,DIRECT',
   ];
-  config.rules = direct.concat(config.rules || []);
+  // 放在最前面（Clash 按顺序匹配）；已经有的不重复添加
+  const rest = (config.rules || []).filter((r) => !direct.includes(r));
+  config.rules = direct.concat(rest);
 
   // TUN 不接管 Tailscale 网段
   config.tun = config.tun || {};

@@ -1443,7 +1443,7 @@
         break;
       case 'clash-script':
         api('GET', '/admin/api/remote/clash-script').then(function (r) {
-          modal('Clash 放行脚本', '<div class="pd-muted" style="font-size:12px;margin-bottom:8px">Clash Verge：订阅 → 右键「扩展脚本」→ 粘贴 → 保存并重启内核。只放行 Tailscale，不改节点。</div>' +
+          modal('Clash 放行脚本', '<div class="pd-muted" style="font-size:12px;margin-bottom:8px">Clash Verge：订阅页 →「全局扩展脚本」→ 粘贴 → 保存。别粘到订阅自己的扩展脚本里，会覆盖你原来的脚本。只放行 Tailscale，不改节点。</div>' +
             '<textarea id="clash-text" class="pd-input pd-mono" readonly style="width:100%;height:280px;font-size:12px">' + esc(r.script) + '</textarea>',
             '<button class="pd-btn" data-act="modal-close">关闭</button><button class="pd-btn pd-btn-primary" data-act="clash-copy">复制</button>');
         }).catch(function (er) { toast(er.message); });
