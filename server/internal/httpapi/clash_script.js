@@ -1,7 +1,7 @@
 // PocketDesk 分流脚本（放在 Clash Verge 的「全局扩展脚本」里）
 //
 // 效果：
-//   · Claude 桌面端、Claude Code、Codex 桌面端、Codex CLI 发出的全部请求 → 住宅出口
+//   · Claude 桌面端、Claude Code、Codex 桌面端、Codex CLI、ChatGPT 桌面端发出的全部请求 → 住宅出口
 //   · 谷歌相关请求，以及 Claude / ChatGPT 网页 → 住宅出口
 //   · Claude 环境检测（CheckClaude）的探测 → 住宅出口，检测结果反映的就是 Claude 实际走的线路
 //   · 其他所有请求 → 基础节点
@@ -62,7 +62,8 @@ function main(config) {
     '(?i)/claude/versions/',       // Claude Code CLI（官方安装方式）
     '(?i)/codex\\.app/',           // Codex 桌面端
     '(?i)/codex$',                 // Codex CLI
-    '(?i)\\\\(claude|codex)\\.exe$', // Windows 上的 Claude、Claude Code、Codex
+    '(?i)/chatgpt\\.app/',         // ChatGPT 桌面端（含 Codex）
+    '(?i)\\\\(claude|codex|chatgpt)\\.exe$', // Windows 上的 Claude、Claude Code、Codex、ChatGPT
     '(?i)/checkclaude\\.app/'        // Claude 环境检测
   ];
 
