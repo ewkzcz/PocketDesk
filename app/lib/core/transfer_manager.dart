@@ -305,16 +305,21 @@ class TransferManager extends ChangeNotifier with SafeNotifier {
     var lastBytes = t.doneBytes;
     var lastAt = DateTime.now();
     var lastSave = DateTime.now();
+    var lastNotify = DateTime.now();
     return Hooks(
       persist: () => _persist(t),
       progress: () {
         final now = DateTime.now();
         final ms = now.difference(lastAt).inMilliseconds;
+        // 速度每秒算一次；进度条每 0.3 秒刷新一次，小文件也能看到走动
         if (ms >= 1000) {
           final rate = (t.doneBytes - lastBytes) * 1000 / ms;
           t.speed = t.speed == 0 ? rate : t.speed * 0.6 + rate * 0.4;
           lastBytes = t.doneBytes;
           lastAt = now;
+        }
+        if (now.difference(lastNotify).inMilliseconds >= 300) {
+          lastNotify = now;
           notifyListeners();
         }
         if (now.difference(lastSave).inSeconds >= 2) {
