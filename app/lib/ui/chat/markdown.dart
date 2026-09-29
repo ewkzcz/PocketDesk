@@ -34,7 +34,7 @@ class MdText extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 6),
       textStyle: mono,
       decoration: BoxDecoration(color: c.tool, borderRadius: BorderRadius.circular(PdSize.smallRadius)),
-      wrapper: (child, code, _) => _CodeBlock(code: code, child: child),
+      wrapper: (child, code, language) => language == 'mermaid' ? MermaidView(code: code) : _CodeBlock(code: code, child: child),
     );
     return base.copy(configs: [
       PConfig(textStyle: text),
@@ -52,6 +52,8 @@ class MdText extends StatelessWidget {
         headerStyle: text.copyWith(fontWeight: FontWeight.w600, fontSize: fontSize - 1),
         bodyStyle: text.copyWith(fontSize: fontSize - 1),
         border: TableBorder.all(color: c.divider, width: 0.5),
+        // 表格比屏幕宽时可以左右滑动查看
+        wrapper: (table) => SingleChildScrollView(scrollDirection: Axis.horizontal, child: table),
       ),
       HrConfig(color: c.divider, height: 0.5),
     ]);
