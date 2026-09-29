@@ -57,7 +57,8 @@ func remoteStatus() map[string]any {
 	case tailscaleInstalled():
 		state = "offline"
 	}
-	return map[string]any{"state": state, "addresses": ips}
+	// proxyTun：电脑开着 Clash 等代理的 TUN 模式时，Tailscale 需要放行才能稳定连接
+	return map[string]any{"state": state, "addresses": ips, "proxyTun": netutil.ProxyTUNs()}
 }
 
 /** adminRemote：异地连接状态（桌面端概览） */

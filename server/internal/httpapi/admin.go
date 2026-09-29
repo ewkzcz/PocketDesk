@@ -63,6 +63,7 @@ func (s *Server) AdminHandler() http.Handler {
 	mux.HandleFunc("POST /admin/api/pick-folder", s.adminPickFolder)
 	mux.HandleFunc("GET /admin/api/remote", s.adminRemote)
 	mux.HandleFunc("POST /admin/api/remote/download", s.adminTailscaleDownload)
+	mux.HandleFunc("GET /admin/api/remote/clash-script", s.adminClashScript)
 	mux.HandleFunc("POST /admin/api/transfers/pause", s.adminPause)
 	mux.HandleFunc("POST /admin/api/quit", s.adminQuit)
 	// 桌面端与手机端共用会话、聊天、审批、工作区等接口
