@@ -13,8 +13,8 @@ import '../../net/api.dart';
 /** 手机本地目录作为只读工作区时的编号前缀，后接目录的完整路径 */
 const _phonePrefix = '@phone:';
 
-/** phoneWorkspace：把手机上的目录包装成只读工作区，供 App 内查看器打开本地文件 */
-Workspace phoneWorkspace(String dir) => Workspace(id: '$_phonePrefix$dir', name: '手机', rootPath: dir, readOnly: true);
+/** phoneWorkspace：把手机上的目录包装成工作区，供文件页管理、App 内查看器打开本地文件 */
+Workspace phoneWorkspace(String dir, {bool readOnly = true}) => Workspace(id: '$_phonePrefix$dir', name: '手机', rootPath: dir, readOnly: readOnly);
 
 /** isPhoneWs：是否为手机本地工作区 */
 bool isPhoneWs(String wsId) => wsId.startsWith(_phonePrefix);

@@ -4,6 +4,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,12 +12,14 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_state.dart';
+import '../../core/phone_space.dart';
 import '../../data/models.dart';
 import '../../net/api.dart';
 import '../file_kinds.dart';
 import '../format.dart';
 import '../pick.dart';
 import '../tokens.dart';
+import '../viewers/fetch.dart';
 import '../viewers/open_file.dart';
 import '../widgets.dart';
 import 'chat_page.dart';
@@ -97,7 +100,8 @@ class _FilesPageState extends State<FilesPage> {
       final list = await scope.conn.api.workspaces();
       if (!mounted || scope != _scope) return;
       // 默认工作目录在最前，「此电脑」放最后；初次打开默认工作目录
-      final sorted = [...list.where((w) => w.isDefault), ...list.where((w) => !w.isDefault && !w.system), ...list.where((w) => w.system)];
+      // 手机自己的工作空间放在最后，两边都能在这里管理
+      final sorted = [...list.where((w) => w.isDefault), ...list.where((w) => !w.isDefault && !w.system), ...list.where((w) => w.system), _phoneWs()];
       setState(() {
         _workspaces = sorted;
         _ws = sorted.where((w) => w.id == _ws?.id).firstOrNull ?? sorted.firstOrNull;
@@ -109,12 +113,61 @@ class _FilesPageState extends State<FilesPage> {
         setState(() => _loading = false);
       }
     } on ApiException catch (e) {
+      // 电脑不在线时仍可管理手机上的文件
       if (mounted) {
         setState(() {
+          _workspaces = [_phoneWs()];
+          _ws = null;
           _error = e.message;
           _loading = false;
         });
       }
+    }
+  }
+
+  /** _phoneWs：手机自己的工作空间 */
+  Workspace _phoneWs() => phoneWorkspace(context.read<AppState>().phone.root, readOnly: false);
+
+  /** _onPhone：当前是否在管理手机的工作空间 */
+  bool get _onPhone => _ws != null && isPhoneWs(_ws!.id);
+
+  /**
+   * _loadPhone：读取手机工作空间里的当前目录
+   */
+  Future<void> _loadPhone() async {
+    final phone = context.read<AppState>().phone;
+    final req = ++_req;
+    setState(() {
+      _loading = true;
+      _error = '';
+    });
+    try {
+      final r = await phone.handle('list', {'path': _path}, _scope!.conn) as Map<String, Object?>;
+      if (!mounted || req != _req) return;
+      final list = [
+        for (final m in (r['entries'] as List).cast<Map<String, Object>>())
+          if (_hidden || !(m['name'] as String).startsWith('.'))
+            FileEntry(name: m['name'] as String, path: _path.isEmpty ? m['name'] as String : '$_path/${m['name']}', isDir: m['isDir'] as bool, size: m['size'] as int, modTime: m['modTime'] as int),
+      ];
+      list.sort((a, b) {
+        if (a.isDir != b.isDir) return a.isDir ? -1 : 1;
+        final c = switch (_sort) {
+          'time' => a.modTime.compareTo(b.modTime),
+          'size' => a.size.compareTo(b.size),
+          _ => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+        };
+        return _desc ? -c : c;
+      });
+      setState(() {
+        _entries = list;
+        _readOnly = false;
+      });
+    } on PhoneFsError catch (e) {
+      if (mounted && req == _req) setState(() => _error = e.message);
+    } on FileSystemException {
+      if (mounted && req == _req) setState(() => _error = '手机没有授权访问这个文件夹');
+    } finally {
+      if (mounted && req == _req) setState(() => _loading = false);
     }
   }
 
@@ -129,6 +182,7 @@ class _FilesPageState extends State<FilesPage> {
     final ws = _ws;
     final scope = _scope;
     if (ws == null || scope == null) return;
+    if (isPhoneWs(ws.id)) return _loadPhone();
     // 1、序号
     final req = ++_req;
     setState(() {
@@ -171,10 +225,26 @@ class _FilesPageState extends State<FilesPage> {
     if (ws == null || q.trim().isEmpty) return;
     setState(() => _loading = true);
     try {
+      if (isPhoneWs(ws.id)) {
+        final root = context.read<AppState>().phone.root;
+        final key = q.trim().toLowerCase();
+        final found = <FileEntry>[];
+        await for (final e in Directory(root).list(recursive: true, followLinks: false)) {
+          final name = e.path.substring(e.path.lastIndexOf('/') + 1);
+          if (!name.toLowerCase().contains(key)) continue;
+          final st = await e.stat();
+          found.add(FileEntry(name: name, path: e.path.substring(root.length + 1), isDir: st.type == FileSystemEntityType.directory, size: st.size, modTime: st.modified.millisecondsSinceEpoch));
+          if (found.length >= 200) break;
+        }
+        if (mounted) setState(() => _results = found);
+        return;
+      }
       final r = await _scope!.conn.api.search(ws.id, q.trim());
       if (mounted) setState(() => _results = r);
     } on ApiException catch (e) {
       if (mounted) toast(context, e.message);
+    } on FileSystemException {
+      if (mounted) toast(context, '手机没有授权访问这个文件夹');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -231,6 +301,11 @@ class _FilesPageState extends State<FilesPage> {
       case 0 || 1:
         final files = i == 0 ? await pickFiles(context.read<AppState>().paths.temp) : await pickImages();
         if (files.isEmpty || !mounted) return;
+        if (!await confirmSend(context, [for (final f in files) f.name], to: _onPhone ? '手机' : '电脑') || !mounted) return;
+        if (_onPhone) {
+          await _copyToPhone(files);
+          return;
+        }
         final tasks = [for (final f in files) await scope.transfers.upload(f.path, name: f.name, mime: f.mime, target: 'ws:${ws.id}:$_path')];
         if (mounted) toast(context, '正在上传 ${tasks.length} 个文件，完成后自动刷新');
         unawaited(Future.wait(tasks.map(scope.transfers.wait)).then((_) {
@@ -239,12 +314,27 @@ class _FilesPageState extends State<FilesPage> {
       case 2:
         final name = await inputDialog(context, title: '新建文件夹', hint: '文件夹名称');
         if (name == null || name.trim().isEmpty) return;
-        await _op(() => scope.conn.api.op(ws.id, 'mkdir', dir, name: name.trim()));
+        await _op(() => _onPhone ? context.read<AppState>().phone.handle('mkdir', {'path': _path, 'name': name.trim()}, scope.conn) : scope.conn.api.op(ws.id, 'mkdir', dir, name: name.trim()));
       // 2、新建文件
       case 3:
         final name = (await inputDialog(context, title: '新建文件', initial: '新建文本.txt', hint: '文件名，例如 笔记.md'))?.trim();
         if (name == null || name.isEmpty || name.contains('/')) return;
         final path = _path.isEmpty ? name : '$_path/$name';
+        if (!mounted) return;
+        if (_onPhone) {
+          final f = File('${context.read<AppState>().phone.root}/$path');
+          if (await f.exists()) {
+            if (mounted) toast(context, '已有同名文件');
+            return;
+          }
+          try {
+            await f.create(recursive: true);
+          } on FileSystemException {
+            if (mounted) toast(context, '手机没有授权访问这个文件夹');
+          }
+          await _load();
+          return;
+        }
         try {
           await scope.conn.api.saveFile(ws.id, path, const [], create: true);
         } on ApiException catch (e) {
@@ -257,6 +347,33 @@ class _FilesPageState extends State<FilesPage> {
     }
   }
 
+  /** _copyToPhone：把选中的文件存到手机工作空间的当前目录，重名加序号 */
+  Future<void> _copyToPhone(List<Picked> files) async {
+    final phone = context.read<AppState>().phone;
+    await phone.refresh();
+    if (!phone.permitted) {
+      if (mounted) toast(context, '手机还没授权访问存储，请在「我 → 手机工作空间」授权');
+      return;
+    }
+    final dir = Directory(_path.isEmpty ? phone.root : '${phone.root}/$_path');
+    try {
+      await dir.create(recursive: true);
+      for (final f in files) {
+        final name = f.name.isEmpty ? f.path.split('/').last : f.name;
+        var target = '${dir.path}/$name';
+        final dot = name.lastIndexOf('.');
+        for (var n = 1; await FileSystemEntity.type(target, followLinks: false) != FileSystemEntityType.notFound; n++) {
+          target = '${dir.path}/${dot > 0 ? name.substring(0, dot) : name} ($n)${dot > 0 ? name.substring(dot) : ''}';
+        }
+        await File(f.path).copy(target);
+      }
+      if (mounted) toast(context, '已存到手机');
+    } on FileSystemException {
+      if (mounted) toast(context, '手机没有授权访问这个文件夹');
+    }
+    await _load();
+  }
+
   /** _op：执行文件操作并刷新 */
   Future<void> _op(Future<Object?> Function() f, {String done = ''}) async {
     try {
@@ -264,6 +381,10 @@ class _FilesPageState extends State<FilesPage> {
       if (mounted && done.isNotEmpty) toast(context, done);
     } on ApiException catch (e) {
       if (mounted) toast(context, e.message);
+    } on PhoneFsError catch (e) {
+      if (mounted) toast(context, e.message);
+    } on FileSystemException {
+      if (mounted) toast(context, '手机没有授权访问这个文件夹');
     }
     await _load();
   }
@@ -274,9 +395,11 @@ class _FilesPageState extends State<FilesPage> {
   Future<void> _longPress(FileEntry e) async {
     final ws = _ws!;
     final scope = _scope!;
-    final canEdit = !_readOnly && (scope.conn.status?.features.fileEdit ?? true);
+    final onPhone = _onPhone;
+    final phone = context.read<AppState>().phone;
+    final canEdit = onPhone || (!_readOnly && (scope.conn.status?.features.fileEdit ?? true));
     final items = <(SheetAction, Future<void> Function())>[
-      if (!e.isDir)
+      if (!e.isDir && !onPhone)
         (const SheetAction('下载到手机', icon: LucideIcons.download300), () async {
           await scope.transfers.download('ws:${ws.id}:${e.path}', e.name, e.size);
           if (mounted) toast(context, '已加入传输队列');
@@ -285,24 +408,24 @@ class _FilesPageState extends State<FilesPage> {
         (const SheetAction('重命名', icon: LucideIcons.pencil300), () async {
           final n = await inputDialog(context, title: '重命名', initial: e.name);
           if (n == null || n.trim().isEmpty || n.trim() == e.name) return;
-          await _op(() => scope.conn.api.op(ws.id, 'rename', e.path, name: n.trim()));
+          await _op(() => onPhone ? phone.handle('rename', {'path': e.path, 'name': n.trim()}, scope.conn) : scope.conn.api.op(ws.id, 'rename', e.path, name: n.trim()));
         }),
-      if (canEdit)
+      if (canEdit && !onPhone)
         (const SheetAction('移动', icon: LucideIcons.folderInput300), () async {
           final dest = await pickDir(context, ws: ws, title: '移动到', action: '移动到这里');
           if (dest == null) return;
           await _op(() => scope.conn.api.op(ws.id, 'move', e.path, dest: dest), done: '已移动');
         }),
       (const SheetAction('复制路径', icon: LucideIcons.copy300), () async {
-        await Clipboard.setData(ClipboardData(text: e.path));
+        await Clipboard.setData(ClipboardData(text: onPhone ? '${phone.root}/${e.path}' : e.path));
         if (mounted) toast(context, '已复制');
       }),
-      if (!e.isDir)
+      if (!e.isDir && !onPhone)
         (const SheetAction('发给会话', icon: LucideIcons.send300), () => _sendToSession(e)),
       if (canEdit)
         (const SheetAction('删除', icon: LucideIcons.trash2300, danger: true), () async {
-          final ok = await confirm(context, title: '删除「${e.name}」', message: '文件会移到电脑的回收站，可以在电脑上恢复。', ok: '删除', danger: true);
-          if (ok) await _op(() => scope.conn.api.op(ws.id, 'delete', e.path), done: '已移到回收站');
+          final ok = await confirm(context, title: '删除「${e.name}」', message: onPhone ? '会从手机上永久删除，无法恢复。' : '文件会移到电脑的回收站，可以在电脑上恢复。', ok: '删除', danger: true);
+          if (ok) await _op(() => onPhone ? phone.handle('delete', {'paths': [e.path]}, scope.conn) : scope.conn.api.op(ws.id, 'delete', e.path), done: onPhone ? '已删除' : '已移到回收站');
         }),
     ];
     final i = await actionSheet(context, [for (final x in items) x.$1], title: e.name);
@@ -365,7 +488,7 @@ class _FilesPageState extends State<FilesPage> {
         ),
         body: Column(children: [
           // 工作区切换
-          if (_workspaces.length > 1)
+          if (_workspaces.length > 1 || (_error.isNotEmpty && _workspaces.isNotEmpty))
             SizedBox(
               height: 46,
               child: ListView.separated(
@@ -379,7 +502,10 @@ class _FilesPageState extends State<FilesPage> {
                   return GestureDetector(
                     onTap: () {
                       if (on) return;
-                      setState(() => _ws = w);
+                      setState(() {
+                        _ws = w;
+                        _error = '';
+                      });
                       // 此电脑从个人文件夹开始，可以一级级返回到根目录
                       _cd(w.system ? w.home : '');
                     },
@@ -454,7 +580,7 @@ class _FilesPageState extends State<FilesPage> {
           if (_loading) LinearProgressIndicator(minHeight: 2, color: c.accent, backgroundColor: Colors.transparent),
           Expanded(
             child: _error.isNotEmpty
-                ? EmptyHint(icon: LucideIcons.wifiOff300, text: _error, action: '重试', onAction: _ws == null ? _loadWorkspaces : _load)
+                ? EmptyHint(icon: _onPhone ? LucideIcons.folderX300 : LucideIcons.wifiOff300, text: _error, action: '重试', onAction: _ws == null ? _loadWorkspaces : _load)
                 : _ws == null && !_loading
                     ? const EmptyHint(icon: LucideIcons.folderX300, text: '电脑上还没有添加工作区\n请在电脑端设置中添加')
                     : shown.isEmpty && !_loading
