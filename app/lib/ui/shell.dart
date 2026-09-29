@@ -14,6 +14,7 @@ import '../core/app_state.dart';
 import '../core/auth_gate.dart';
 import '../core/settings.dart';
 import '../transfer/task.dart';
+import 'widgets.dart';
 import 'pages/files_page.dart';
 import 'pages/me_page.dart';
 import 'pages/sessions_page.dart';
@@ -117,6 +118,8 @@ class HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     }
     final files = [for (final i in items.where((i) => !i.text)) (path: i.path, mime: i.mime)];
     final text = items.where((i) => i.text).map((i) => i.path).join('\n');
+    final ok = await confirmSend(context, [for (final f in files) f.path.split(Platform.pathSeparator).last, if (text.trim().isNotEmpty) '文字内容']);
+    if (!ok || !mounted) return;
     final n = await app.shareFiles(files, text: text);
     if (!mounted) return;
     messenger.showSnackBar(SnackBar(content: Text(n > 0 ? '已发送到文件传输助手' : '没有可发送的内容')));

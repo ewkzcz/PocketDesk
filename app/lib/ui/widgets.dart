@@ -245,6 +245,13 @@ Future<bool> confirm(BuildContext context, {required String title, String messag
   return r ?? false;
 }
 
+/** confirmSend：发送文件前让用户确认，列出前几个文件名 */
+Future<bool> confirmSend(BuildContext context, List<String> names, {String to = '电脑'}) {
+  final shown = names.take(3).map((n) => n.isEmpty ? '照片' : n).join('\n');
+  final more = names.length > 3 ? '\n等 ${names.length} 个文件' : '';
+  return confirm(context, title: '发送到$to', message: '$shown$more', ok: '发送');
+}
+
 /** SheetAction：底部菜单的一项 */
 class SheetAction {
   const SheetAction(this.label, {this.icon, this.danger = false, this.subtitle = ''});

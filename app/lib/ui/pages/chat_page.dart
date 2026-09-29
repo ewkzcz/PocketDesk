@@ -378,6 +378,9 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _attach(List<Picked> files) async {
     final s = _session;
     if (s == null || files.isEmpty) return;
+    // 文件传输助手里的文件直接发给电脑，发送前先确认
+    if (s.isAssistant && !await confirmSend(context, [for (final f in files) f.name])) return;
+    if (!mounted) return;
     final m = _scope!.transfers;
     for (final f in files) {
       final t = await m.upload(f.path, name: f.name, mime: f.mime, target: s.isAssistant ? 'assistant' : 'session:$_id');
