@@ -227,4 +227,16 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(await db.hiddenSessions('h'), isEmpty);
   });
+
+  test('删除的文件传输助手可以重新打开', () async {
+    server.sessions.add({'id': 'assistant', 'kind': 'assistant', 'title': '文件传输助手', 'updatedAt': 30});
+    await store.refresh();
+    await store.hide('assistant');
+    expect(store.sessions.map((s) => s.id), isNot(contains('assistant')));
+    final s = await store.showAssistant();
+    expect(s?.id, 'assistant');
+    expect(store.sessions.map((s) => s.id), contains('assistant'));
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(await db.hiddenSessions('h'), isEmpty);
+  });
 }

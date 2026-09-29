@@ -54,6 +54,8 @@ class _SessionsPageState extends State<SessionsPage> {
     final status = scope?.conn.status;
     final installed = status == null ? agentKinds : [for (final k in agentKinds) if (status.agents.any((a) => a.kind == k && a.installed)) k];
     final items = <(String, IconData, Future<void> Function())>[
+      // 文件传输助手删除后从这里重新打开
+      if (scope != null) ('新建文件传输助手', LucideIcons.send300, _openAssistant),
       if (scope != null && (status?.features.agents ?? true))
         for (final k in installed) ('新建 ${agentFor(k).label} 会话', LucideIcons.messageSquarePlus300, () => newAgentSession(context, k)),
       // 免审批：Claude Code 跳过全部权限确认，Codex 不审批也不进沙箱
@@ -81,6 +83,17 @@ class _SessionsPageState extends State<SessionsPage> {
       ],
     );
     if (i != null && mounted) await items[i].$3();
+  }
+
+  /** _openAssistant：重新显示并打开文件传输助手 */
+  Future<void> _openAssistant() async {
+    final s = await context.read<AppState>().scope?.sessions.showAssistant();
+    if (!mounted) return;
+    if (s == null) {
+      toast(context, '电脑不在线，稍后再试');
+      return;
+    }
+    await openSession(context, s);
   }
 
   @override

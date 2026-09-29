@@ -397,6 +397,24 @@ class SessionsStore extends ChangeNotifier with SafeNotifier {
     await db.hideSession(hostId, id);
   }
 
+  /** showAssistant：重新显示删除过的文件传输助手并返回它；会话列表还没读到时先读一次，读不到返回空 */
+  Future<SessionInfo?> showAssistant() async {
+    if (!_all.any((s) => s.isAssistant)) {
+      try {
+        await refresh();
+      } catch (_) {
+        return null;
+      }
+    }
+    final s = _all.where((x) => x.isAssistant).firstOrNull;
+    if (s == null) return null;
+    if (_hidden.remove(s.id)) {
+      notifyListeners();
+      await db.unhideSession(hostId, s.id);
+    }
+    return s;
+  }
+
   /** open / close：进入或离开聊天界面，进入时清空未读 */
   void open(String id) {
     viewing = id;
