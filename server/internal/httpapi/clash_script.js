@@ -3,7 +3,7 @@
 // 效果：
 //   · Claude 桌面端、Claude Code、Codex 桌面端、Codex CLI、ChatGPT 桌面端发出的全部请求 → 住宅出口
 //   · 谷歌相关请求，以及 Claude / ChatGPT 网页 → 住宅出口
-//   · Claude 环境检测（CheckClaude）的探测 → 住宅出口，检测结果反映的就是 Claude 实际走的线路
+//   · HomeGuard 的出口核验与体检探测 → 住宅出口，检测结果反映的就是 Claude 实际走的线路
 //   · 其他所有请求 → 基础节点
 //   · 住宅出口 = 先连基础节点，再从住宅代理出去，网站看到的是住宅 IP
 //   · 默认不经过代理的只有：本机、局域网、Tailscale 组网内部、连接基础节点本身（这些本来就不上公网或无法代理）
@@ -45,7 +45,7 @@ function main(config) {
   const BASE = '基础节点';
   const RES_GROUP = '住宅出口';
 
-  // Claude 环境检测用来查出口、时区、WebRTC 的网址：跟 Claude 走同一条线路，检测结果才有意义
+  // HomeGuard 核验出口、体检（出口、时区、WebRTC）用的网址：跟 Claude 走同一条线路，检测结果才有意义
   // （这些探测由 curl 发出，没法按程序区分，只能按网址）
   const CHECK_DOMAINS = [
     'ipify.org', 'icanhazip.com', 'ipinfo.io', 'ifconfig.me', 'ip.sb', 'myip.com', 'ip-api.com', 'ipapi.co'
@@ -64,7 +64,7 @@ function main(config) {
     '(?i)/codex$',                 // Codex CLI
     '(?i)/chatgpt\\.app/',         // ChatGPT 桌面端（含 Codex）
     '(?i)\\\\(claude|codex|chatgpt)\\.exe$', // Windows 上的 Claude、Claude Code、Codex、ChatGPT
-    '(?i)/checkclaude\\.app/'        // Claude 环境检测
+    '(?i)/homeguard\\.app/'        // HomeGuard
   ];
 
   // 1、住宅代理：没填完整的跳过；全部经基础节点连出
