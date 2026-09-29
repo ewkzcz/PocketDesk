@@ -6,10 +6,10 @@
 //   · Claude 环境检测（CheckClaude）的探测 → 住宅出口，检测结果反映的就是 Claude 实际走的线路
 //   · 其他所有请求 → 基础节点
 //   · 住宅出口 = 先连基础节点，再从住宅代理出去，网站看到的是住宅 IP
-//   · 不经过代理的只有：本机、局域网、Tailscale 组网内部、连接基础节点本身（这些本来就不上公网或无法代理）
+//   · 默认不经过代理的只有：本机、局域网、Tailscale 组网内部、连接基础节点本身（这些本来就不上公网或无法代理）
 //   · 防 DNS 与 IPv6 泄露：DNS 查询走基础节点且全程加密；IPv6 也由 TUN 接管
 //
-// 分组（运行后 Clash 里只有这两组，订阅自带的分组用不到，会被去掉）：
+// 分组（Clash 里只显示这两组，订阅自带的分组保留但隐藏）：
 //   基础节点：选一个机场节点，所有流量都先经过它
 //   住宅出口：选一个住宅代理，它架在基础节点上面，只给上面列出的程序和网站用
 //
@@ -79,12 +79,15 @@ function main(config) {
   const nodes = config.proxies.map((p) => p.name).filter((n) => !INFO.test(n));
   config.proxies = config.proxies.concat(residential);
 
-  // 3、分组：只保留这两组，订阅自带的分组规则里用不到，去掉免得混淆
-  //    没有可用节点或没填住宅代理时拒绝连接，宁可断网也不从别的出口出去
+  // 3、分组：订阅自带的分组保留（别的脚本可能引用它们），只是隐藏；规则里只用下面两组
+  //    默认选第一项：基础节点默认机场节点，住宅出口默认住宅代理；最后一项是手动退路
+  //    （住宅出口可退到只走基础节点，基础节点可退到直连，选了就会暴露对应 IP，需自己确认）
+  const mine = [BASE, RES_GROUP];
+  const others = (config['proxy-groups'] || []).filter((g) => mine.indexOf(g.name) < 0).map((g) => Object.assign({}, g, { hidden: true }));
   config['proxy-groups'] = [
-    { name: BASE, type: 'select', proxies: nodes.length ? nodes : ['REJECT'] },
-    { name: RES_GROUP, type: 'select', proxies: resNames.length ? resNames : ['REJECT'] }
-  ];
+    { name: BASE, type: 'select', proxies: nodes.concat(['DIRECT']) },
+    { name: RES_GROUP, type: 'select', proxies: resNames.concat([BASE]) }
+  ].concat(others);
 
   // 4、规则：整份替换
   const local = [
