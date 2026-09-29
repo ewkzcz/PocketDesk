@@ -23,7 +23,8 @@
 
 function main(config) {
   // ==================== 填写区 ====================
-  // 住宅代理：可填多个，在「住宅出口」组里切换；type 填 socks5 或 http
+  // 住宅代理：可填多个，在「住宅出口」组里切换；按 Clash 的代理写法填，类型和字段不限（socks5、http、vless 等）
+  // 不用填 dialer-proxy，脚本会让它经「基础节点」连出
   const RESIDENTIAL = [
     { name: '🏠 住宅出口 01', type: 'socks5', server: '填写地址', port: 0, username: '填写用户名', password: '填写密码' }
   ];
@@ -69,9 +70,8 @@ function main(config) {
 
   // 1、住宅代理：没填完整的跳过；全部经基础节点连出
   const filled = (p) => p && p.server && p.port && String(p.server).indexOf('填写') < 0;
-  const residential = RESIDENTIAL.filter(filled).map((p) => Object.assign({}, p, {
-    udp: true, 'dialer-proxy': BASE, 'ip-version': 'ipv4'
-  }));
+  // 默认开 UDP、只用 IPv4，填了的以填写为准；一律经基础节点连出
+  const residential = RESIDENTIAL.filter(filled).map((p) => Object.assign({ udp: true, 'ip-version': 'ipv4' }, p, { 'dialer-proxy': BASE }));
   const resNames = residential.map((p) => p.name);
 
   // 2、基础节点候选：订阅里的节点，去掉流量、到期提示这类假节点
