@@ -1145,8 +1145,8 @@
     // 电脑开着 Clash 等的 TUN 模式：提示放行 Tailscale，并给出可粘贴的 Clash 扩展脚本
     var tun = (r.proxyTun && r.proxyTun.length) ? '<div class="pd-setting">' + tileHtml('shield', 'var(--pd-tile-amber)') +
       '<div class="pd-setting-text"><div>检测到代理的 TUN 模式 <span class="pd-tag">' + esc(r.proxyTun.join('、')) + '</span></div>' +
-      '<div class="pd-setting-desc">Tailscale 的流量需要让 Clash 放行，否则手机可能连不上或很慢。放行后 Claude Code 仍走原来的住宅出口。</div></div>' +
-      '<button class="pd-btn" data-act="clash-script">' + icon('copy', 16) + 'Clash 放行脚本</button></div>' : '';
+      '<div class="pd-setting-desc">可用分流脚本：Claude、Codex 与谷歌走住宅出口，其他走第1跳，手机经 Tailscale 仍能连上。</div></div>' +
+      '<button class="pd-btn" data-act="clash-script">' + icon('copy', 16) + 'Clash 分流脚本</button></div>' : '';
     return '<div class="pd-h2">异地连接</div><div class="pd-card"><div class="pd-setting">' + tileHtml('wifi', 'var(--pd-tile-blue)') +
       '<div class="pd-setting-text"><div>Tailscale ' + tag + '</div><div class="pd-setting-desc">' + desc + '</div></div>' + act + '</div>' + tun + '</div>';
   }
@@ -1443,7 +1443,7 @@
         break;
       case 'clash-script':
         api('GET', '/admin/api/remote/clash-script').then(function (r) {
-          modal('Clash 放行脚本', '<div class="pd-muted" style="font-size:12px;margin-bottom:8px">Clash Verge：订阅页 →「全局扩展脚本」→ 粘贴 → 保存。别粘到订阅自己的扩展脚本里，会覆盖你原来的脚本。只放行 Tailscale，不改节点。</div>' +
+          modal('Clash 分流脚本', '<div class="pd-muted" style="font-size:12px;margin-bottom:8px">1、只改脚本开头的「填写区」，填上住宅代理<br>2、Clash Verge：订阅页 →「全局扩展脚本」→ 整份粘贴 → 保存<br>3、订阅自己的「扩展脚本」保持为空，否则会覆盖这里的设置</div>' +
             '<textarea id="clash-text" class="pd-input pd-mono" readonly style="width:100%;height:280px;font-size:12px">' + esc(r.script) + '</textarea>',
             '<button class="pd-btn" data-act="modal-close">关闭</button><button class="pd-btn pd-btn-primary" data-act="clash-copy">复制</button>');
         }).catch(function (er) { toast(er.message); });
