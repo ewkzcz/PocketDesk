@@ -138,13 +138,14 @@ function main(config) {
   const exclude = new Set(config.tun['route-exclude-address'] || []);
   ['100.64.0.0/10', 'fd7a:115c:a1e0::/48'].forEach((x) => exclude.add(x));
   config.tun['route-exclude-address'] = Array.from(exclude);
-  // 嗅探：浏览器自带加密 DNS 时连接只有 IP，从 TLS / HTTP 里认出域名，谷歌、Claude 才能按域名走住宅出口，域名交给出口去解析
+  // 嗅探：浏览器自带加密 DNS 时连接只有 IP，从 TLS / HTTP 里认出域名，谷歌、Claude 才能按域名走住宅出口
+  // 认出的域名只用来匹配规则，仍连接程序原本选的 IP：微信等应用的连接绑定在具体服务器上，改连域名解析出的其他服务器会导致消息、图片、文件发不出去
   config.sniffer = config.sniffer || {};
   Object.assign(config.sniffer, {
     enable: true,
     'force-dns-mapping': true,
     'parse-pure-ip': true,
-    'override-destination': true,
+    'override-destination': false,
     sniff: { HTTP: { ports: [80, '8080-8880'] }, TLS: { ports: [443, 8443] }, QUIC: { ports: [443, 8443] } }
   });
   const skip = new Set(config.sniffer['skip-domain'] || []);
