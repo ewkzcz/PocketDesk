@@ -562,6 +562,49 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  /** _localFile：文件消息在手机上的文件（图片用缩略图缓存，电脑发来且已接收的用接收结果），没有时返回空 */
+  Future<File?> _localFile(FileItem f) async {
+    if (viewKindOf(f.name) == ViewKind.image) return await (_thumbs[f.seq] ??= _thumb(f));
+    if (f.up) return null;
+    final t = _scope!.transfers.tasks.where((t) => t.source == 'outbox:${f.outboxId}').firstOrNull;
+    final file = t != null && t.status == TaskStatus.done ? File(t.result) : null;
+    return file != null && await file.exists() ? file : null;
+  }
+
+  /**
+   * _fileMenu：长按文件或图片的菜单（打开、复制图片、分享、复制文件名、删除）
+   *
+   * 复制图片、分享需要文件已在手机上：图片会先取一份缩略图缓存，电脑发来的文件需要先接收。
+   */
+  Future<void> _fileMenu(FileItem f) async {
+    unawaited(HapticFeedback.selectionClick());
+    final image = viewKindOf(f.name) == ViewKind.image;
+    final acts = <(SheetAction, Future<void> Function())>[
+      (const SheetAction('打开', icon: LucideIcons.externalLink300), () => _fileTap(f)),
+      if (image)
+        (const SheetAction('复制图片', icon: LucideIcons.copy300), () async {
+          final file = await _localFile(f);
+          if (!mounted) return;
+          if (file == null) return toast(context, '图片还没有取到手机上，稍后再试');
+          final ok = await context.read<AppState>().phone.device.copyImage(file.path, mime: naming.mimeForName(f.name));
+          if (mounted) toast(context, ok ? '已复制图片' : '复制失败');
+        }),
+      (const SheetAction('分享', icon: LucideIcons.share2300), () async {
+        final file = await _localFile(f);
+        if (!mounted) return;
+        if (file == null) return toast(context, f.up ? '先点开文件预览后再分享' : '文件还没接收，先点一下接收');
+        await shareFile(file.path, title: f.name);
+      }),
+      (const SheetAction('复制文件名', icon: LucideIcons.fileText300), () async {
+        await Clipboard.setData(ClipboardData(text: f.name));
+        if (mounted) toast(context, '已复制');
+      }),
+      (const SheetAction('删除', icon: LucideIcons.trash2300, danger: true), () async => _remove([f])),
+    ];
+    final i = await actionSheet(context, [for (final a in acts) a.$1], title: f.name);
+    if (i != null && mounted) await acts[i].$2();
+  }
+
   /** _joined：多条消息合并为文字 */
   String _joined(Iterable<ChatItem> items) {
     final order = _log?.items ?? const [];
@@ -785,7 +828,7 @@ class _ChatPageState extends State<ChatPage> {
     };
     final selectable = it is UserItem || it is AgentItem || it is ToolItem || it is ThinkingItem;
     Widget row = GestureDetector(
-      onLongPress: selectable && !_selecting ? () => _itemMenu(it) : null,
+      onLongPress: !_selecting ? (selectable ? () => _itemMenu(it) : (it is FileItem ? () => _fileMenu(it) : null)) : null,
       onTap: _selecting && selectable
           ? () => setState(() {
                 if (!_selected.remove(it)) _selected.add(it);

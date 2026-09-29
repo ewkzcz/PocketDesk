@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketdesk/net/events.dart' show LinkState;
 import 'package:pocketdesk/core/discovery.dart';
 import 'package:pocketdesk/data/models.dart';
+import 'package:pocketdesk/transfer/task.dart';
 import 'package:pocketdesk/ui/chat/select_text_page.dart';
 import 'package:pocketdesk/ui/pages/diff_page.dart';
 import 'package:pocketdesk/ui/pages/pair_page.dart';
@@ -154,6 +155,42 @@ void main() {
     await tester.dragUntilVisible(find.text('手机工作空间'), find.byType(ListView).last, const Offset(0, -200));
     expect(find.text('/Users/me/PocketDesk/Inbox'), findsOneWidget);
     expect(find.text('电脑发件目录'), findsNothing);
+    await finish(tester, env);
+  });
+
+  testWidgets('传输页：失败和进行中的任务都能左滑删除或一键清空', (tester) async {
+    final env = await start(tester);
+    final m = env.app.scope!.transfers;
+    TransferTask task(String name, String st) => TransferTask(id: name, hostId: 'h1', direction: Direction.up, source: '/x/$name', name: name, size: 1000, createdAt: 1, dateFolder: '20261001', status: st, doneBytes: 400, error: st == TaskStatus.failed ? '文件已被修改' : '');
+    m.tasks.addAll([task('失败的.docx', TaskStatus.failed), task('排队的.pdf', TaskStatus.queued)]);
+    m.clearNotice();
+    await tester.tap(find.text('传输').last);
+    await settle(tester);
+    expect(find.text('失败的.docx'), findsOneWidget);
+    await tester.drag(find.text('失败的.docx'), const Offset(-600, 0));
+    await settle(tester);
+    expect(find.text('失败的.docx'), findsNothing);
+    await tester.ensureVisible(find.text('删除全部任务'));
+    await tester.tap(find.text('删除全部任务'));
+    await settle(tester);
+    await tester.tap(find.text('删除').last);
+    await settle(tester);
+    expect(find.text('没有进行中的传输'), findsOneWidget);
+    await finish(tester, env);
+  });
+
+  testWidgets('长按图片消息：有打开、复制图片、分享、复制文件名、删除', (tester) async {
+    final env = await start(tester);
+    await tester.tap(find.text('文件传输助手'));
+    await settle(tester);
+    await tester.longPress(find.textContaining('已存到电脑').first);
+    await settle(tester);
+    for (final t in ['打开', '复制图片', '分享', '复制文件名', '删除']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+    await tester.tap(find.text('删除'));
+    await settle(tester);
+    expect(find.textContaining('已存到电脑'), findsNWidgets(1));
     await finish(tester, env);
   });
 
