@@ -1145,7 +1145,7 @@
     // 电脑开着 Clash 等的 TUN 模式：提示放行 Tailscale，并给出可粘贴的 Clash 扩展脚本
     var tun = (r.proxyTun && r.proxyTun.length) ? '<div class="pd-setting">' + tileHtml('shield', 'var(--pd-tile-amber)') +
       '<div class="pd-setting-text"><div>检测到代理的 TUN 模式 <span class="pd-tag">' + esc(r.proxyTun.join('、')) + '</span></div>' +
-      '<div class="pd-setting-desc">可用分流脚本：Claude、Codex 与谷歌走住宅出口，其他走第1跳，手机经 Tailscale 仍能连上。</div></div>' +
+      '<div class="pd-setting-desc">可用分流脚本：Claude、Codex 与谷歌走住宅出口，其他走基础节点，手机经 Tailscale 仍能连上。</div></div>' +
       '<button class="pd-btn" data-act="clash-script">' + icon('copy', 16) + 'Clash 分流脚本</button></div>' : '';
     return '<div class="pd-h2">异地连接</div><div class="pd-card"><div class="pd-setting">' + tileHtml('wifi', 'var(--pd-tile-blue)') +
       '<div class="pd-setting-text"><div>Tailscale ' + tag + '</div><div class="pd-setting-desc">' + desc + '</div></div>' + act + '</div>' + tun + '</div>';

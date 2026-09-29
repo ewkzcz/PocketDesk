@@ -3,15 +3,22 @@
 // 效果：
 //   · Claude 桌面端、Claude Code、Codex 桌面端、Codex CLI 发出的全部请求 → 住宅出口
 //   · 谷歌相关请求，以及 Claude / ChatGPT 网页 → 住宅出口
-//   · 其他所有请求 → 第1跳
-//   · 住宅出口 = 先连第1跳，再从住宅代理出去，网站看到的是住宅 IP
-//   · 不经过代理的只有：本机、局域网、Tailscale 组网内部、连接第1跳节点本身（这些本来就不上公网或无法代理）
+//   · Claude 环境检测（CheckClaude）的探测 → 住宅出口，检测结果反映的就是 Claude 实际走的线路
+//   · 其他所有请求 → 基础节点
+//   · 住宅出口 = 先连基础节点，再从住宅代理出去，网站看到的是住宅 IP
+//   · 不经过代理的只有：本机、局域网、Tailscale 组网内部、连接基础节点本身（这些本来就不上公网或无法代理）
+//   · 防 DNS 与 IPv6 泄露：DNS 查询走基础节点且全程加密；IPv6 也由 TUN 接管
+//
+// 分组（运行后 Clash 里只有这两组，订阅自带的分组用不到，会被去掉）：
+//   基础节点：选一个机场节点，所有流量都先经过它
+//   住宅出口：选一个住宅代理，它架在基础节点上面，只给上面列出的程序和网站用
 //
 // 用法：
 //   1、只改下面「填写区」，其余不要动
 //   2、Clash Verge → 订阅页 →「全局扩展脚本」→ 整份粘贴 → 保存
 //   3、订阅自己的「扩展脚本」保持为空，里面如果也改规则，会覆盖这里的设置（订阅脚本比全局脚本后执行）
-//   4、在「第1跳」组里选前置节点，在「住宅出口」组里选住宅代理
+//   4、在「基础节点」组里选机场节点，在「住宅出口」组里选住宅代理
+//   5、Clash Verge 设置里：TUN 模式、IPv6 保持打开，「DNS 覆写」保持关闭（打开会替换这里的防泄露设置）
 // 换订阅、换节点不用改脚本；换住宅代理只改填写区。
 
 function main(config) {
@@ -35,9 +42,19 @@ function main(config) {
   ];
   // ===============================================
 
-  const FIRST_HOP = '第1跳';
-  const AUTO = '♻️ 第1跳自动';
+  const BASE = '基础节点';
   const RES_GROUP = '住宅出口';
+
+  // Claude 环境检测用来查出口、时区、WebRTC 的网址：跟 Claude 走同一条线路，检测结果才有意义
+  // （这些探测由 curl 发出，没法按程序区分，只能按网址）
+  const CHECK_DOMAINS = [
+    'ipify.org', 'icanhazip.com', 'ipinfo.io', 'ifconfig.me', 'ip.sb', 'myip.com', 'ip-api.com', 'ipapi.co'
+  ];
+  const CHECK_HOSTS = [
+    'www.cloudflare.com', 'stun.cloudflare.com',
+    // 「国内视角」探测
+    'members.3322.org', 'whois.pconline.com.cn', 'qifu-api.baidubce.com', 'api.live.bilibili.com', 'www.taobao.com'
+  ];
 
   // 走住宅出口的程序，按程序所在路径匹配（macOS、Windows 通用，不区分大小写）
   const RESIDENTIAL_APPS = [
@@ -45,30 +62,29 @@ function main(config) {
     '(?i)/claude/versions/',       // Claude Code CLI（官方安装方式）
     '(?i)/codex\\.app/',           // Codex 桌面端
     '(?i)/codex$',                 // Codex CLI
-    '(?i)\\\\(claude|codex)\\.exe$' // Windows 上的 Claude、Claude Code、Codex
+    '(?i)\\\\(claude|codex)\\.exe$', // Windows 上的 Claude、Claude Code、Codex
+    '(?i)/checkclaude\\.app/'        // Claude 环境检测
   ];
 
-  // 1、住宅代理：没填完整的跳过；全部经第1跳连出
+  // 1、住宅代理：没填完整的跳过；全部经基础节点连出
   const filled = (p) => p && p.server && p.port && String(p.server).indexOf('填写') < 0;
   const residential = RESIDENTIAL.filter(filled).map((p) => Object.assign({}, p, {
-    udp: true, 'dialer-proxy': FIRST_HOP, 'ip-version': 'ipv4'
+    udp: true, 'dialer-proxy': BASE, 'ip-version': 'ipv4'
   }));
   const resNames = residential.map((p) => p.name);
 
-  // 2、第1跳候选：订阅里的节点，去掉流量、到期提示这类假节点
+  // 2、基础节点候选：订阅里的节点，去掉流量、到期提示这类假节点
   const INFO = /剩余|到期|套餐|流量|官网|重置|expire|traffic|reset/i;
   config.proxies = (config.proxies || []).filter((p) => resNames.indexOf(p.name) < 0);
   const nodes = config.proxies.map((p) => p.name).filter((n) => !INFO.test(n));
   config.proxies = config.proxies.concat(residential);
 
-  // 3、分组：没有可用节点或没填住宅代理时拒绝连接，宁可断网也不从别的出口出去
-  const mine = [FIRST_HOP, AUTO, RES_GROUP];
-  const groups = (config['proxy-groups'] || []).filter((g) => mine.indexOf(g.name) < 0);
+  // 3、分组：只保留这两组，订阅自带的分组规则里用不到，去掉免得混淆
+  //    没有可用节点或没填住宅代理时拒绝连接，宁可断网也不从别的出口出去
   config['proxy-groups'] = [
-    { name: FIRST_HOP, type: 'select', proxies: nodes.length ? [AUTO].concat(nodes) : ['REJECT'] },
-    { name: RES_GROUP, type: 'select', proxies: resNames.length ? resNames : ['REJECT'] },
-    { name: AUTO, type: 'url-test', proxies: nodes.length ? nodes : ['REJECT'], url: 'https://www.gstatic.com/generate_204', interval: 300, tolerance: 50 }
-  ].concat(groups);
+    { name: BASE, type: 'select', proxies: nodes.length ? nodes : ['REJECT'] },
+    { name: RES_GROUP, type: 'select', proxies: resNames.length ? resNames : ['REJECT'] }
+  ];
 
   // 4、规则：整份替换
   const local = [
@@ -84,14 +100,17 @@ function main(config) {
     // 拦截 QUIC，浏览器会改用 TCP，确保按规则走代理
     ['AND,((NETWORK,UDP),(DST-PORT,443)),REJECT'],
     RESIDENTIAL_APPS.map((r) => 'PROCESS-PATH-REGEX,' + r + ',' + RES_GROUP),
-    RESIDENTIAL_DOMAINS.map((d) => 'DOMAIN-SUFFIX,' + d + ',' + RES_GROUP),
-    ['GEOSITE,google,' + RES_GROUP, 'MATCH,' + FIRST_HOP]
+    RESIDENTIAL_DOMAINS.concat(CHECK_DOMAINS).map((d) => 'DOMAIN-SUFFIX,' + d + ',' + RES_GROUP),
+    CHECK_HOSTS.map((d) => 'DOMAIN,' + d + ',' + RES_GROUP),
+    ['GEOSITE,google,' + RES_GROUP, 'MATCH,' + BASE]
   );
   // 按程序分流需要识别每个连接来自哪个程序
   config['find-process-mode'] = 'always';
 
-  // 5、防泄露：关闭 IPv6，DNS 查询也按规则走代理
-  config.ipv6 = false;
+  // 5、防泄露
+  // IPv6 要开着：开着 TUN 才会接管 IPv6，关掉反而让 IPv6 绕过 Clash 用真实地址直连（Clash Verge 设置里的 IPv6 开关也要开）
+  config.ipv6 = true;
+  // DNS 只给 IPv4 地址，查询按规则走基础节点；启动与解析节点用的 DNS 全部加密、写死 IP，不发任何明文 DNS
   config.dns = config.dns || {};
   Object.assign(config.dns, {
     enable: true,
@@ -99,8 +118,10 @@ function main(config) {
     'enhanced-mode': 'fake-ip',
     'fake-ip-range': '198.18.0.1/16',
     'respect-rules': true,
-    'default-nameserver': ['223.5.5.5', '119.29.29.29'],
-    'proxy-server-nameserver': ['https://doh.pub/dns-query', 'https://dns.alidns.com/dns-query'],
+    'prefer-h3': false,
+    'use-system-hosts': false,
+    'default-nameserver': ['tls://223.5.5.5:853', 'tls://1.12.12.12:853'],
+    'proxy-server-nameserver': ['https://223.5.5.5/dns-query', 'https://1.12.12.12/dns-query'],
     nameserver: ['https://1.1.1.1/dns-query', 'https://8.8.8.8/dns-query'],
     'nameserver-policy': { '+.ts.net': '100.100.100.100' }
   });
@@ -113,7 +134,15 @@ function main(config) {
   const exclude = new Set(config.tun['route-exclude-address'] || []);
   ['100.64.0.0/10', 'fd7a:115c:a1e0::/48'].forEach((x) => exclude.add(x));
   config.tun['route-exclude-address'] = Array.from(exclude);
+  // 嗅探：浏览器自带加密 DNS 时连接只有 IP，从 TLS / HTTP 里认出域名，谷歌、Claude 才能按域名走住宅出口，域名交给出口去解析
   config.sniffer = config.sniffer || {};
+  Object.assign(config.sniffer, {
+    enable: true,
+    'force-dns-mapping': true,
+    'parse-pure-ip': true,
+    'override-destination': true,
+    sniff: { HTTP: { ports: [80, '8080-8880'] }, TLS: { ports: [443, 8443] }, QUIC: { ports: [443, 8443] } }
+  });
   const skip = new Set(config.sniffer['skip-domain'] || []);
   skip.add('+.ts.net');
   config.sniffer['skip-domain'] = Array.from(skip);
