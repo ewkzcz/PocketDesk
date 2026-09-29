@@ -9,6 +9,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:markdown_widget/markdown_widget.dart';
 
 import '../tokens.dart';
+import 'mermaid.dart';
 import '../widgets.dart';
 
 /**

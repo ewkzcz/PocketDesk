@@ -46,6 +46,7 @@ dependencies:
   xml: ^7.0.1
   archive: ^4.3.0
   flutter_svg: ^2.3.0
+  webview_flutter: ^4.14.1
 
 dev_dependencies:
   flutter_test:
@@ -59,3 +60,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/avatars/
+    - assets/mermaid/

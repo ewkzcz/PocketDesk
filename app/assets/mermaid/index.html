@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=yes">
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; }
+  #out { display: flex; justify-content: center; padding: 4px 0; }
+  #out svg { height: auto; }
+  body.fit #out svg { max-width: 100%; }
+  #err { font: 13px sans-serif; color: #d33; white-space: pre-wrap; padding: 8px; }
+</style>
+<script src="mermaid.min.js"></script>
+</head>
+<body>
+<div id="out"></div>
+<script>
+  var seq = 0;
+  function report(h) { try { H.postMessage(String(Math.ceil(h))); } catch (e) {} }
+  async function render(code, dark, fit) {
+    var n = ++seq;
+    document.body.className = fit ? 'fit' : '';
+    try {
+      mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'default', securityLevel: 'strict', flowchart: { useMaxWidth: fit }, sequence: { useMaxWidth: fit }, gantt: { useMaxWidth: fit } });
+      var r = await mermaid.render('m' + n, code);
+      if (n !== seq) return;
+      document.getElementById('out').innerHTML = r.svg;
+      var svg = document.querySelector('#out svg');
+      if (fit && svg) { svg.style.maxWidth = '100%'; }
+      report(document.getElementById('out').getBoundingClientRect().height + 8);
+    } catch (e) {
+      if (n !== seq) return;
+      document.querySelectorAll('[id^="dm"]').forEach(function (x) { x.remove(); });
+      try { E.postMessage(String((e && e.message) || e)); } catch (x) {}
+    }
+  }
+  try { R.postMessage('ready'); } catch (e) {}
+</script>
+</body>
+</html>
