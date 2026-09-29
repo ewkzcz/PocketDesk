@@ -29,6 +29,28 @@ var tailscaleV4 = mustCIDR("100.64.0.0/10")
 /** tailscaleV6：Tailscale 的 IPv6 网段 */
 var tailscaleV6 = mustCIDR("fd7a:115c:a1e0::/48")
 
+/** proxyTunV4：Clash / mihomo / Stash 等代理软件的虚拟网卡默认使用的网段（RFC 2544 测试网段） */
+var proxyTunV4 = mustCIDR("198.18.0.0/15")
+
+/** proxyTunNames：代理软件虚拟网卡常见的名字（小写包含即算） */
+var proxyTunNames = []string{"clash", "mihomo", "meta", "verge", "stash", "singbox", "sing-box", "wintun"}
+
+/** IsProxyTUN：这块网卡是不是代理软件（Clash 等）的 TUN 虚拟网卡 */
+func IsProxyTUN(name string, ips []net.IP) bool {
+	low := strings.ToLower(name)
+	for _, n := range proxyTunNames {
+		if strings.Contains(low, n) {
+			return true
+		}
+	}
+	for _, ip := range ips {
+		if proxyTunV4.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 /** mustCIDR：解析网段 */
 func mustCIDR(s string) *net.IPNet {
 	_, n, err := net.ParseCIDR(s)
@@ -80,6 +102,7 @@ func Private() []Addr {
 		if err != nil {
 			continue
 		}
+		tun := isTUN(ifc, addrs)
 		// 2、分类
 		for _, a := range addrs {
 			ipn, ok := a.(*net.IPNet)
@@ -89,6 +112,10 @@ func Private() []Addr {
 			ip := ipn.IP
 			kind := Classify(ip)
 			if kind == "" || (ip.To4() == nil && kind != KindTailscale) {
+				continue
+			}
+			// Clash 等的 TUN 网卡可能用 172.19.0.1 这类私有地址，不是真正的局域网，不能放进配对二维码
+			if tun && kind == KindLAN {
 				continue
 			}
 			out = append(out, Addr{IP: ip.String(), Interface: ifc.Name, Kind: kind})
@@ -101,6 +128,46 @@ func Private() []Addr {
 		}
 		return out[i].IP < out[j].IP
 	})
+	return out
+}
+
+/** ipsOf：网卡地址里的 IP */
+func ipsOf(addrs []net.Addr) []net.IP {
+	var out []net.IP
+	for _, a := range addrs {
+		if n, ok := a.(*net.IPNet); ok {
+			out = append(out, n.IP)
+		}
+	}
+	return out
+}
+
+/** isTUN：代理软件的 TUN 网卡（Tailscale 自己的网卡不算） */
+func isTUN(ifc net.Interface, addrs []net.Addr) bool {
+	ips := ipsOf(addrs)
+	for _, ip := range ips {
+		if Classify(ip) == KindTailscale {
+			return false
+		}
+	}
+	return IsProxyTUN(ifc.Name, ips)
+}
+
+/** ProxyTUNs：本机开启的代理 TUN 网卡名（如 Clash 的 TUN 模式），没有时为空 */
+func ProxyTUNs() []string {
+	var out []string
+	ifs, err := net.Interfaces()
+	if err != nil {
+		return out
+	}
+	for _, ifc := range ifs {
+		if ifc.Flags&net.FlagUp == 0 || ifc.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		if addrs, err := ifc.Addrs(); err == nil && isTUN(ifc, addrs) {
+			out = append(out, ifc.Name)
+		}
+	}
 	return out
 }
 

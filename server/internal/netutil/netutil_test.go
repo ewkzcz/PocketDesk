@@ -81,3 +81,23 @@ func TestListenerSetSync(t *testing.T) {
 		t.Fatal("监听应已关闭")
 	}
 }
+
+func TestIsProxyTUN(t *testing.T) {
+	ip := func(s string) []net.IP { return []net.IP{net.ParseIP(s)} }
+	for _, c := range []struct {
+		name string
+		ips  []net.IP
+		want bool
+	}{
+		{"utun1024", ip("198.18.0.1"), true},
+		{"Meta", ip("172.19.0.1"), true},
+		{"Clash Verge", ip("10.0.0.1"), true},
+		{"en0", ip("192.168.1.5"), false},
+		{"utun4", ip("100.88.1.2"), false},
+		{"Wi-Fi", ip("10.1.2.3"), false},
+	} {
+		if got := IsProxyTUN(c.name, c.ips); got != c.want {
+			t.Errorf("%s %v => %v 期望 %v", c.name, c.ips, got, c.want)
+		}
+	}
+}
