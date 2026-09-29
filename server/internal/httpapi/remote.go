@@ -14,12 +14,8 @@ import (
 	"github.com/ewkzcz/pocketdesk/server/internal/netutil"
 )
 
-/** tailscaleDownload：各系统的官方下载页 */
-var tailscaleDownload = map[string]string{
-	"darwin":  "https://tailscale.com/download/mac",
-	"windows": "https://tailscale.com/download/windows",
-	"linux":   "https://tailscale.com/download/linux",
-}
+/** tailscaleDownload：官方下载页 */
+const tailscaleDownload = "https://tailscale.com/download"
 
 /** tailscaleInstalled：电脑上是否装了 Tailscale */
 func tailscaleInstalled() bool {
@@ -71,10 +67,7 @@ func (s *Server) adminRemote(w http.ResponseWriter, r *http.Request) {
 
 /** adminTailscaleDownload：在默认浏览器打开 Tailscale 官方下载页（只打开固定地址） */
 func (s *Server) adminTailscaleDownload(w http.ResponseWriter, r *http.Request) {
-	u := tailscaleDownload[runtime.GOOS]
-	if u == "" {
-		u = "https://tailscale.com/download"
-	}
+	u := tailscaleDownload
 	if err := desktop.OpenBrowser(u); err != nil {
 		writeErr(w, r, errf(500, "open_failed", "无法打开浏览器"))
 		return
