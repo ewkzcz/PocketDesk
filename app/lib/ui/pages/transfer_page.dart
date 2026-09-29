@@ -108,7 +108,7 @@ class _ActiveList extends StatelessWidget {
     final running = t.status == TaskStatus.running || t.status == TaskStatus.queued || t.status == TaskStatus.waiting;
     final i = await actionSheet(context, [
       running ? const SheetAction('暂停', icon: LucideIcons.pause300) : SheetAction(t.status == TaskStatus.failed ? '重试' : '继续', icon: LucideIcons.play300),
-      const SheetAction('取消传输', icon: LucideIcons.x300, danger: true),
+      const SheetAction('删除任务', icon: LucideIcons.trash2300, danger: true),
     ], title: TransferManager.displayName(t));
     if (i == 0) {
       running ? m.pause(t) : m.resume(t);
@@ -137,7 +137,35 @@ class _ActiveList extends StatelessWidget {
           ]),
         ),
       if (list.isEmpty) const SizedBox(height: 360, child: EmptyHint(icon: LucideIcons.arrowUpDown300, text: '没有进行中的传输')),
-      for (final t in list) _TaskCard(t: t, queuePos: queued.indexOf(t) + 1, onTap: () => _menu(context, t), onToggle: () => t.status == TaskStatus.running || t.status == TaskStatus.queued || t.status == TaskStatus.waiting ? m.pause(t) : m.resume(t)),
+      for (final t in list)
+        // 左滑直接删除任务，进行中的会先停止，传了一半的临时文件一并清掉
+        Dismissible(
+          key: ValueKey(t.id),
+          direction: DismissDirection.endToStart,
+          onDismissed: (_) => m.cancel(t),
+          background: Container(
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            padding: const EdgeInsets.only(right: 20),
+            alignment: Alignment.centerRight,
+            decoration: BoxDecoration(color: c.danger, borderRadius: BorderRadius.circular(PdSize.cardRadius)),
+            child: const Icon(LucideIcons.trash2300, color: Colors.white, size: 22),
+          ),
+          child: _TaskCard(t: t, queuePos: queued.indexOf(t) + 1, onTap: () => _menu(context, t), onToggle: () => t.status == TaskStatus.running || t.status == TaskStatus.queued || t.status == TaskStatus.waiting ? m.pause(t) : m.resume(t)),
+        ),
+      if (list.isNotEmpty)
+        Center(
+          child: TextButton(
+            onPressed: () async {
+              if (await confirm(context, title: '删除全部任务', message: '正在传的会停止，没传完的部分会被清掉。', ok: '删除')) {
+                for (final t in [...list]) {
+                  await m.cancel(t);
+                }
+              }
+            },
+            style: TextButton.styleFrom(foregroundColor: c.text3),
+            child: const Text('删除全部任务', style: TextStyle(fontSize: PdFont.summary)),
+          ),
+        ),
     ]);
   }
 }
