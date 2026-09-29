@@ -24,6 +24,7 @@ import (
 	"github.com/ewkzcz/pocketdesk/server/internal/netutil"
 	"github.com/ewkzcz/pocketdesk/server/internal/security"
 	"github.com/ewkzcz/pocketdesk/server/internal/store"
+	"github.com/ewkzcz/pocketdesk/server/internal/workspace"
 )
 
 /** adminCookie：管理页凭证 Cookie 名 */
@@ -49,6 +50,7 @@ func (s *Server) AdminHandler() http.Handler {
 	mux.HandleFunc("POST /admin/api/assistant/files", s.adminAssistantFiles)
 	mux.HandleFunc("GET /admin/api/assistant/file", s.adminAssistantFile)
 	mux.HandleFunc("POST /admin/api/assistant/open", s.adminAssistantOpen)
+	mux.HandleFunc("POST /admin/api/assistant/copy", s.adminAssistantCopy)
 	mux.HandleFunc("POST /admin/api/sessions/{id}/attach", s.adminAttach)
 	mux.HandleFunc("GET /admin/api/phones", s.adminPhones)
 	mux.HandleFunc("POST /admin/api/phone/{dev}/call", s.adminPhoneCall)
@@ -437,8 +439,10 @@ func (s *Server) adminAudit(w http.ResponseWriter, r *http.Request) {
 /** adminOpen：在系统文件管理器中打开收件或工作区目录 */
 func (s *Server) adminOpen(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Which string `json:"which"`
-		ID    string `json:"id"`
+		Which  string `json:"which"`
+		ID     string `json:"id"`
+		Path   string `json:"path"`
+		Reveal bool   `json:"reveal"`
 	}
 	if err := readJSON(r, &in); err != nil {
 		writeErr(w, r, err)
@@ -447,6 +451,27 @@ func (s *Server) adminOpen(w http.ResponseWriter, r *http.Request) {
 	cfg := s.Cfg.Get()
 	var dir string
 	switch in.Which {
+	case "wsfile":
+		ws, err := s.Store.Workspace(r.Context(), in.ID)
+		if err != nil {
+			writeErr(w, r, err)
+			return
+		}
+		abs, err := workspace.Resolve(ws.RootPath, in.Path)
+		if err != nil {
+			writeErr(w, r, err)
+			return
+		}
+		if _, err := os.Stat(abs); err != nil {
+			writeErr(w, r, errf(404, "not_found", "文件已被移动或删除"))
+			return
+		}
+		if err := s.open(abs, in.Reveal); err != nil {
+			writeErr(w, r, err)
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"ok": true})
+		return
 	case "inbox":
 		dir = cfg.Transfer.InboxDir
 	case "workspace":

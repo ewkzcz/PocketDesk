@@ -96,9 +96,9 @@ func serveFile(w http.ResponseWriter, r *http.Request, f io.ReadSeeker, info os.
 	http.ServeContent(w, r, name, info.ModTime(), f)
 }
 
-/** writable：确认工作区可写、文件编辑已开启且不在缓存目录 */
-func (s *Server) writable(ws store.Workspace, rels ...string) error {
-	if !s.Cfg.Get().Features.FileEdit {
+/** writable：确认工作区可写、文件编辑已开启（电脑桌面端自己操作不受开关限制）且路径合法 */
+func (s *Server) writable(r *http.Request, ws store.Workspace, rels ...string) error {
+	if deviceOf(r).ID != desktopDevice.ID && !s.Cfg.Get().Features.FileEdit {
 		return errf(403, "feature_disabled", "电脑端已关闭文件编辑功能")
 	}
 	if ws.ReadOnly {
@@ -128,7 +128,7 @@ func (s *Server) saveFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rel := r.URL.Query().Get("path")
-	if err := s.writable(ws, rel); err != nil {
+	if err := s.writable(r, ws, rel); err != nil {
 		writeErr(w, r, err)
 		return
 	}
@@ -179,7 +179,7 @@ func (s *Server) ops(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, err)
 		return
 	}
-	if err := s.writable(ws, in.Path, in.Dest); err != nil {
+	if err := s.writable(r, ws, in.Path, in.Dest); err != nil {
 		writeErr(w, r, err)
 		return
 	}

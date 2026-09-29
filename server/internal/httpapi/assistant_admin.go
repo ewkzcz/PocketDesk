@@ -169,6 +169,60 @@ func (s *Server) adminAssistantOpen(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
+/** adminAssistantCopy：把记录里的文件放进电脑剪贴板，图片按图片复制，其他文件按文件复制 */
+func (s *Server) adminAssistantCopy(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Seq int64 `json:"seq"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	p, _, err := s.assistantPath(r, in.Seq)
+	if err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	if err := copyFileToClipboard(p); err != nil {
+		writeErr(w, r, errf(500, "copy_failed", "复制失败"))
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+/**
+ * copyFileToClipboard：把电脑上的文件放进系统剪贴板
+ *
+ * 图片以图片内容复制，可直接粘贴到聊天或文档；其他文件以文件形式复制。路径通过参数或环境变量传入，不拼进脚本。
+ */
+func copyFileToClipboard(p string) error {
+	ext := strings.ToLower(filepath.Ext(p))
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		kind := map[string]string{".png": "\u00abclass PNGf\u00bb", ".jpg": "JPEG picture", ".jpeg": "JPEG picture", ".gif": "GIF picture"}[ext]
+		script := "set the clipboard to (POSIX file (item 1 of argv))"
+		if kind != "" {
+			script = "set the clipboard to (read (POSIX file (item 1 of argv)) as " + kind + ")"
+		}
+		cmd = exec.Command("osascript", "-e", "on run argv", "-e", script, "-e", "end run", p)
+	case "windows":
+		script := "Set-Clipboard -Path $env:PD_FILE"
+		if isImage := map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".bmp": true}[ext]; isImage {
+			script = "Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $i=[System.Drawing.Image]::FromFile($env:PD_FILE); [System.Windows.Forms.Clipboard]::SetImage($i); $i.Dispose()"
+		}
+		cmd = exec.Command("powershell", "-NoProfile", "-STA", "-Command", script)
+		cmd.Env = append(os.Environ(), "PD_FILE="+p)
+	default:
+		mt := mime.TypeByExtension(ext)
+		if mt == "" {
+			mt = "application/octet-stream"
+		}
+		cmd = exec.Command("xclip", "-selection", "clipboard", "-t", mt, "-i", p)
+	}
+	return cmd.Run()
+}
+
 /** serveUserFile：输出用户文件；放在沙箱里，网页、SVG 等文件里的脚本不能以管理页身份运行 */
 func serveUserFile(w http.ResponseWriter, r *http.Request, name string, mod time.Time, f io.ReadSeeker) {
 	disp := "inline"

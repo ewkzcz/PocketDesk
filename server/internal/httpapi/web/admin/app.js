@@ -237,18 +237,19 @@
   var logs = {};                 // 会话 ID → { events, last, loaded }
   var unread = load('pd.unread', {});
   var hidden = load('pd.hidden', {});
+  var hiddenSess = load('pd.hiddenSessions', {});   // 只在电脑端删除的会话，手机端不受影响
   var query = '';
   var pending = [];              // 当前会话待发送的附件 { name, path }
   var shownRequests = {};
-  var pairInfo = null, pairTimer = null;
+  var pairInfo = null, pairTimer = null, wsSig = '';
 
-  /** route：#chat/会话、#phone、#settings/分区、#pair */
+  /** route：#chat/会话、#files、#settings/分区、#pair */
   function route() {
     var h = location.hash.replace(/^#/, '');
     if (h === 'pair') { return { page: 'pair' }; }
     var m = /^settings\/?(\w*)/.exec(h);
     if (m) { return { page: 'settings', section: m[1] || 'overview' }; }
-    if (h === 'phone') { return { page: 'phone' }; }
+    if (h === 'phone' || h === 'files') { return { page: 'phone' }; }
     m = /^chat\/(.+)$/.exec(h);
     return { page: 'chat', sid: m ? decodeURIComponent(m[1]) : '' };
   }
@@ -266,7 +267,11 @@
     return t.indexOf(label + ' · ') === 0 ? t : label + ' · ' + t;
   }
 
-  function totalUnread() { return sessions.reduce(function (n, s) { return n + (unread[s.id] || 0); }, 0); }
+  function totalUnread() { return sessions.reduce(function (n, s) { return hiddenSess[s.id] ? n : n + (unread[s.id] || 0); }, 0); }
+  /** hideSession：只在电脑端删除会话，同时清掉未读 */
+  function hideSession(id) { hiddenSess[id] = true; save('pd.hiddenSessions', hiddenSess); setUnread(id, 0); }
+  /** unhideSession：删除过的会话有新消息或被再次打开时重新显示 */
+  function unhideSession(id) { if (hiddenSess[id]) { delete hiddenSess[id]; save('pd.hiddenSessions', hiddenSess); } }
   function setUnread(id, n) {
     if (n) { unread[id] = n; } else { delete unread[id]; }
     save('pd.unread', unread);
@@ -443,6 +448,7 @@
     summarize(s, e);
     var r = route();
     var viewing = r.page === 'chat' && r.sid === e.session && document.visibilityState === 'visible';
+    if (countsUnread(e)) { unhideSession(e.session); }
     if (countsUnread(e) && !viewing) { setUnread(e.session, (unread[e.session] || 0) + 1); }
     scheduleList();
     if (r.page === 'chat' && r.sid === e.session) { scheduleChat(); if (e.type === 'state' || e.type === 'session.model') { renderHead(); } }
@@ -470,7 +476,7 @@
       return;
     }
     // 2、三栏
-    app.innerHTML = '<div class="pd-shell"><nav class="pd-rail" id="rail"></nav><aside class="pd-list" id="list"></aside><main class="pd-main" id="main"></main></div>';
+    app.innerHTML = '<div class="pd-shell"><nav class="pd-rail" id="rail"></nav><aside class="pd-list" id="list"></aside><div class="pd-resizer" id="resizer" title="拖动调整宽度"></div><main class="pd-main" id="main"></main></div>';
     renderRail();
     renderList();
     renderMain();
@@ -486,17 +492,51 @@
     };
     el.innerHTML = '<div class="pd-me" title="' + esc(host ? host.host.name : '') + '">' + icon('monitor', 20) + '</div>' +
       btn('chat', 'message-circle', '消息', r.page === 'chat', n) +
-      btn('phone', 'hard-drive', '手机文件', r.page === 'phone', 0) +
+      btn('files', 'folder', '文件', r.page === 'phone', 0) +
       '<div class="pd-rail-gap"></div>' +
       '<button class="pd-rail-btn" data-act="pair" title="配对新手机" aria-label="配对新手机">' + icon('smartphone', 22) + '</button>' +
       btn('settings', 'menu', '设置', r.page === 'settings', 0);
   }
+
+  /** listWidthKey：左侧列表宽度的保存位置（设置页与其他页各记一份） */
+  function listWidthKey() { return route().page === 'settings' ? 'pd.listw.narrow' : 'pd.listw'; }
+
+  // 拖动中间的分隔条调整左右宽度
+  document.addEventListener('mousedown', function (e) {
+    if (!e.target.closest || !e.target.closest('#resizer')) { return; }
+    var list = document.getElementById('list');
+    if (!list) { return; }
+    e.preventDefault();
+    var startX = e.clientX, startW = list.offsetWidth, key = listWidthKey(), w = startW;
+    document.body.classList.add('pd-resizing');
+    function move(ev) {
+      w = Math.max(120, Math.min(startW + ev.clientX - startX, Math.floor(window.innerWidth * 0.6)));
+      list.style.width = w + 'px';
+    }
+    function up() {
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', up);
+      document.body.classList.remove('pd-resizing');
+      save(key, w);
+    }
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+  });
+  document.addEventListener('dblclick', function (e) {
+    if (e.target.closest && e.target.closest('#resizer')) {
+      save(listWidthKey(), 0);
+      var list = document.getElementById('list');
+      if (list) { list.style.width = ''; }
+    }
+  });
 
   function renderList() {
     var el = document.getElementById('list');
     if (!el) { return; }
     var r = route();
     el.classList.toggle('narrow', r.page === 'settings');
+    var lw = load(listWidthKey(), 0);
+    el.style.width = lw ? lw + 'px' : '';
     if (r.page === 'chat') {
       var body = document.getElementById('rows');
       if (!body) {
@@ -506,7 +546,7 @@
       }
       body.innerHTML = sessionRows(r.sid);
     } else if (r.page === 'phone') {
-      el.innerHTML = '<div class="pd-list-top"><div class="pd-list-title">手机</div></div><div class="pd-list-body">' + phoneRows() + '</div>';
+      el.innerHTML = '<div class="pd-list-top"><div class="pd-list-title">文件</div></div><div class="pd-list-body">' + fsRows() + '</div>';
     } else {
       el.innerHTML = '<div class="pd-list-top"><div class="pd-list-title">设置</div></div><div class="pd-list-body">' + SETTINGS.map(function (s) {
         return '<button class="pd-row' + (r.section === s[0] ? ' active' : '') + '" style="height:48px" data-go="settings/' + s[0] + '">' +
@@ -521,7 +561,7 @@
     var list = sessions.slice().sort(function (a, b) {
       if (!!b.pinned !== !!a.pinned) { return b.pinned ? 1 : -1; }
       return (b.updatedAt || 0) - (a.updatedAt || 0);
-    }).filter(function (s) { return !q || (title(s) + ' ' + (s.preview || '')).toLowerCase().indexOf(q) >= 0; });
+    }).filter(function (s) { return !hiddenSess[s.id] && (!q || (title(s) + ' ' + (s.preview || '')).toLowerCase().indexOf(q) >= 0); });
     if (!list.length) { return '<div class="pd-empty">' + (q ? '没有找到' : '还没有会话') + '</div>'; }
     return list.map(function (s) {
       var n = unread[s.id] || 0;
@@ -542,7 +582,7 @@
     if (!el) { return; }
     var r = route();
     if (r.page === 'chat') { renderChat(); }
-    else if (r.page === 'phone') { el.innerHTML = phoneMain(); }
+    else if (r.page === 'phone') { el.innerHTML = fsMain(); }
     else { el.innerHTML = settingsMain(r.section); if (r.section === 'security') { loadAudit(); } }
   }
 
@@ -685,7 +725,7 @@
     var color = { PDF: '#F4524D', DOC: '#2B7BF0', DOCX: '#2B7BF0', XLS: '#1FA463', XLSX: '#1FA463', PPT: '#F07A2B', PPTX: '#F07A2B', ZIP: '#9B6DE0', MD: '#5A6475', TXT: '#5A6475' }[ext] || '#8A94A6';
     return '<div class="pd-file"><div class="pd-file-main"><div style="flex:1;min-width:0"><div class="pd-file-name">' + esc(it.name) + '</div><div class="pd-file-size">' + fmtSize(it.size) + '</div></div>' +
       '<div class="pd-file-ext" style="background:' + color + '">' + esc(ext) + '</div></div>' +
-      '<div class="pd-file-foot"><button class="pd-link" data-act="file-open" data-seq="' + it.seq + '">打开</button><button class="pd-link" data-act="file-reveal" data-seq="' + it.seq + '">在文件夹中显示</button></div></div>';
+      '<div class="pd-file-foot"><button class="pd-link" data-act="file-open" data-seq="' + it.seq + '">打开</button><button class="pd-link" data-act="file-reveal" data-seq="' + it.seq + '">显示</button></div></div>';
   }
 
   function renderPending() {
@@ -734,15 +774,20 @@
     save('pd.draft', d);
   }
 
-  /** sendFiles：文件传输助手直接发给手机；Agent 会话先作为附件，随下一条消息发送 */
+  /** confirmSend：文件传输助手发送前先让用户确认 */
+  var sendQueue = [];
+  function confirmSend(files) {
+    sendQueue = files;
+    modal('发送给手机', '<div class="pd-muted" style="font-size:12px;margin-bottom:8px">共 ' + files.length + ' 个文件</div><div class="pd-pick-list">' + files.map(function (f) {
+      return '<div class="pd-pick-row" style="cursor:default">' + icon(isImage(f.name) ? 'image' : 'file', 16) + '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(f.name) + '</span><span class="pd-muted" style="font-size:12px">' + fmtSize(f.size) + '</span></div>';
+    }).join('') + '</div>', '<button class="pd-btn" data-act="modal-close">取消</button><button class="pd-btn pd-btn-primary" data-act="send-files-ok">发送</button>');
+  }
+
+  /** sendFiles：文件传输助手确认后发给手机；Agent 会话先作为附件，随下一条消息发送 */
   function sendFiles(files) {
     var s = session(route().sid);
     if (!s || !files.length) { return; }
-    if (s.kind === 'assistant') {
-      toast('正在发送 ' + files.length + ' 个文件…');
-      uploadForm('/admin/api/assistant/files', files).catch(function (e) { toast(e.message); });
-      return;
-    }
+    if (s.kind === 'assistant') { confirmSend(files); return; }
     uploadForm('/admin/api/sessions/' + encodeURIComponent(s.id) + '/attach', files).then(function (r) {
       (r.paths || []).forEach(function (p) { pending.push({ name: p.split('/').pop(), path: p }); });
       renderPending();
@@ -816,107 +861,212 @@
     if (menuResolve) { var r = menuResolve; menuResolve = null; r(null); }
   }
 
-  /* ---------- 手机文件 ---------- */
-  var ph = { phones: null, dev: '', path: '', entries: [], root: '', error: '', loading: false };
+  /* ---------- 文件：电脑工作区与手机工作空间 ---------- */
+  var ph = { kind: '', ws: '', dev: '', phones: null, path: '', entries: [], root: '', readOnly: false, error: '', loading: false, etag: '' };
   var TEXT_EXT = /\.(txt|md|markdown|json|js|ts|jsx|tsx|go|py|dart|java|kt|swift|c|h|cpp|rs|rb|php|sh|yaml|yml|toml|ini|conf|cfg|csv|log|xml|html|css|scss|sql|env)$/i;
 
-  function phoneRows() {
-    if (!ph.phones) { return '<div class="pd-empty">正在读取…</div>'; }
-    if (!ph.phones.length) { return '<div class="pd-empty">没有在线的手机<br>在手机上打开 PocketDesk 后会出现在这里</div>'; }
-    return ph.phones.map(function (p) {
-      return '<button class="pd-row' + (p.id === ph.dev ? ' active' : '') + '" data-act="phone-pick" data-id="' + esc(p.id) + '" data-phone="' + esc(p.id) + '" data-name="' + esc(p.name) + '"><div class="pd-row-avatar">' + avatarHtml('phone') + '</div>' +
-        '<div class="pd-row-main"><div class="pd-row-line"><span class="pd-row-title">' + esc(p.name) + '</span></div><div class="pd-row-sub">' + (p.online ? '在线' : '不在线') + '</div></div></button>';
-    }).join('');
+  function wsById(id) { return ((host && host.workspaces) || []).filter(function (w) { return w.id === id; })[0]; }
+  function wsBase() { return P + '/api/ws/' + encodeURIComponent(ph.ws); }
+  function isWsSrc() { return ph.kind === 'ws'; }
+  function fsReady() { return !!(isWsSrc() ? ph.ws : ph.dev) && !ph.error; }
+  function fsName() {
+    if (isWsSrc()) { var w = wsById(ph.ws); return w ? w.name : '工作区'; }
+    return '手机文件';
   }
 
-  function phoneMain() {
-    var ready = ph.dev && !ph.error;
-    var head = '<header class="pd-head"><div class="pd-head-main"><div class="pd-head-title">手机文件</div><div class="pd-head-sub pd-mono">' + esc(ph.root || '管理手机上的工作空间') + '</div></div><div class="pd-head-acts">' +
-      (ready ? '<button class="pd-btn" data-act="phone-root">' + icon('folder-search', 16) + '更换目录</button><button class="pd-btn" data-act="phone-mkdir">' + icon('folder-plus', 16) + '新建文件夹</button>' +
-        '<button class="pd-btn pd-btn-primary" data-act="phone-upload">' + icon('upload', 16) + '上传</button>' : '') +
-      '<button class="pd-icon-btn" data-act="phone-refresh" title="刷新" aria-label="刷新">' + icon('refresh-cw', 16) + '</button>' +
-      (ph.dev ? '<button class="pd-icon-btn" data-act="phone-kick" title="移除这台手机" aria-label="移除这台手机">' + icon('trash', 16) + '</button>' : '') + '</div></header>';
+  /** fsRows：左侧列表——电脑的工作区与在线的手机 */
+  function fsRows() {
+    var wss = (host && host.workspaces) || [];
+    var out = '<div class="pd-list-sec">电脑</div>';
+    out += wss.length ? wss.map(function (w) {
+      return '<button class="pd-row' + (isWsSrc() && w.id === ph.ws ? ' active' : '') + '" data-act="fs-pick" data-kind="ws" data-id="' + esc(w.id) + '"><div class="pd-row-avatar">' + avatarHtml('host') + '</div>' +
+        '<div class="pd-row-main"><div class="pd-row-line"><span class="pd-row-title">' + esc(w.name) + '</span></div><div class="pd-row-sub">' + esc(w.rootPath) + '</div></div></button>';
+    }).join('') : '<div class="pd-empty">还没有工作区</div>';
+    out += '<div class="pd-list-sec">手机</div>';
+    if (!ph.phones) { return out + '<div class="pd-empty">正在读取…</div>'; }
+    out += ph.phones.length ? ph.phones.map(function (p) {
+      return '<button class="pd-row' + (!isWsSrc() && p.id === ph.dev ? ' active' : '') + '" data-act="fs-pick" data-kind="phone" data-id="' + esc(p.id) + '" data-phone="' + esc(p.id) + '" data-name="' + esc(p.name) + '"><div class="pd-row-avatar">' + avatarHtml('phone') + '</div>' +
+        '<div class="pd-row-main"><div class="pd-row-line"><span class="pd-row-title">' + esc(p.name) + '</span></div><div class="pd-row-sub">' + (p.online ? '在线' : '不在线') + '</div></div></button>';
+    }).join('') : '<div class="pd-empty">没有在线的手机<br>在手机上打开 PocketDesk 后会出现在这里</div>';
+    return out;
+  }
+
+  function fsMain() {
+    var ready = fsReady();
+    var canEdit = ready && !ph.readOnly;
+    var head = '<header class="pd-head"><div class="pd-head-main"><div class="pd-head-title">' + esc(fsName()) + '</div><div class="pd-head-sub pd-mono">' + esc(ph.root || (isWsSrc() ? '' : '管理手机上的工作空间')) + '</div></div><div class="pd-head-acts">' +
+      (ready ? '<button class="pd-btn" data-act="fs-root">' + icon('folder-search', 16) + '更换目录</button>' : '') +
+      (canEdit ? '<button class="pd-btn" data-act="fs-mkdir">' + icon('folder-plus', 16) + '新建文件夹</button>' +
+        '<button class="pd-btn pd-btn-primary" data-act="fs-upload">' + icon('upload', 16) + '上传</button>' : '') +
+      '<button class="pd-icon-btn" data-act="fs-refresh" title="刷新" aria-label="刷新">' + icon('refresh-cw', 16) + '</button>' +
+      (!isWsSrc() && ph.dev ? '<button class="pd-icon-btn" data-act="phone-kick" title="移除这台手机" aria-label="移除这台手机">' + icon('trash', 16) + '</button>' : '') + '</div></header>';
     var body;
-    if (!ph.phones) { body = '<div class="pd-empty">正在连接手机…</div>'; }
-    else if (!ph.phones.length) { body = '<div class="pd-empty">没有在线的手机，在手机上打开 PocketDesk 即可管理它的文件</div>'; }
+    if (!ph.kind && ph.phones) { body = '<div class="pd-empty">没有可管理的位置，先在设置里添加工作区，或在手机上打开 PocketDesk</div>'; }
+    else if (!ph.kind) { body = '<div class="pd-empty">正在读取…</div>'; }
     else if (ph.error) { body = '<div class="pd-warn">' + icon('alert-triangle', 16) + '<div>' + esc(ph.error) + '</div></div>'; }
     else {
       var parts = ph.path ? ph.path.split('/') : [];
-      var crumbs = '<button class="pd-link" data-act="phone-cd" data-path="">工作空间</button>' + parts.map(function (p, i) {
-        return '<span>/</span><button class="pd-link" data-act="phone-cd" data-path="' + esc(parts.slice(0, i + 1).join('/')) + '">' + esc(p) + '</button>';
+      var crumbs = '<button class="pd-link" data-act="fs-cd" data-path="">' + (isWsSrc() ? esc(fsName()) : '工作空间') + '</button>' + parts.map(function (p, i) {
+        return '<span>/</span><button class="pd-link" data-act="fs-cd" data-path="' + esc(parts.slice(0, i + 1).join('/')) + '">' + esc(p) + '</button>';
       }).join('');
       var rows = ph.entries.map(function (e) {
         var p = (ph.path ? ph.path + '/' : '') + e.name;
         var tile = e.isDir ? tileHtml('folder', 'var(--pd-tile-blue)') : isImage(e.name) ? tileHtml('image', 'var(--pd-tile-teal)') : tileHtml('file', 'var(--pd-tile-indigo)');
-        return '<tr><td><button class="pd-name pd-name-btn" data-act="phone-open" data-path="' + esc(p) + '" data-dir="' + (e.isDir ? 1 : 0) + '">' + tile + '<span>' + esc(e.name) + '</span></button></td>' +
+        var acts = '';
+        if (isWsSrc()) { acts += '<button class="pd-link" data-act="fs-reveal" data-path="' + esc(p) + '">显示</button>'; }
+        else if (!e.isDir) { acts += '<button class="pd-link" data-act="phone-fetch" data-path="' + esc(p) + '">存到电脑</button>'; }
+        if (canEdit) {
+          acts += '<button class="pd-link" data-act="fs-rename" data-path="' + esc(p) + '" data-name="' + esc(e.name) + '">重命名</button>' +
+            '<button class="pd-link pd-link-danger" data-act="fs-delete" data-path="' + esc(p) + '" data-name="' + esc(e.name) + '">删除</button>';
+        }
+        return '<tr><td><button class="pd-name pd-name-btn" data-act="fs-open" data-path="' + esc(p) + '" data-dir="' + (e.isDir ? 1 : 0) + '">' + tile + '<span>' + esc(e.name) + '</span></button></td>' +
           '<td class="pd-muted pd-nowrap pd-hide-s">' + (e.isDir ? '' : fmtSize(e.size)) + '</td><td class="pd-muted pd-nowrap pd-hide-s">' + (e.modTime ? fmtTime(e.modTime).slice(0, 16) : '') + '</td>' +
-          '<td><div class="pd-actions">' + (e.isDir ? '' : '<button class="pd-link" data-act="phone-fetch" data-path="' + esc(p) + '">存到电脑</button>') +
-          '<button class="pd-link" data-act="phone-rename" data-path="' + esc(p) + '" data-name="' + esc(e.name) + '">重命名</button>' +
-          '<button class="pd-link pd-link-danger" data-act="phone-delete" data-path="' + esc(p) + '" data-name="' + esc(e.name) + '">删除</button></div></td></tr>';
+          '<td><div class="pd-actions">' + acts + '</div></td></tr>';
       }).join('');
       body = '<div class="pd-crumbs">' + crumbs + (ph.loading ? '<em class="pd-muted" style="margin-left:8px;font-style:normal">加载中…</em>' : '') + '</div>' +
-        '<div class="pd-card pd-drop">' + (rows ? '<table class="pd-table"><tr><th>名称</th><th class="pd-hide-s" style="width:90px">大小</th><th class="pd-hide-s" style="width:140px">修改时间</th><th style="width:190px">操作</th></tr>' + rows + '</table>' :
-          '<div class="pd-empty">这个文件夹是空的，把文件拖进来即可上传到手机</div>') + '</div>';
+        '<div class="pd-card' + (canEdit ? ' pd-drop' : '') + '">' + (rows ? '<table class="pd-table"><tr><th>名称</th><th class="pd-hide-s" style="width:90px">大小</th><th class="pd-hide-s" style="width:140px">修改时间</th><th style="width:230px">操作</th></tr>' + rows + '</table>' :
+          '<div class="pd-empty">' + (canEdit ? '这个文件夹是空的，把文件拖进来即可上传' : '这个文件夹是空的') + '</div>') + '</div>';
     }
-    return head + '<div class="pd-page"><div class="pd-page-inner" style="max-width:none">' + body + '</div></div><input type="file" id="phone-file" class="pd-file-input" multiple tabindex="-1" aria-hidden="true">';
+    return head + '<div class="pd-page"><div class="pd-page-inner" style="max-width:none">' + body + '</div></div><input type="file" id="fs-file" class="pd-file-input" multiple tabindex="-1" aria-hidden="true">';
   }
 
   function phoneCall(op, args) { return api('POST', '/admin/api/phone/' + encodeURIComponent(ph.dev) + '/call', { op: op, args: args || {} }); }
   function phoneFileUrl(p) { return '/admin/api/phone/' + encodeURIComponent(ph.dev) + '/file?path=' + encodeURIComponent(p); }
-  function phoneParent(p) { var i = p.lastIndexOf('/'); return i < 0 ? '' : p.slice(0, i); }
-  function phoneRedraw() { if (route().page === 'phone') { renderList(); renderMain(); } }
+  function fsUrl(p) { return isWsSrc() ? wsBase() + '/file?path=' + encodeURIComponent(p) : phoneFileUrl(p); }
+  function fsParent(p) { var i = p.lastIndexOf('/'); return i < 0 ? '' : p.slice(0, i); }
+  function fsRedraw() { if (route().page === 'phone') { renderList(); renderMain(); } }
 
-  /** phoneLoad：刷新手机列表并读取当前目录 */
-  function phoneLoad() {
+  /**
+   * fsLoad：刷新左侧列表并读取当前目录
+   *
+   * 处理流程：
+   * 1、读取在线的手机；当前位置失效（工作区被删、手机下线）或还没选时，改选第一个电脑工作区，没有则选第一台手机
+   * 2、读取当前目录
+   */
+  function fsLoad() {
     ph.loading = true;
-    phoneRedraw();
-    return api('GET', '/admin/api/phones').then(function (list) {
-      // 只列出在线的手机，不在线的无法管理
+    fsRedraw();
+    return (host ? Promise.resolve() : loadHost()).then(function () {
+      return api('GET', '/admin/api/phones');
+    }).then(function (list) {
+      // 1、位置
       ph.phones = (list || []).filter(function (p) { return p.online; });
-      if (!ph.phones.some(function (p) { return p.id === ph.dev; })) {
-        ph.dev = ph.phones.length ? ph.phones[0].id : '';
+      var wss = (host && host.workspaces) || [];
+      var ok = ph.kind === 'ws' ? wss.some(function (w) { return w.id === ph.ws; }) : ph.kind === 'phone' && ph.phones.some(function (p) { return p.id === ph.dev; });
+      if (!ok) {
         ph.path = '';
+        ph.entries = [];
+        if (wss.length) { ph.kind = 'ws'; ph.ws = wss[0].id; ph.dev = ''; }
+        else if (ph.phones.length) { ph.kind = 'phone'; ph.dev = ph.phones[0].id; ph.ws = ''; }
+        else { ph.kind = ''; ph.ws = ''; ph.dev = ''; ph.root = ''; ph.error = ''; return; }
       }
-      if (!ph.dev) { ph.error = ''; return; }
+      // 2、目录
+      if (isWsSrc()) {
+        return api('GET', wsBase() + '/list?path=' + encodeURIComponent(ph.path || '.')).then(function (r) {
+          ph.entries = r.entries || [];
+          ph.readOnly = !!r.readOnly;
+          ph.root = wsById(ph.ws).rootPath;
+          ph.error = '';
+        });
+      }
       return phoneCall('list', { path: ph.path }).then(function (r) {
         ph.entries = r.entries || [];
+        ph.readOnly = false;
         ph.root = r.root || '';
         ph.error = '';
       });
-    }).catch(function (er) { ph.error = er.message; }).then(function () { ph.loading = false; phoneRedraw(); });
+    }).catch(function (er) { ph.error = er.message; }).then(function () { ph.loading = false; fsRedraw(); });
+  }
+
+  /** fsOp：新建文件夹、重命名、删除 */
+  function fsOp(op, p, name) {
+    if (isWsSrc()) { return api('POST', wsBase() + '/ops', { op: op, path: op === 'mkdir' ? (ph.path || '.') : p, name: name }); }
+    if (op === 'delete') { return phoneCall('delete', { paths: [p] }); }
+    return phoneCall(op, { path: op === 'mkdir' ? ph.path : p, name: name });
+  }
+
+  /** uniqueName：与目录里已有的名字重复时加序号 */
+  function uniqueName(name, taken) {
+    if (!taken[name]) { return name; }
+    var i = name.lastIndexOf('.');
+    var stem = i > 0 ? name.slice(0, i) : name, ext = i > 0 ? name.slice(i) : '';
+    var n = 1;
+    while (taken[stem + ' (' + n + ')' + ext]) { n++; }
+    return stem + ' (' + n + ')' + ext;
+  }
+
+  function fsUpload(files) {
+    if (!files.length || !fsReady() || ph.readOnly) { return; }
+    if (!isWsSrc()) { phoneUpload(files); return; }
+    var taken = {}, dir = ph.path, id = ph.ws;
+    ph.entries.forEach(function (e) { taken[e.name] = true; });
+    toast('正在上传 ' + files.length + ' 个文件…');
+    files.reduce(function (chain, f) {
+      return chain.then(function () {
+        var name = uniqueName(f.name, taken);
+        taken[name] = true;
+        var url = P + '/api/ws/' + encodeURIComponent(id) + '/file?create=1&path=' + encodeURIComponent((dir ? dir + '/' : '') + name);
+        return fetch(url, { method: 'PUT', body: f, credentials: 'same-origin' }).then(function (res) {
+          if (res.ok) { return; }
+          return res.json().catch(function () { return null; }).then(function (d) { throw new Error((d && d.message) || '上传失败'); });
+        });
+      });
+    }, Promise.resolve()).then(function () { toast('已上传'); fsLoad(); }).catch(function (er) { toast(er.message); fsLoad(); });
   }
 
   function phoneUpload(files) {
     if (!files.length || !ph.dev) { return; }
     toast('正在上传 ' + files.length + ' 个文件到手机…');
     uploadForm('/admin/api/phone/' + encodeURIComponent(ph.dev) + '/upload?dir=' + encodeURIComponent(ph.path), files)
-      .then(function () { toast('已上传到手机'); phoneLoad(); }).catch(function (er) { toast(er.message); });
+      .then(function () { toast('已上传到手机'); fsLoad(); }).catch(function (er) { toast(er.message); });
   }
 
-  /** phoneOpen：图片预览，文本在窗口里编辑，其他格式存到电脑后用默认程序打开 */
-  function phoneOpen(p) {
+  /** fsOpen：图片预览，文本在窗口里编辑，其他格式用默认程序打开（手机上的先存到电脑） */
+  function fsOpen(p) {
     var name = p.split('/').pop();
     if (isImage(name)) {
-      imagePreview(name, phoneFileUrl(p), '<button class="pd-btn" data-act="phone-fetch" data-path="' + esc(p) + '">' + icon('download', 16) + '存到电脑</button>');
+      imagePreview(name, fsUrl(p), isWsSrc() ? '<button class="pd-btn" data-act="fs-reveal" data-path="' + esc(p) + '">' + icon('folder-open', 16) + '显示</button>'
+        : '<button class="pd-btn" data-act="phone-fetch" data-path="' + esc(p) + '">' + icon('download', 16) + '存到电脑</button>');
       return;
     }
     if (!TEXT_EXT.test(name)) {
+      if (isWsSrc()) {
+        api('POST', '/admin/api/open', { which: 'wsfile', id: ph.ws, path: p }).catch(function (er) { toast(er.message); });
+        return;
+      }
       toast('正在从手机取文件…');
       api('POST', '/admin/api/phone/' + encodeURIComponent(ph.dev) + '/fetch', { path: p, open: true }).catch(function (er) { toast(er.message); });
       return;
     }
-    fetch(phoneFileUrl(p), { credentials: 'same-origin' }).then(function (res) {
+    fetch(fsUrl(p), { credentials: 'same-origin' }).then(function (res) {
       if (!res.ok) { return res.json().then(function (d) { throw new Error((d && d.message) || '读取失败'); }); }
+      ph.etag = res.headers.get('ETag') || '';
       return res.text();
     }).then(function (text) {
       modalRoot.innerHTML = '<div class="pd-scrim"><div class="pd-dialog pd-editor" role="dialog" aria-modal="true" aria-label="' + esc(name) + '">' +
         '<div class="pd-dialog-head"><div class="pd-dialog-title">' + esc(name) + '</div><button class="pd-icon-btn" data-act="modal-close" aria-label="关闭">' + icon('x', 18) + '</button></div>' +
-        '<textarea id="edit-text" class="pd-input" spellcheck="false"></textarea>' +
-        '<div class="pd-dialog-foot"><button class="pd-btn" data-act="modal-close">取消</button><button class="pd-btn pd-btn-primary" data-act="phone-save" data-path="' + esc(p) + '">' + icon('save', 16) + '保存到手机</button></div></div></div>';
+        '<textarea id="edit-text" class="pd-input" spellcheck="false"' + (ph.readOnly ? ' readonly' : '') + '></textarea>' +
+        '<div class="pd-dialog-foot"><button class="pd-btn" data-act="modal-close">' + (ph.readOnly ? '关闭' : '取消') + '</button>' +
+        (ph.readOnly ? '' : '<button class="pd-btn pd-btn-primary" data-act="fs-save" data-path="' + esc(p) + '">' + icon('save', 16) + '保存</button>') + '</div></div></div>';
       var ta = document.getElementById('edit-text');
       ta.value = text;
       ta.focus();
     }).catch(function (er) { toast(er.message); });
+  }
+
+  /** fsSave：保存编辑的文本；电脑上的文件带上打开时的版本，被别处改过会提示冲突 */
+  function fsSave(p) {
+    var text = document.getElementById('edit-text').value;
+    var done = function () { closeModal(); toast('已保存'); fsLoad(); };
+    if (isWsSrc()) {
+      fetch(wsBase() + '/file?path=' + encodeURIComponent(p), { method: 'PUT', headers: { 'If-Match': ph.etag || '*' }, body: text, credentials: 'same-origin' }).then(function (res) {
+        if (res.ok) { done(); return; }
+        return res.json().catch(function () { return null; }).then(function (d) { throw new Error((d && d.message) || '保存失败'); });
+      }).catch(function (er) { toast(er.message); });
+      return;
+    }
+    var f = new File([text], p.split('/').pop(), { type: 'text/plain' });
+    uploadForm('/admin/api/phone/' + encodeURIComponent(ph.dev) + '/upload?overwrite=1&dir=' + encodeURIComponent(fsParent(p)), [f]).then(done).catch(function (er) { toast(er.message); });
   }
 
   /** phoneRootPicker：浏览手机存储选择工作空间目录 */
@@ -1130,9 +1280,9 @@
     modal(t, '<div>' + text + '</div>', '<button class="pd-btn" data-act="modal-close">取消</button><button class="pd-btn pd-btn-danger" id="confirm-ok">' + okLabel + '</button>');
     document.getElementById('confirm-ok').onclick = function () { closeModal(); onOk(); };
   }
-  function imagePreview(t, src, actions) {
+  function imagePreview(t, src, actions, seq) {
     modalRoot.innerHTML = '<div class="pd-scrim" data-act="modal-close"><div class="pd-preview" role="dialog" aria-modal="true" aria-label="' + esc(t) + '">' +
-      '<img alt="' + esc(t) + '" src="' + src + '"><div class="pd-preview-bar"><span>' + esc(t) + '</span><div class="pd-actions">' + actions +
+      '<img alt="' + esc(t) + '"' + (seq ? ' data-seq="' + seq + '"' : '') + ' src="' + src + '"><div class="pd-preview-bar"><span>' + esc(t) + '</span><div class="pd-actions">' + actions +
       '<button class="pd-icon-btn" data-act="modal-close" aria-label="关闭">' + icon('x', 18) + '</button></div></div></div></div>';
   }
   function workspaceForm(w) {
@@ -1169,6 +1319,9 @@
       // 首次读到状态时绘制设置页；之后只刷新纯展示的分区，避免冲掉正在编辑的输入
       if (r.page === 'settings' && !modalRoot.innerHTML && (first || r.section === 'overview' || r.section === 'devices')) { renderMain(); }
       if (r.page === 'chat') { renderHead(); }
+      // 文件页左侧的工作区列表有变化时刷新
+      var sig = JSON.stringify((s.workspaces || []).map(function (w) { return [w.id, w.name, w.rootPath]; }));
+      if (r.page === 'phone' && sig !== wsSig) { wsSig = sig; renderList(); } else { wsSig = sig; }
       if (!document.getElementById('rail') && r.page !== 'pair') { render(); }
     }).catch(function () {});
   }
@@ -1241,7 +1394,7 @@
       case 'preview':
         imagePreview(t.dataset.name, '/admin/api/assistant/file?seq=' + t.dataset.seq,
           '<button class="pd-btn" data-act="file-open" data-seq="' + t.dataset.seq + '">' + icon('external-link', 16) + '打开</button>' +
-          '<button class="pd-btn" data-act="file-reveal" data-seq="' + t.dataset.seq + '">' + icon('folder-open', 16) + '在文件夹中显示</button>');
+          '<button class="pd-btn" data-act="file-reveal" data-seq="' + t.dataset.seq + '">' + icon('folder-open', 16) + '显示</button>', t.dataset.seq);
         break;
       case 'file-open':
       case 'file-reveal':
@@ -1249,7 +1402,7 @@
         break;
       case 'chat-more':
         var rect = t.getBoundingClientRect(), s = session(sid);
-        popMenu(rect.right - 170, rect.bottom + 4, [['copy-all', '复制全部对话', false, 'copy'], ['pin', s && s.pinned ? '取消置顶' : '置顶聊天', false, 'pin']]).then(function (k) { chatMenu(k, sid); });
+        popMenu(rect.right - 170, rect.bottom + 4, [['copy-all', '复制全部对话', false, 'copy'], ['pin', s && s.pinned ? '取消置顶' : '置顶聊天', false, 'pin'], '-', ['delete', '删除聊天', true, 'trash']]).then(function (k) { chatMenu(k, sid); });
         break;
       case 'new':
         var rc = t.getBoundingClientRect();
@@ -1257,24 +1410,26 @@
         if (!installed.length) { installed = Object.keys(AGENT); }
         var items = installed.map(function (k) { return ['new:' + k, '新建 ' + AGENT[k] + ' 会话', false, 'message-circle']; });
         installed.filter(function (k) { return k === 'claude' || k === 'codex'; }).forEach(function (k) { items.push(['auto:' + k, AGENT[k] + ' 免审批', false, 'shield-alert']); });
+        items.unshift(['assistant', '新建文件传输助手', false, 'send'], '-');
         items.push('-', ['pair', '配对新手机', false, 'qr-code']);
         popMenu(rc.left, rc.bottom + 4, items).then(function (k) {
           if (!k) { return; }
           if (k === 'pair') { startPair(); return; }
+          if (k === 'assistant') { openAssistant(); return; }
           var p = k.split(':');
           newSession(p[1], p[0] === 'auto');
         });
         break;
       case 'agent':
         var kind = t.dataset.kind, ra = t.getBoundingClientRect();
-        var recent = sessions.filter(function (s) { return s.kind === kind; }).sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); }).slice(0, 5);
+        var recent = sessions.filter(function (s) { return s.kind === kind && !hiddenSess[s.id]; }).sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); }).slice(0, 5);
         var opts = recent.map(function (s) { return ['open:' + s.id, title(s), false, 'message-circle']; });
         if (opts.length) { opts.push('-'); }
         opts.push(['new', '新建 ' + AGENT[kind] + ' 会话', false, 'plus']);
         if (kind === 'claude' || kind === 'codex') { opts.push(['auto', AGENT[kind] + ' 免审批', false, 'shield-alert']); }
         popMenu(ra.left, ra.bottom + 4, opts).then(function (k) {
           if (!k) { return; }
-          if (k.indexOf('open:') === 0) { location.hash = 'chat/' + encodeURIComponent(k.slice(5)); return; }
+          if (k.indexOf('open:') === 0) { unhideSession(k.slice(5)); location.hash = 'chat/' + encodeURIComponent(k.slice(5)); return; }
           newSession(kind, k === 'auto');
         });
         break;
@@ -1295,51 +1450,61 @@
           location.hash = 'chat/' + encodeURIComponent(s2.id);
         }).catch(function (er) { toast(er.message); });
         break;
-      // 手机文件
-      case 'phone-pick': ph.dev = id; ph.path = ''; phoneLoad(); break;
-      case 'phone-refresh': phoneLoad(); break;
+      // 文件
+      case 'fs-pick':
+        ph.kind = t.dataset.kind; ph.ws = t.dataset.kind === 'ws' ? id : ''; ph.dev = t.dataset.kind === 'phone' ? id : ''; ph.path = ''; ph.entries = []; ph.error = '';
+        fsLoad();
+        break;
+      case 'fs-refresh': fsLoad(); break;
       case 'phone-kick':
         var cur = (ph.phones || []).filter(function (p) { return p.id === ph.dev; })[0];
         if (cur) { kickPhone(cur.id, cur.name); }
         break;
-      case 'phone-cd': ph.path = t.dataset.path; phoneLoad(); break;
-      case 'phone-open':
-        if (t.dataset.dir === '1') { ph.path = t.dataset.path; phoneLoad(); } else { phoneOpen(t.dataset.path); }
+      case 'fs-cd': ph.path = t.dataset.path; fsLoad(); break;
+      case 'fs-open':
+        if (t.dataset.dir === '1') { ph.path = t.dataset.path; fsLoad(); } else { fsOpen(t.dataset.path); }
         break;
-      case 'phone-upload': document.getElementById('phone-file').click(); break;
+      case 'fs-upload': document.getElementById('fs-file').click(); break;
+      case 'fs-reveal':
+        api('POST', '/admin/api/open', { which: 'wsfile', id: ph.ws, path: t.dataset.path, reveal: true }).catch(function (er) { toast(er.message); });
+        break;
       case 'phone-fetch':
         toast('正在从手机取文件…');
         api('POST', '/admin/api/phone/' + encodeURIComponent(ph.dev) + '/fetch', { path: t.dataset.path }).then(function (r) { toast('已存到 ' + r.path); }).catch(function (er) { toast(er.message); });
         break;
-      case 'phone-mkdir':
+      case 'fs-mkdir':
         modal('新建文件夹', '<div class="pd-field"><label for="mkname">名称</label><input class="pd-input" id="mkname"></div>',
-          '<button class="pd-btn" data-act="modal-close">取消</button><button class="pd-btn pd-btn-primary" data-act="phone-mkdir-ok">新建</button>');
+          '<button class="pd-btn" data-act="modal-close">取消</button><button class="pd-btn pd-btn-primary" data-act="fs-mkdir-ok">新建</button>');
         break;
-      case 'phone-mkdir-ok':
-        phoneCall('mkdir', { path: ph.path, name: document.getElementById('mkname').value.trim() }).then(function () { closeModal(); phoneLoad(); }).catch(function (er) { toast(er.message); });
+      case 'fs-mkdir-ok':
+        fsOp('mkdir', '', document.getElementById('mkname').value.trim()).then(function () { closeModal(); fsLoad(); }).catch(function (er) { toast(er.message); });
         break;
-      case 'phone-rename':
+      case 'fs-rename':
         modal('重命名', '<div class="pd-field"><label for="rnname">新名称</label><input class="pd-input" id="rnname" value="' + esc(t.dataset.name) + '"></div>',
-          '<button class="pd-btn" data-act="modal-close">取消</button><button class="pd-btn pd-btn-primary" data-act="phone-rename-ok" data-path="' + esc(t.dataset.path) + '">确定</button>');
+          '<button class="pd-btn" data-act="modal-close">取消</button><button class="pd-btn pd-btn-primary" data-act="fs-rename-ok" data-path="' + esc(t.dataset.path) + '">确定</button>');
         break;
-      case 'phone-rename-ok':
-        phoneCall('rename', { path: t.dataset.path, name: document.getElementById('rnname').value.trim() }).then(function () { closeModal(); phoneLoad(); }).catch(function (er) { toast(er.message); });
+      case 'fs-rename-ok':
+        fsOp('rename', t.dataset.path, document.getElementById('rnname').value.trim()).then(function () { closeModal(); fsLoad(); }).catch(function (er) { toast(er.message); });
         break;
-      case 'phone-delete':
-        confirmBox('删除', '确定从手机上删除「' + esc(t.dataset.name) + '」？删除后无法恢复。', '删除', function () {
-          phoneCall('delete', { paths: [t.dataset.path] }).then(function () { toast('已删除'); phoneLoad(); }).catch(function (er) { toast(er.message); });
+      case 'fs-delete':
+        confirmBox('删除', isWsSrc() ? '确定删除「' + esc(t.dataset.name) + '」？文件会移到电脑的回收站。' : '确定从手机上删除「' + esc(t.dataset.name) + '」？删除后无法恢复。', '删除', function () {
+          fsOp('delete', t.dataset.path).then(function () { toast('已删除'); fsLoad(); }).catch(function (er) { toast(er.message); });
         });
         break;
-      case 'phone-save':
-        var p = t.dataset.path;
-        var f = new File([document.getElementById('edit-text').value], p.split('/').pop(), { type: 'text/plain' });
-        uploadForm('/admin/api/phone/' + encodeURIComponent(ph.dev) + '/upload?overwrite=1&dir=' + encodeURIComponent(phoneParent(p)), [f])
-          .then(function () { closeModal(); toast('已保存到手机'); phoneLoad(); }).catch(function (er) { toast(er.message); });
+      case 'fs-save': fsSave(t.dataset.path); break;
+      case 'fs-root':
+        if (isWsSrc()) { workspaceForm(wsById(ph.ws)); } else { phoneRootPicker(''); }
         break;
-      case 'phone-root': phoneRootPicker(''); break;
       case 'phone-browse': phoneRootPicker(t.dataset.path); break;
       case 'phone-setroot':
-        phoneCall('setRoot', { path: t.dataset.path }).then(function () { closeModal(); toast('已更换手机工作空间'); ph.path = ''; phoneLoad(); }).catch(function (er) { toast(er.message); });
+        phoneCall('setRoot', { path: t.dataset.path }).then(function () { closeModal(); toast('已更换手机工作空间'); ph.path = ''; fsLoad(); }).catch(function (er) { toast(er.message); });
+        break;
+      // 发送文件确认
+      case 'send-files-ok':
+        closeModal();
+        toast('正在发送 ' + sendQueue.length + ' 个文件…');
+        uploadForm('/admin/api/assistant/files', sendQueue).catch(function (e) { toast(e.message); });
+        sendQueue = [];
         break;
       // 设置
       case 'theme': save('pd.theme', t.dataset.theme); applyTheme(); renderMain(); break;
@@ -1368,7 +1533,7 @@
       case 'ws-edit': workspaceForm(host.workspaces.filter(function (w) { return w.id === id; })[0]); break;
       case 'ws-save':
         api('POST', '/admin/api/workspaces', { id: id, name: document.getElementById('wname').value, rootPath: document.getElementById('wpath').value, readOnly: document.getElementById('wro').checked })
-          .then(function () { closeModal(); toast('已保存'); loadHost().then(renderMain); }).catch(function (er) { toast(er.message); });
+          .then(function () { closeModal(); toast('已保存'); loadHost().then(function () { renderMain(); if (route().page === 'phone') { fsLoad(); } }); }).catch(function (er) { toast(er.message); });
         break;
       case 'ws-del':
         confirmBox('删除工作区', '只移除这个工作区的配置，电脑上的文件不会被删除。', '删除', function () {
@@ -1400,15 +1565,48 @@
     confirmBox('移除手机', '移除「' + esc(name) + '」后它会立即断开，需要重新扫码配对才能再连接。', '移除', function () {
       api('DELETE', '/admin/api/devices/' + encodeURIComponent(id))
         .then(function () { return api('POST', '/admin/api/devices/' + encodeURIComponent(id) + '/remove'); })
-        .then(function () { toast('已移除'); if (ph.dev === id) { ph.dev = ''; } phoneLoad(); loadHost(); })
+        .then(function () { toast('已移除'); if (ph.dev === id) { ph.dev = ''; ph.kind = ''; } fsLoad(); loadHost(); })
         .catch(function (er) { toast(er.message); });
     });
+  }
+
+  /** deleteSession：只删除电脑端的这条聊天，手机端的会话保留 */
+  function deleteSession(id) {
+    var s = session(id);
+    confirmBox('删除该聊天', '只删除电脑上的这条聊天，手机上的会话保留。' + (s && s.kind === 'assistant' ? '之后可在「+」里重新打开文件传输助手。' : ''), '删除', function () {
+      hideSession(id);
+      if (route().sid === id) { location.hash = 'chat'; }
+      renderList();
+      renderRail();
+    });
+  }
+
+  /** openAssistant：打开文件传输助手；删除过的重新显示 */
+  function openAssistant() {
+    var a = sessions.filter(function (x) { return x.kind === 'assistant'; })[0];
+    if (!a) { toast('暂时无法打开，请稍后再试'); return; }
+    unhideSession(a.id);
+    location.hash = 'chat/' + encodeURIComponent(a.id);
+    renderList();
+    renderRail();
+  }
+
+  /** itemOf：会话里的一条消息 */
+  function itemOf(sid, seq) {
+    var lg = logs[sid];
+    return lg && buildItems(lg.events).filter(function (x) { return x.seq === seq; })[0];
+  }
+
+  /** copyFileMsg：把记录里的图片或文件复制到系统剪贴板 */
+  function copyFileMsg(seq) {
+    api('POST', '/admin/api/assistant/copy', { seq: seq }).then(function () { toast('已复制'); }).catch(function (er) { toast(er.message); });
   }
 
   /** chatMenu：聊天窗口右上角菜单 */
   function chatMenu(k, sid) {
     var s = session(sid);
     if (k === 'copy-all') { copyText(chatText(sid)); }
+    if (k === 'delete') { deleteSession(sid); }
     if (k === 'pin' && s) {
       api('PATCH', P + '/api/sessions/' + encodeURIComponent(sid), { pinned: !s.pinned }).then(function (s2) { s.pinned = s2.pinned; renderList(); }).catch(function (er) { toast(er.message); });
     }
@@ -1419,6 +1617,12 @@
     var msg = e.target.closest('.pd-msg,.pd-sys');
     var row = e.target.closest('.pd-row[data-sid]');
     var phone = e.target.closest('.pd-row[data-phone]');
+    var pv = e.target.closest('.pd-preview img[data-seq]');
+    if (pv) {
+      e.preventDefault();
+      popMenu(e.clientX, e.clientY, [['copy-file', '复制图片', false, 'copy']]).then(function (k) { if (k) { copyFileMsg(+pv.dataset.seq); } });
+      return;
+    }
     if (phone) {
       e.preventDefault();
       popMenu(e.clientX, e.clientY, [['kick', '移除这台手机', true, 'trash']]).then(function (k) { if (k === 'kick') { kickPhone(phone.dataset.phone, phone.dataset.name); } });
@@ -1435,9 +1639,12 @@
       var sel = String(window.getSelection() || '');
       var items = [];
       if (sel) { items.push(['copy-sel', '复制选中的文字', false, 'copy']); }
-      items.push(['copy', '复制', false, 'copy'], ['copy-all', '复制全部对话', false, 'copy'], '-', ['delete', '删除', true, 'trash']);
+      var mi0 = itemOf(sid, seq);
+      var isFile = !!mi0 && mi0.t === 'file';
+      items.push(isFile ? ['copy-file', isImage(mi0.name) ? '复制图片' : '复制文件', false, 'copy'] : ['copy', '复制', false, 'copy'], ['copy-all', '复制全部对话', false, 'copy'], '-', ['delete', '删除', true, 'trash']);
       popMenu(e.clientX, e.clientY, items).then(function (k) {
         if (k === 'copy-sel') { copyText(sel); }
+        if (k === 'copy-file') { copyFileMsg(seq); }
         if (k === 'copy') { copyText(itemText(sid, seq)); }
         if (k === 'copy-all') { copyText(chatText(sid)); }
         if (k === 'delete') {
@@ -1449,7 +1656,8 @@
       return;
     }
     var s = session(row.dataset.sid);
-    popMenu(e.clientX, e.clientY, [['pin', s.pinned ? '取消置顶' : '置顶', false, 'pin'], [unread[s.id] ? 'read' : 'unread', unread[s.id] ? '标为已读' : '标为未读', false, 'message-circle']]).then(function (k) {
+    popMenu(e.clientX, e.clientY, [['pin', s.pinned ? '取消置顶' : '置顶', false, 'pin'], [unread[s.id] ? 'read' : 'unread', unread[s.id] ? '标为已读' : '标为未读', false, 'message-circle'], '-', ['delete', '删除', true, 'trash']]).then(function (k) {
+      if (k === 'delete') { deleteSession(s.id); }
       if (k === 'pin') { chatMenu('pin', s.id); }
       if (k === 'read') { setUnread(s.id, 0); renderList(); renderRail(); }
       if (k === 'unread') { setUnread(s.id, 1); renderList(); renderRail(); }
@@ -1470,10 +1678,10 @@
 
   document.addEventListener('change', function (e) {
     var t = e.target;
-    if (t.id === 'file-any' || t.id === 'file-img' || t.id === 'phone-file') {
+    if (t.id === 'file-any' || t.id === 'file-img' || t.id === 'fs-file') {
       var files = Array.prototype.slice.call(t.files || []);
       t.value = '';
-      if (t.id === 'phone-file') { phoneUpload(files); } else { sendFiles(files); }
+      if (t.id === 'fs-file') { fsUpload(files); } else { sendFiles(files); }
       return;
     }
     if (t.id === 'pause-all') { api('POST', '/admin/api/transfers/pause', { paused: t.checked }).then(loadHost); }
@@ -1492,7 +1700,7 @@
     var r = route();
     if (modalRoot.innerHTML) { return ''; }
     if (r.page === 'chat' && session(r.sid) && session(r.sid).kind !== 'terminal') { return 'chat'; }
-    if (r.page === 'phone' && ph.dev && !ph.error) { return 'phone'; }
+    if (r.page === 'phone' && fsReady() && !ph.readOnly) { return 'files'; }
     return '';
   }
   document.addEventListener('paste', function (e) {
@@ -1501,7 +1709,7 @@
     var files = pastedFiles(e);
     if (!files.length) { return; }
     e.preventDefault();
-    if (tgt === 'chat') { sendFiles(files); } else { phoneUpload(files); }
+    if (tgt === 'chat') { sendFiles(files); } else { fsUpload(files); }
   });
   document.addEventListener('dragover', function (e) {
     if (!dropTarget()) { return; }
@@ -1515,7 +1723,7 @@
     if (!tgt) { return; }
     e.preventDefault();
     var files = Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.files) || []);
-    if (tgt === 'chat') { sendFiles(files); } else { phoneUpload(files); }
+    if (tgt === 'chat') { sendFiles(files); } else { fsUpload(files); }
   });
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && route().page === 'chat') { renderMsgs(false); } });
 
@@ -1535,7 +1743,7 @@
       render();
     }
     lastPage = r.page;
-    if (r.page === 'phone') { phoneLoad(); }
+    if (r.page === 'phone') { fsLoad(); }
   });
 
   /* ---------- 启动 ---------- */
@@ -1547,12 +1755,12 @@
   loadHost().then(function () {
     loadSessions().then(function () {
       if (route().page === 'chat' && !route().sid) {
-        var first = sessions.filter(function (s) { return s.kind === 'assistant'; })[0];
+        var first = sessions.filter(function (s) { return s.kind === 'assistant' && !hiddenSess[s.id]; })[0];
         if (first) { location.hash = 'chat/' + encodeURIComponent(first.id); }
       } else if (route().page === 'chat') { renderMain(); }
     });
   });
-  if (r0.page === 'phone') { phoneLoad(); }
+  if (r0.page === 'phone') { fsLoad(); }
   connect();
   setUnread('', 0);
   // 电脑端状态（在线手机、配对请求）每 3 秒刷新
