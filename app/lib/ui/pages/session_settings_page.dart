@@ -1,5 +1,5 @@
 /**
- * 会话设置：改名、置顶、模型、工作目录、用量与费用、查看改动、删除手机上的记录。
+ * 会话设置：改名、置顶、消息提醒、模型、工作目录、用量与费用、查看改动、删除手机上的记录。
  */
 library;
 
@@ -81,6 +81,12 @@ class SessionSettingsPage extends StatelessWidget {
                 title: '置顶聊天',
                 trailing: Switch(value: s.pinned, onChanged: (v) => _patch(context, (api) => api.patchSession(sessionId, pinned: v))),
               ),
+              if (s.isAgent)
+                PdCell(
+                  title: '消息提醒',
+                  subtitle: '需要审批和任务完成时弹出通知并响铃，点通知直接打开这个会话',
+                  trailing: Switch(value: !s.muted, onChanged: (v) => _patch(context, (api) => api.patchSession(sessionId, muted: !v))),
+                ),
             ]),
             if (s.isAgent)
               PdGroup(children: [

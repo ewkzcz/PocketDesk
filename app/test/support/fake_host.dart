@@ -50,6 +50,9 @@ class FakeHost {
 
   /** WebSocket 客户端与收到的消息 */
   final sockets = <WebSocket>[];
+
+  /** sessionsList：/api/sessions 返回的会话 */
+  List<Map<String, dynamic>> sessionsList = [];
   final received = <Map<String, dynamic>>[];
 
   /** 配对：正确的配对码、证书指纹与已发出的令牌 */
@@ -277,6 +280,10 @@ class FakeHost {
       final token = 'tok${tokens.length}';
       tokens.add(token);
       res.write(jsonEncode({'token': token, 'deviceId': 'dev${tokens.length}', 'host': {'name': '测试电脑', 'fingerprint': fingerprint}}));
+      return;
+    }
+    if (path == '/api/sessions') {
+      res.write(jsonEncode(sessionsList));
       return;
     }
     if (path == '/api/outbox') {

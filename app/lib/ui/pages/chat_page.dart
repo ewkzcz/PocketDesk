@@ -45,9 +45,12 @@ import 'transfer_page.dart' show openLocal;
  * ChatPage：聊天页
  */
 class ChatPage extends StatefulWidget {
-  const ChatPage({super.key, required this.sessionId, this.draft = ''});
+  const ChatPage({super.key, required this.sessionId, this.draft = '', this.focusApproval = ''});
 
   final String sessionId;
+
+  /** 打开后直接弹出这条待审批（从通知进入时），空为不弹 */
+  final String focusApproval;
 
   /** 打开时预填到输入框的文字（如从文件页发来的路径） */
   final String draft;
@@ -137,12 +140,55 @@ class _ChatPageState extends State<ChatPage> {
       _seen = log.items.length;
     });
     _phrases = await db.phrases();
+    // 从通知进入时直接弹出待审批
+    if (widget.focusApproval.isNotEmpty) unawaited(_focusApproval());
     try {
       _workspaces = await scope.conn.api.workspaces();
       if (mounted) setState(() {});
     } catch (_) {
       // 离线时顶栏显示相对路径
     }
+  }
+
+  /**
+   * _focusApproval：从通知进入时弹出那条待审批，直接在弹窗里允许或拒绝
+   *
+   * 处理流程：
+   * 1、等聊天记录里出现这条审批（刚连上时可能还在补拉）
+   * 2、仍待处理就弹出审批卡片，已处理则提示
+   */
+  Future<void> _focusApproval() async {
+    // 1、等待
+    ApprovalItem? a;
+    for (var i = 0; i < 40 && mounted; i++) {
+      a = _log?.items.whereType<ApprovalItem>().where((x) => widget.focusApproval == '*' ? x.status == ApprovalStatus.pending : x.id == widget.focusApproval).lastOrNull;
+      if (a != null) break;
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+    if (!mounted || a == null) return;
+    // 2、弹出
+    if (a.status != ApprovalStatus.pending) {
+      toast(context, '这条审批已处理');
+      return;
+    }
+    final item = a;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: context.pd.page,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
+          child: ApprovalCard(
+            item: item,
+            onDecide: (x) {
+              Navigator.of(ctx).pop();
+              unawaited(_decide(item, x));
+            },
+          ),
+        ),
+      ),
+    );
   }
 
   /** _onStore：新消息到达；不在底部时累计浮标数 */
@@ -853,7 +899,7 @@ class _ChatPageState extends State<ChatPage> {
     if (s.isAssistant) return _scope?.host.name ?? '';
     final ws = _ws?.name ?? '';
     final dir = s.cwd == '.' || s.cwd.isEmpty ? ws : (ws.isEmpty ? s.cwd : '$ws/${s.cwd}');
-    return [dir, s.model, if (s.autoApprove) '免审批'].where((x) => x.isNotEmpty).join(' · ');
+    return [dir, s.model, if (s.autoApprove) '免审批', if (s.muted) '已关闭提醒'].where((x) => x.isNotEmpty).join(' · ');
   }
 
   @override

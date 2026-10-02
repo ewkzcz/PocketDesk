@@ -14,6 +14,7 @@ import '../core/app_state.dart';
 import '../core/auth_gate.dart';
 import '../core/settings.dart';
 import '../transfer/task.dart';
+import 'notify_router.dart';
 import 'widgets.dart';
 import 'pages/files_page.dart';
 import 'pages/me_page.dart';
@@ -51,6 +52,10 @@ class HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _unlock());
+    // 前台顶部提醒；点通知（含 ntfy 推送）直接进入对应会话
+    final app = context.read<AppState>();
+    app.onBanner = showBanner;
+    app.phone.device.onOpen((link) => unawaited(openLink(link)));
     final share = widget.share;
     if (share != null) {
       unawaited(share.initial().then(_onShared).catchError((Object _) {}));
@@ -89,6 +94,9 @@ class HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (mounted && ok) {
       setState(() => locked = false);
       unawaited(_backgroundHint());
+      // 冷启动时点的通知
+      final link = await context.read<AppState>().phone.device.takeLink().catchError((Object _) => null);
+      if (link != null && link.isNotEmpty) unawaited(openLink(link));
     }
   }
 

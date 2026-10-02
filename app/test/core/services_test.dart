@@ -275,6 +275,44 @@ void main() {
       app.dispose();
     });
 
+    test('提醒：前台不在该会话时弹出待审批与完成提醒，关闭提醒或正在看时不弹', () async {
+      final app = newState();
+      await app.init();
+      host.sessionsList = [
+        {'id': 's1', 'kind': 'codex', 'title': '修复登录', 'workspaceId': 'w', 'cwd': '.', 'state': 'idle'},
+        {'id': 's2', 'kind': 'claude', 'title': '静音会话', 'workspaceId': 'w', 'cwd': '.', 'state': 'idle', 'muted': true},
+      ];
+      final h = await PairingService(db: db, vault: vault, deviceName: 'p', platform: 'android', clients: (a, s) => HttpClient(), scheme: 'http')
+          .pairTicket(PairTicket(name: '', addresses: ['127.0.0.1'], port: host.base.port, fingerprint: host.fingerprint, code: 'K7M29QXA'));
+      await app.addHost(h);
+      final s = app.scope!;
+      await until(() => s.conn.online);
+      await until(() => s.sessions.byId('s2') != null);
+      final banners = <String>[];
+      app.onBanner = ({required kind, required title, required body, required session, approval = ''}) => banners.add('$session|$title|$approval');
+      final now = DateTime.now().millisecondsSinceEpoch;
+      var seq = 0;
+      void ev(String sid, String type, Map<String, dynamic> data) => host.push({'session': sid, 'seq': ++seq, 'type': type, 'data': data, 'createdAt': now});
+      ev('s1', 'state', {'state': 'running'});
+      ev('s1', 'approval.request', {'id': 'a1', 'summary': 'rm -rf tmp'});
+      await until(() => banners.isNotEmpty);
+      expect(banners.single, 's1|需要审批 · 修复登录|a1');
+      ev('s1', 'state', {'state': 'idle'});
+      await until(() => banners.length == 2);
+      expect(banners.last, 's1|已完成 · 修复登录|');
+      // 关闭提醒的会话、正在看的会话不弹
+      seq = 0;
+      ev('s2', 'state', {'state': 'running'});
+      ev('s2', 'approval.request', {'id': 'a2', 'summary': 'x'});
+      s.sessions.open('s1');
+      seq = 10;
+      ev('s1', 'state', {'state': 'running'});
+      ev('s1', 'approval.request', {'id': 'a3', 'summary': 'y'});
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(banners.length, 2);
+      app.dispose();
+    });
+
     test('缺少令牌时不连接', () async {
       final h = await service().pairTicket(PairTicket(name: '', addresses: ['127.0.0.1'], port: host.base.port, fingerprint: host.fingerprint, code: 'K7M29QXA'));
       await vault.deleteToken(h.id);

@@ -265,6 +265,7 @@ class _SessionRow extends StatelessWidget {
                   child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Row(children: [
                       Flexible(child: Text(sessionTitle(s), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.listTitle, color: c.text, height: 1.3))),
+                      if (s.muted) Padding(padding: const EdgeInsets.only(left: 4), child: Icon(LucideIcons.bellOff300, size: 14, color: c.text4)),
                       if (s.autoApprove)
                         Container(
                           margin: const EdgeInsets.only(left: 6),

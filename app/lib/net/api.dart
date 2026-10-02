@@ -211,12 +211,13 @@ class PdApi {
   }
 
   /** patchSession：改名、置顶、切换模型或目录 */
-  Future<SessionInfo> patchSession(String id, {String? title, bool? pinned, String? model, String? cwd}) async {
+  Future<SessionInfo> patchSession(String id, {String? title, bool? pinned, String? model, String? cwd, bool? muted}) async {
     final j = await json('PATCH', '/api/sessions/$id', body: {
       'title': ?title,
       'pinned': ?pinned,
       'model': ?model,
       'cwd': ?cwd,
+      'muted': ?muted,
     });
     return SessionInfo.fromJson(Json.map(j));
   }

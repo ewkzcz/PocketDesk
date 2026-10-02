@@ -14,6 +14,7 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/>
     <!-- 待审批与新消息通知；后台保持连接 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
     <!-- 打开收到的 apk 时安装 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
@@ -50,6 +51,13 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <!-- 点通知（含 ntfy 推送）打开 pocketdesk://open?session=…，直接进入对应会话 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="pocketdesk" android:host="open"/>
             </intent-filter>
             <!-- 系统分享：文件、图片、文字发到文件传输助手 -->
             <intent-filter>

@@ -32,9 +32,26 @@ class DeviceBridge {
     if (Platform.isAndroid) await _ch.invokeMethod<void>('requestAllFiles');
   }
 
-  /** notify：显示通知，count 计入桌面图标角标 */
-  Future<void> notify(int id, String title, String body, int count) async {
-    if (Platform.isAndroid) await _ch.invokeMethod<void>('notify', {'id': id, 'title': title, 'body': body, 'count': count});
+  /** notify：显示通知，count 计入桌面图标角标；link 为点击后打开的会话链接，urgent 为待审批（单独渠道、振动） */
+  Future<void> notify(int id, String title, String body, int count, {String link = '', bool urgent = false}) async {
+    if (Platform.isAndroid) await _ch.invokeMethod<void>('notify', {'id': id, 'title': title, 'body': body, 'count': count, 'link': link, 'urgent': urgent});
+  }
+
+  /** alert：App 在前台时的提示音与振动 */
+  Future<void> alert({bool sound = true}) async {
+    if (Platform.isAndroid) await _ch.invokeMethod<void>('alert', {'sound': sound});
+  }
+
+  /** takeLink：启动 App 时点的通知带来的会话链接，没有时为空 */
+  Future<String?> takeLink() async => Platform.isAndroid ? _ch.invokeMethod<String>('takeLink') : null;
+
+  /** onOpen：App 运行中点了通知，收到会话链接 */
+  void onOpen(void Function(String link) cb) {
+    if (!Platform.isAndroid) return;
+    _ch.setMethodCallHandler((call) async {
+      if (call.method == 'open' && call.arguments is String) cb(call.arguments as String);
+      return null;
+    });
   }
 
   /** cancelNotify：清除通知，id 为空时清除全部 */

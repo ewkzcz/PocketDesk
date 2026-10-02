@@ -168,14 +168,15 @@ class AppState extends ChangeNotifier {
   /** foreground：App 在前台（后台时新消息与待审批弹系统通知） */
   bool foreground = true;
 
-  /** _onEvent：分发实时事件，后台时未读数增加的会话弹通知 */
+  /** onBanner：App 在前台时顶部弹出提醒（由界面设置） */
+  void Function({required String kind, required String title, required String body, required String session, String approval})? onBanner;
+
+  /** _onEvent：分发实时事件，并按需提醒（待审批、任务完成、后台新消息） */
   void _onEvent(HostScope s, PdEvent e) {
     final before = e.session.isEmpty ? 0 : s.sessions.unread(e.session);
+    final prev = e.session.isEmpty ? null : s.sessions.byId(e.session)?.state;
     s.sessions.onEvent(e);
-    if (e.session.isNotEmpty && !foreground) {
-      final after = s.sessions.unread(e.session);
-      if (after > before) unawaited(_notify(s, e.session, after));
-    }
+    if (e.session.isNotEmpty) _remind(s, e, before, prev);
     switch (e.type) {
       case 'outbox.new':
         unawaited(s.transfers.pollOutbox());
@@ -186,16 +187,64 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /**
+   * _remind：提醒规则（关闭提醒的会话一律不提醒）
+   *
+   * 处理流程：
+   * 1、识别待审批与本轮完成（执行中回到空闲，打断的不算）
+   * 2、后台：弹系统通知，点通知直接进入会话；待审批走单独的响铃渠道
+   * 3、前台：待审批与完成时响铃振动，不在该会话里时顶部弹出提醒
+   */
+  void _remind(HostScope s, PdEvent e, int before, String? prev) {
+    final info = s.sessions.byId(e.session);
+    if (info?.muted ?? false) return;
+    // 重连后补拉到的旧事件（超过 10 分钟，待审批也已过期）不再提醒
+    if (e.createdAt > 0 && DateTime.now().millisecondsSinceEpoch - e.createdAt > 10 * 60 * 1000) return;
+    // 1、类型
+    final approval = e.type == 'approval.request';
+    final done = e.type == 'state' && Json.str(e.data['state']) == SessionState.idle && (prev == SessionState.running || prev == SessionState.awaiting);
+    final approvalId = approval ? Json.str(e.data['id']) : '';
+    final title = info == null ? 'PocketDesk' : (info.isAssistant ? '文件传输助手' : (info.title.trim().isEmpty ? 'PocketDesk' : info.title.trim()));
+    // 2、后台
+    if (!foreground) {
+      final after = s.sessions.unread(e.session);
+      if (approval) {
+        unawaited(_notify(s, e.session, after, title: '需要审批 · $title', body: Json.str(e.data['summary']), approval: approvalId));
+      } else if (done) {
+        unawaited(_notify(s, e.session, after, title: '已完成 · $title'));
+      } else if (after > before) {
+        unawaited(_notify(s, e.session, after));
+      }
+      return;
+    }
+    // 3、前台
+    if (!approval && !done) return;
+    final viewing = s.sessions.viewing == e.session;
+    if (viewing && done) return;
+    unawaited(phone.device.alert().catchError((Object _) {}));
+    if (!viewing) {
+      onBanner?.call(
+        kind: info?.kind ?? '',
+        title: approval ? '需要审批 · $title' : '已完成 · $title',
+        body: approval ? Json.str(e.data['summary']) : (info?.preview ?? ''),
+        session: e.session,
+        approval: approvalId,
+      );
+    }
+  }
+
   /** _notifyId：会话对应的通知编号 */
   static int _notifyId(String session) => session.hashCode & 0x3fffffff;
 
-  /** _notify：一个会话一条通知，数字为未读数（桌面图标角标） */
-  Future<void> _notify(HostScope s, String id, int count) async {
+  /** _notify：一个会话一条通知，数字为未读数（桌面图标角标）；点通知进入该会话，待审批时弹出审批 */
+  Future<void> _notify(HostScope s, String id, int count, {String? title, String? body, String approval = ''}) async {
     final info = s.sessions.byId(id);
-    final title = info == null ? 'PocketDesk' : (info.isAssistant ? '文件传输助手' : (info.title.trim().isEmpty ? 'PocketDesk' : info.title.trim()));
-    final body = info?.preview ?? '有新消息';
+    final name = info == null ? 'PocketDesk' : (info.isAssistant ? '文件传输助手' : (info.title.trim().isEmpty ? 'PocketDesk' : info.title.trim()));
+    final t = title ?? (count > 1 ? '$name（$count 条）' : name);
+    final b = (body ?? '').isNotEmpty ? body! : (info?.preview ?? '有新消息');
+    final link = 'pocketdesk://open?session=${Uri.encodeQueryComponent(id)}${approval.isEmpty ? '' : '&approval=${Uri.encodeQueryComponent(approval)}'}';
     try {
-      await phone.device.notify(_notifyId(id), count > 1 ? '$title（$count 条）' : title, body, count);
+      await phone.device.notify(_notifyId(id), t, b, count, link: link, urgent: approval.isNotEmpty);
     } catch (e) {
       AppLog.w('notify', '通知失败：$e');
     }

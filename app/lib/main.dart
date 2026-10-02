@@ -24,6 +24,7 @@ import 'core/settings.dart';
 import 'core/vault.dart';
 import 'data/local_db.dart';
 import 'transfer/naming.dart' as naming;
+import 'ui/notify_router.dart';
 import 'ui/shell.dart';
 import 'ui/theme.dart';
 
@@ -127,6 +128,7 @@ class PocketDeskApp extends StatelessWidget {
       child: Consumer<AppSettings>(
         builder: (context, s, _) => MaterialApp(
           title: 'PocketDesk',
+          navigatorKey: pdNavigator,
           debugShowCheckedModeBanner: false,
           theme: buildTheme(Brightness.light),
           darkTheme: buildTheme(Brightness.dark),

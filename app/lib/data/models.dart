@@ -63,6 +63,9 @@ class HostStatus {
     required this.deviceId,
     this.remoteState = '',
     this.remoteAddresses = const [],
+    this.pushKind = '',
+    this.pushUrl = '',
+    this.pushTopic = '',
   });
 
   final String name;
@@ -75,6 +78,11 @@ class HostStatus {
   final List<HostAddress> addresses;
   final int port;
   final String deviceId;
+
+  /** 电脑端的后台推送设置（ntfy 或 Bark），手机 App 不在线时用它提醒 */
+  final String pushKind;
+  final String pushUrl;
+  final String pushTopic;
 
   /** remoteState：电脑上的异地连接（Tailscale）：missing 未安装、offline 未登录、ready 已连通；旧版电脑端为空 */
   final String remoteState;
@@ -96,6 +104,9 @@ class HostStatus {
         deviceId: _s(j['deviceId']),
         remoteState: _s(_m(j['remote'])['state']),
         remoteAddresses: _l(_m(j['remote'])['addresses']).map((e) => e.toString()).toList(),
+        pushKind: _s(_m(j['push'])['kind']),
+        pushUrl: _s(_m(j['push'])['url']),
+        pushTopic: _s(_m(j['push'])['topic']),
       );
 
   /** agentInstalled：某个 Agent 是否已安装 */
@@ -248,6 +259,7 @@ class SessionInfo {
     required this.updatedAt,
     this.agentSessionId = '',
     this.autoApprove = false,
+    this.muted = false,
   });
 
   final String id;
@@ -266,6 +278,9 @@ class SessionInfo {
   /** autoApprove：免审批会话，电脑上的操作全部自动放行 */
   final bool autoApprove;
 
+  /** muted：关闭提醒，待审批与完成时不弹通知 */
+  final bool muted;
+
   /** fromJson：解析 */
   factory SessionInfo.fromJson(Map<String, dynamic> j) => SessionInfo(
         id: _s(j['id']),
@@ -281,10 +296,11 @@ class SessionInfo {
         updatedAt: _i(j['updatedAt']),
         agentSessionId: _s(j['agentSessionId']),
         autoApprove: _b(j['autoApprove']),
+        muted: _b(j['muted']),
       );
 
   /** copyWith：复制并修改部分字段 */
-  SessionInfo copyWith({String? title, String? state, bool? pinned, String? preview, int? updatedAt, String? model, String? cwd, int? lastSeq}) =>
+  SessionInfo copyWith({String? title, String? state, bool? pinned, String? preview, int? updatedAt, String? model, String? cwd, int? lastSeq, bool? muted}) =>
       SessionInfo(
         id: id,
         kind: kind,
@@ -299,6 +315,7 @@ class SessionInfo {
         updatedAt: updatedAt ?? this.updatedAt,
         agentSessionId: agentSessionId,
         autoApprove: autoApprove,
+        muted: muted ?? this.muted,
       );
 
   /** isAgent：是否为 AI 编程工具会话 */

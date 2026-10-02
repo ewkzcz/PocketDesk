@@ -11,9 +11,13 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.MediaStore
 import android.provider.Settings
 import android.webkit.MimeTypeMap
@@ -27,13 +31,39 @@ import java.util.concurrent.Executors
 class MainActivity : FlutterFragmentActivity() {
     private val io = Executors.newSingleThreadExecutor()
 
+    /** 设备通道：Dart 调用系统能力，点通知打开会话时通知 Dart */
+    private var device: MethodChannel? = null
+
+    /** 启动时带来的会话链接，等 Dart 准备好后取走 */
+    private var pendingLink: String? = null
+
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        // 会话链接自己处理，换掉启动意图，避免系统分享插件把它当成分享进来的文字
+        pendingLink = linkOf(intent)
+        if (pendingLink != null) intent = Intent(Intent.ACTION_MAIN).setClass(this, MainActivity::class.java)
         super.onCreate(savedInstanceState)
         // 待审批与新消息靠系统通知提醒，Android 13 起需在前台时申请一次
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 2)
         }
         KeepAliveService.start(this)
+    }
+
+    /** 已在前台或后台时点通知：把链接交给 Dart 打开对应会话（不交给其他插件，以免被当成分享） */
+    override fun onNewIntent(intent: Intent) {
+        val link = linkOf(intent)
+        if (link == null) {
+            super.onNewIntent(intent)
+            return
+        }
+        val ch = device
+        if (ch == null) pendingLink = link else ch.invokeMethod("open", link)
+    }
+
+    /** linkOf：通知或 ntfy 推送带来的 pocketdesk://open 链接 */
+    private fun linkOf(intent: Intent?): String? {
+        val data = intent?.data ?: return null
+        return if (data.scheme == "pocketdesk") data.toString() else null
     }
 
     override fun onDestroy() {
@@ -63,8 +93,18 @@ class MainActivity : FlutterFragmentActivity() {
                 else -> result.notImplemented()
             }
         }
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "pocketdesk/device").setMethodCallHandler { call, result ->
+        val deviceChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "pocketdesk/device")
+        device = deviceChannel
+        deviceChannel.setMethodCallHandler { call, result ->
             when (call.method) {
+                "takeLink" -> {
+                    result.success(pendingLink)
+                    pendingLink = null
+                }
+                "alert" -> {
+                    alert(call.argument<Boolean>("sound") ?: true)
+                    result.success(null)
+                }
                 "storageRoot" -> result.success(Environment.getExternalStorageDirectory().absolutePath)
                 "hasAllFiles" -> result.success(hasAllFiles())
                 "requestAllFiles" -> {
@@ -72,7 +112,8 @@ class MainActivity : FlutterFragmentActivity() {
                     result.success(null)
                 }
                 "notify" -> {
-                    notify(call.argument<Int>("id")!!, call.argument<String>("title")!!, call.argument<String>("body")!!, call.argument<Int>("count") ?: 0)
+                    notify(call.argument<Int>("id")!!, call.argument<String>("title")!!, call.argument<String>("body")!!, call.argument<Int>("count") ?: 0,
+                        call.argument<String>("link") ?: "", call.argument<Boolean>("urgent") ?: false)
                     result.success(null)
                 }
                 "cancelNotify" -> {
@@ -127,20 +168,30 @@ class MainActivity : FlutterFragmentActivity() {
      * 每个会话一条通知，number 为该会话未读数，桌面图标角标按通知数字累加
      *
      * 处理流程：
-     * 1、首次使用时创建通知渠道，未授权通知时不显示（打开 App 时已申请）
-     * 2、点击通知回到 App
+     * 1、首次使用时创建通知渠道（待审批单独一个渠道，弹出并响铃），未授权通知时不显示（打开 App 时已申请）
+     * 2、点击通知直接打开对应会话，有待审批时弹出审批
      */
-    private fun notify(id: Int, title: String, body: String, count: Int) {
+    private fun notify(id: Int, title: String, body: String, count: Int, link: String, urgent: Boolean) {
         // 1、渠道与权限
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm.getNotificationChannel(CHANNEL) == null) {
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "消息与待审批", NotificationManager.IMPORTANCE_HIGH).apply { setShowBadge(true) })
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, "消息与完成提醒", NotificationManager.IMPORTANCE_HIGH).apply { setShowBadge(true) })
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm.getNotificationChannel(URGENT) == null) {
+            nm.createNotificationChannel(NotificationChannel(URGENT, "待审批", NotificationManager.IMPORTANCE_HIGH).apply {
+                setShowBadge(true)
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 250, 150, 250)
+            })
         }
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         // 2、通知
-        val open = PendingIntent.getActivity(this, id, packageManager.getLaunchIntentForPackage(packageName), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val target = if (link.isNotEmpty()) Intent(Intent.ACTION_VIEW, Uri.parse(link), this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            else packageManager.getLaunchIntentForPackage(packageName)
+        val open = PendingIntent.getActivity(this, id, target, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         @Suppress("DEPRECATION")
-        val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Notification.Builder(this, CHANNEL) else Notification.Builder(this).setPriority(Notification.PRIORITY_HIGH)
+        val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Notification.Builder(this, if (urgent) URGENT else CHANNEL)
+            else Notification.Builder(this).setPriority(Notification.PRIORITY_HIGH).setDefaults(Notification.DEFAULT_ALL)
         val n = b.setSmallIcon(applicationInfo.icon)
             .setContentTitle(title)
             .setContentText(body)
@@ -148,8 +199,23 @@ class MainActivity : FlutterFragmentActivity() {
             .setNumber(count)
             .setContentIntent(open)
             .setAutoCancel(true)
+            .setCategory(if (urgent) Notification.CATEGORY_REMINDER else Notification.CATEGORY_MESSAGE)
             .build()
         nm.notify(id, n)
+    }
+
+    /** alert：App 在前台时的提示音与振动（待审批、任务完成） */
+    @Suppress("DEPRECATION")
+    private fun alert(sound: Boolean) {
+        try {
+            if (sound) RingtoneManager.getRingtone(applicationContext, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))?.play()
+            val v: Vibrator = if (Build.VERSION.SDK_INT >= 31) (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+                else getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) v.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 200, 120, 200), -1))
+            else v.vibrate(longArrayOf(0, 200, 120, 200), -1)
+        } catch (e: Exception) {
+            // 静音模式或没有振动器时忽略
+        }
     }
 
     /** 把图片以图片形式放进系统剪贴板，可直接粘贴到聊天软件；先复制到缓存目录再授权读取 */
@@ -182,6 +248,7 @@ class MainActivity : FlutterFragmentActivity() {
 
     companion object {
         private const val CHANNEL = "messages"
+        private const val URGENT = "approvals"
     }
 
     /**
