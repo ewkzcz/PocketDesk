@@ -159,7 +159,7 @@ void main() {
     await finish(tester, env);
   });
 
-  testWidgets('传输页：失败和进行中的任务都能左滑删除或一键清空', (tester) async {
+  testWidgets('传输页：任务左滑露出重试和删除按钮，也能一键清空', (tester) async {
     final env = await start(tester);
     final m = env.app.scope!.transfers;
     TransferTask task(String name, String st) => TransferTask(id: name, hostId: 'h1', direction: Direction.up, source: '/x/$name', name: name, size: 1000, createdAt: 1, dateFolder: '20261001', status: st, doneBytes: 400, error: st == TaskStatus.failed ? '文件已被修改' : '');
@@ -168,7 +168,11 @@ void main() {
     await tester.tap(find.text('传输').last);
     await settle(tester);
     expect(find.text('失败的.docx'), findsOneWidget);
-    await tester.drag(find.text('失败的.docx'), const Offset(-600, 0));
+    await tester.drag(find.text('失败的.docx'), const Offset(-300, 0));
+    await settle(tester);
+    expect(find.text('重试'), findsOneWidget);
+    await shot(tester, 'flow-transfer-swipe');
+    await tester.tap(find.text('删除'));
     await settle(tester);
     expect(find.text('失败的.docx'), findsNothing);
     await tester.ensureVisible(find.text('删除全部任务'));

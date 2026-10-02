@@ -17,6 +17,7 @@ import '../../transfer/task.dart';
 import '../file_kinds.dart';
 import '../format.dart';
 import '../tokens.dart';
+import '../swipe_row.dart';
 import '../widgets.dart';
 import '../viewers/fetch.dart';
 import '../viewers/open_file.dart';
@@ -103,6 +104,9 @@ class _ActiveList extends StatelessWidget {
 
   final TransferManager m;
 
+  /** _running：正在传或排队等待中，可以暂停 */
+  static bool _running(TransferTask t) => t.status == TaskStatus.running || t.status == TaskStatus.queued || t.status == TaskStatus.waiting;
+
   /** _menu：点击任务的操作 */
   Future<void> _menu(BuildContext context, TransferTask t) async {
     final running = t.status == TaskStatus.running || t.status == TaskStatus.queued || t.status == TaskStatus.waiting;
@@ -138,19 +142,23 @@ class _ActiveList extends StatelessWidget {
         ),
       if (list.isEmpty) const SizedBox(height: 360, child: EmptyHint(icon: LucideIcons.arrowUpDown300, text: '没有进行中的传输')),
       for (final t in list)
-        // 左滑直接删除任务，进行中的会先停止，传了一半的临时文件一并清掉
-        Dismissible(
+        // 左滑露出操作按钮（与消息列表一致）：暂停或继续、删除；删除时进行中的会先停止，传了一半的临时文件一并清掉
+        Padding(
           key: ValueKey(t.id),
-          direction: DismissDirection.endToStart,
-          onDismissed: (_) => m.cancel(t),
-          background: Container(
-            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            padding: const EdgeInsets.only(right: 20),
-            alignment: Alignment.centerRight,
-            decoration: BoxDecoration(color: c.danger, borderRadius: BorderRadius.circular(PdSize.cardRadius)),
-            child: const Icon(LucideIcons.trash2300, color: Colors.white, size: 22),
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(PdSize.cardRadius),
+            child: SwipeRow(
+              onTap: () => _menu(context, t),
+              actions: [
+                _running(t)
+                    ? SwipeAction('暂停', c.neutral, () => m.pause(t))
+                    : SwipeAction(t.status == TaskStatus.failed ? '重试' : '继续', c.info, () => m.resume(t)),
+                SwipeAction('删除', c.danger, () => m.cancel(t)),
+              ],
+              child: _TaskCard(t: t, queuePos: queued.indexOf(t) + 1, onToggle: () => _running(t) ? m.pause(t) : m.resume(t)),
+            ),
           ),
-          child: _TaskCard(t: t, queuePos: queued.indexOf(t) + 1, onTap: () => _menu(context, t), onToggle: () => t.status == TaskStatus.running || t.status == TaskStatus.queued || t.status == TaskStatus.waiting ? m.pause(t) : m.resume(t)),
         ),
       if (list.isNotEmpty)
         Center(
@@ -172,11 +180,10 @@ class _ActiveList extends StatelessWidget {
 
 /** _TaskCard：进行中的一项 */
 class _TaskCard extends StatelessWidget {
-  const _TaskCard({required this.t, required this.queuePos, required this.onTap, required this.onToggle});
+  const _TaskCard({required this.t, required this.queuePos, required this.onToggle});
 
   final TransferTask t;
   final int queuePos;
-  final VoidCallback onTap;
   final VoidCallback onToggle;
 
   @override
@@ -191,58 +198,50 @@ class _TaskCard extends StatelessWidget {
     ].join(' · ');
     final failed = t.status == TaskStatus.failed;
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      child: Material(
-        color: c.card,
-        borderRadius: BorderRadius.circular(PdSize.cardRadius),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Row(children: [
-                Icon(t.direction == Direction.up ? LucideIcons.arrowUp300 : LucideIcons.arrowDown300, size: 16, color: t.direction == Direction.up ? c.accent : c.info),
-                const SizedBox(width: 6),
-                Expanded(child: Text(TransferManager.displayName(t), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, color: c.text, fontWeight: FontWeight.w500))),
-                SizedBox(
-                  width: 32,
-                  height: 28,
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    tooltip: pausable ? '暂停' : '继续',
-                    onPressed: onToggle,
-                    icon: Icon(pausable ? LucideIcons.circlePause300 : (failed ? LucideIcons.rotateCw300 : LucideIcons.circlePlay300), size: 22, color: c.text2),
-                  ),
-                ),
-              ]),
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(3),
-                child: LinearProgressIndicator(
-                  value: t.progress,
-                  minHeight: 6,
-                  backgroundColor: c.page,
-                  color: failed ? c.danger : (t.direction == Direction.up ? c.accent : c.info),
+      color: c.card,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Icon(t.direction == Direction.up ? LucideIcons.arrowUp300 : LucideIcons.arrowDown300, size: 16, color: t.direction == Direction.up ? c.accent : c.info),
+            const SizedBox(width: 6),
+            Expanded(child: Text(TransferManager.displayName(t), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, color: c.text, fontWeight: FontWeight.w500))),
+            SizedBox(
+              width: 32,
+              height: 28,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                tooltip: pausable ? '暂停' : '继续',
+                onPressed: onToggle,
+                icon: Icon(pausable ? LucideIcons.circlePause300 : (failed ? LucideIcons.rotateCw300 : LucideIcons.circlePlay300), size: 22, color: c.text2),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: t.progress,
+              minHeight: 6,
+              backgroundColor: c.page,
+              color: failed ? c.danger : (t.direction == Direction.up ? c.accent : c.info),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(
+              child: Text('${formatSize(t.size)} · ${_statusText(t, queuePos)}',
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.time, color: failed ? c.danger : c.text3)),
+            ),
+            if (right.isNotEmpty)
+              Flexible(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Text(right, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.time, color: c.text3)),
                 ),
               ),
-              const SizedBox(height: 8),
-              Row(children: [
-                Expanded(
-                  child: Text('${formatSize(t.size)} · ${_statusText(t, queuePos)}',
-                      maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.time, color: failed ? c.danger : c.text3)),
-                ),
-                if (right.isNotEmpty)
-                  Flexible(
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: Text(right, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.time, color: c.text3)),
-                    ),
-                  ),
-              ]),
-            ]),
-          ),
-        ),
+          ]),
+        ]),
       ),
     );
   }
