@@ -22,6 +22,8 @@ import '../../widgets.dart';
 import '../fetch.dart';
 import '../open_file.dart';
 import 'office.dart';
+import 'pptx.dart';
+import 'slide_view.dart';
 
 /** OfficeKind：文档类型 */
 enum OfficeKind { word, excel, slides }
@@ -56,6 +58,9 @@ class _OfficeViewerPageState extends State<OfficeViewerPage> {
   String _error = '';
   double _progress = 0;
   int _sheet = 0;
+
+  /** 幻灯片以文字大纲显示 */
+  bool _outline = false;
 
   @override
   void initState() {
@@ -156,7 +161,7 @@ class _OfficeViewerPageState extends State<OfficeViewerPage> {
       body = switch (doc) {
         final List<DocBlock> b => _WordView(blocks: b),
         final List<Sheet> s => s.isEmpty ? const EmptyHint(icon: LucideIcons.sheet300, text: '这个工作簿没有工作表') : _SheetView(sheets: s, index: _sheet, onSheet: (i) => setState(() => _sheet = i)),
-        final Deck d => _DeckView(deck: d),
+        final Deck d => DeckView(deck: d, outline: _outline),
         _ => const SizedBox.shrink(),
       };
     }
@@ -164,7 +169,15 @@ class _OfficeViewerPageState extends State<OfficeViewerPage> {
       backgroundColor: c.page,
       appBar: PdBar(
         title: widget.entry.name,
-        actions: [PdIconButton(icon: LucideIcons.ellipsis300, tooltip: '更多', onTap: _menu)],
+        actions: [
+          if (doc is Deck && doc.slides.isNotEmpty)
+            PdIconButton(
+              icon: _outline ? LucideIcons.presentation300 : LucideIcons.alignLeft300,
+              tooltip: _outline ? '幻灯片' : '文字大纲',
+              onTap: () => setState(() => _outline = !_outline),
+            ),
+          PdIconButton(icon: LucideIcons.ellipsis300, tooltip: '更多', onTap: _menu),
+        ],
       ),
       body: body,
     );
@@ -427,108 +440,3 @@ class _SheetView extends StatelessWidget {
 }
 
 /* ---------- PPT ---------- */
-
-/** _DeckView：逐页显示幻灯片 */
-class _DeckView extends StatelessWidget {
-  const _DeckView({required this.deck});
-
-  final Deck deck;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.pd;
-    if (deck.slides.isEmpty) return const EmptyHint(icon: LucideIcons.presentation300, text: '这份演示文稿没有幻灯片');
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
-      itemCount: deck.slides.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 14),
-      itemBuilder: (_, i) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 6),
-            child: Text(
-              '${i + 1} / ${deck.slides.length}',
-              style: TextStyle(fontSize: PdFont.time, color: c.text3),
-            ),
-          ),
-          _SlideView(slide: deck.slides[i], deck: deck),
-        ],
-      ),
-    );
-  }
-}
-
-/** _SlideView：一页幻灯片，形状按原稿比例定位，字号按幻灯片高度缩放 */
-class _SlideView extends StatelessWidget {
-  const _SlideView({required this.slide, required this.deck});
-
-  final Slide slide;
-  final Deck deck;
-
-  @override
-  Widget build(BuildContext context) {
-    return AspectRatio(
-      aspectRatio: deck.aspect,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(6),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.10), blurRadius: 16, offset: const Offset(0, 4))],
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: LayoutBuilder(
-          builder: (context, box) {
-            final k = box.maxHeight / deck.heightPt;
-            return Stack(
-              children: [
-                for (final s in slide.shapes)
-                  Positioned(
-                    left: s.x * box.maxWidth,
-                    top: s.y * box.maxHeight,
-                    width: s.w * box.maxWidth,
-                    height: s.h * box.maxHeight,
-                    child: s.image != null
-                        ? Image.memory(s.image!, fit: BoxFit.fill, errorBuilder: (_, _, _) => const SizedBox.shrink())
-                        : Container(
-                            color: s.fill == null ? null : Color(s.fill!),
-                            padding: EdgeInsets.all(4 * k),
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: s.title ? Alignment.centerLeft : Alignment.topLeft,
-                              child: SizedBox(
-                                width: s.w * box.maxWidth - 8 * k,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    for (final p in s.paras)
-                                      Padding(
-                                        padding: EdgeInsets.only(left: p.level * 18 * k, bottom: 4 * k),
-                                        child: Text.rich(
-                                          TextSpan(
-                                            children: [
-                                              for (final r in p.runs)
-                                                _span(
-                                                  r,
-                                                  TextStyle(fontSize: (r.size ?? (s.title ? 32 : 18)) * k, height: 1.25, color: const Color(0xFF1D1D1F), fontWeight: s.title ? FontWeight.w700 : null),
-                                                ),
-                                            ],
-                                          ),
-                                          textAlign: _align(p.align),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                  ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-}

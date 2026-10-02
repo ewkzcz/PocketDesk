@@ -387,6 +387,20 @@ void main() {
         await settle(tester);
         expect(find.text('TRUE'), findsOneWidget);
       }
+      if (kind == OfficeKind.slides) {
+        // 文字大纲与单页放大
+        await tester.tap(find.bySemanticsLabel('文字大纲'));
+        await settle(tester);
+        expect(find.text('第 1 页'), findsOneWidget);
+        expect(find.text('第一页标题'), findsOneWidget);
+        await tester.tap(find.bySemanticsLabel('幻灯片'));
+        await settle(tester);
+        await tester.tap(find.textContaining('第一页标题', findRichText: true).first);
+        await settle(tester);
+        expect(find.text('1 / 2'), findsWidgets);
+        await tester.tap(find.bySemanticsLabel('返回').last);
+        await settle(tester);
+      }
       await tester.tap(find.bySemanticsLabel('更多').last);
       await settle(tester);
       expect(find.text('用其他应用打开'), findsOneWidget);

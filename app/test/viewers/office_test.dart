@@ -5,6 +5,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketdesk/ui/viewers/office/office.dart';
+import 'package:pocketdesk/ui/viewers/office/pptx.dart';
 
 import '../support/office_fixtures.dart';
 

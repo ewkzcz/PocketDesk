@@ -1,7 +1,7 @@
 /**
  * Office 文档解析（docx、xlsx、pptx 都是 zip 包内的 XML）：
  * Word 取段落、标题层级、文字样式、列表、表格与图片；Excel 取各工作表的单元格（含共享字符串与日期）；
- * PPT 取幻灯片尺寸与每个形状的位置、文字和图片。
+ * PPT 的解析见 pptx.dart，文字与段落沿用这里的 Run、Para。
  */
 library;
 
@@ -90,7 +90,7 @@ int? _color(String? hex) {
 
 /** Run：一段样式相同的文字 */
 class Run {
-  const Run(this.text, {this.bold = false, this.italic = false, this.underline = false, this.strike = false, this.size, this.color});
+  const Run(this.text, {this.bold = false, this.italic = false, this.underline = false, this.strike = false, this.size, this.color, this.font = '', this.eaFont = '', this.spacing = 0, this.baseline = 0});
 
   final String text;
   final bool bold;
@@ -101,13 +101,45 @@ class Run {
   /** 字号（磅） */
   final double? size;
   final int? color;
+
+  /** 西文字体与中文字体（原稿里的字体名，显示时按类别换成手机上有的字体） */
+  final String font;
+  final String eaFont;
+
+  /** 字间距（磅）与上下标（正数上标、负数下标，按字号比例） */
+  final double spacing;
+  final double baseline;
 }
 
 /** Para：一个段落 */
 class Para {
-  const Para(this.runs, {this.heading = 0, this.list = false, this.level = 0, this.align = 'left'});
+  const Para(
+    this.runs, {
+    this.heading = 0,
+    this.list = false,
+    this.level = 0,
+    this.align = 'left',
+    this.bullet = '',
+    this.bulletColor,
+    this.marL = 0,
+    this.indent = 0,
+    this.spcBef = 0,
+    this.spcAft = 0,
+    this.lineSpacing,
+    this.size,
+  });
 
   final List<Run> runs;
+
+  /** 幻灯片段落：项目符号、左缩进与首行缩进（磅）、段前段后（磅，负数为行高倍数）、行距倍数、空段落字号 */
+  final String bullet;
+  final int? bulletColor;
+  final double marL;
+  final double indent;
+  final double spcBef;
+  final double spcAft;
+  final double? lineSpacing;
+  final double? size;
 
   /** 标题层级 1–6，正文为 0 */
   final int heading;
@@ -366,105 +398,4 @@ String formatNumber(String v) {
   var s = n.toStringAsFixed(10);
   s = s.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
   return s;
-}
-
-/* ---------- PPT ---------- */
-
-/** Shape：幻灯片上的一个形状，位置与大小为占幻灯片的比例（0–1） */
-class Shape {
-  const Shape({required this.x, required this.y, required this.w, required this.h, this.paras = const [], this.image, this.title = false, this.fill});
-
-  final double x;
-  final double y;
-  final double w;
-  final double h;
-  final List<Para> paras;
-  final Uint8List? image;
-  final bool title;
-  final int? fill;
-}
-
-/** Slide：一页幻灯片 */
-class Slide {
-  const Slide(this.shapes);
-  final List<Shape> shapes;
-}
-
-/** Deck：整个演示文稿，aspect 为宽高比 */
-class Deck {
-  const Deck(this.slides, this.aspect, this.heightPt);
-  final List<Slide> slides;
-  final double aspect;
-
-  /** 幻灯片高度（磅），用于换算字号 */
-  final double heightPt;
-}
-
-/**
- * parsePptx：解析演示文稿
- *
- * 处理流程：
- * 1、幻灯片尺寸与页序
- * 2、每页的文字框与图片，位置换算成比例；标题占位符标记为标题
- */
-Deck parsePptx(Uint8List bytes) {
-  final pkg = _Pkg(bytes);
-  final pres = pkg.xml('ppt/presentation.xml');
-  if (pres == null) throw const FormatException('不是有效的 PPT 文件');
-  // 1、尺寸与页序
-  final sz = _all(pres, 'sldSz').firstOrNull;
-  final cx = double.tryParse(sz == null ? '' : _attr(sz, 'cx') ?? '') ?? 12192000;
-  final cy = double.tryParse(sz == null ? '' : _attr(sz, 'cy') ?? '') ?? 6858000;
-  final rels = pkg.rels('ppt/presentation.xml');
-  final slides = <Slide>[];
-  for (final id in _all(pres, 'sldId')) {
-    final path = rels[_rid(id)];
-    final doc = path == null ? null : pkg.xml(path);
-    if (doc == null) continue;
-    final srels = pkg.rels(path!);
-    // 2、形状
-    final shapes = <Shape>[];
-    for (final e in _all(doc, 'spTree').firstOrNull?.descendants.whereType<XmlElement>() ?? const <XmlElement>[]) {
-      if (e.name.local != 'sp' && e.name.local != 'pic') continue;
-      final off = _all(e, 'off').firstOrNull;
-      final ext = _all(e, 'ext').where((x) => _attr(x, 'cx') != null).firstOrNull;
-      if (off == null || ext == null) continue;
-      double n(XmlElement x, String k) => double.tryParse(_attr(x, k) ?? '') ?? 0;
-      final ph = _all(e, 'ph').firstOrNull;
-      final phType = ph == null ? '' : _attr(ph, 'type') ?? '';
-      final base = (x: n(off, 'x') / cx, y: n(off, 'y') / cy, w: n(ext, 'cx') / cx, h: n(ext, 'cy') / cy);
-      if (e.name.local == 'pic') {
-        final blip = _all(e, 'blip').firstOrNull;
-        final target = blip == null ? null : srels[_attr(blip, 'embed') ?? ''];
-        final data = target == null ? null : pkg.bytes(target);
-        if (data != null) shapes.add(Shape(x: base.x, y: base.y, w: base.w, h: base.h, image: data));
-        continue;
-      }
-      final paras = <Para>[];
-      for (final p in _all(e, 'p')) {
-        final pPr = _child(p, 'pPr');
-        final runs = <Run>[
-          for (final r in p.childElements.where((x) => x.name.local == 'r' || x.name.local == 'fld'))
-            () {
-              final rPr = _child(r, 'rPr');
-              final solid = rPr == null ? null : _all(rPr, 'srgbClr').firstOrNull;
-              return Run(_child(r, 't')?.innerText ?? '',
-                  bold: rPr != null && _attr(rPr, 'b') == '1',
-                  italic: rPr != null && _attr(rPr, 'i') == '1',
-                  underline: rPr != null && (_attr(rPr, 'u') ?? 'none') != 'none',
-                  size: rPr == null ? null : (double.tryParse(_attr(rPr, 'sz') ?? '') ?? 0) / 100,
-                  color: solid == null ? null : _color(_attr(solid, 'val')));
-            }(),
-        ];
-        final algn = pPr == null ? '' : _attr(pPr, 'algn') ?? '';
-        paras.add(Para(runs, level: int.tryParse(pPr == null ? '' : _attr(pPr, 'lvl') ?? '') ?? 0, align: switch (algn) { 'ctr' => 'center', 'r' => 'right', _ => 'left' }));
-      }
-      final spPr = _child(e, 'spPr');
-      final fill = spPr == null || _child(spPr, 'solidFill') == null ? null : _color(_all(_child(spPr, 'solidFill')!, 'srgbClr').map((x) => _attr(x, 'val')).firstOrNull);
-      if (paras.every((p) => p.text.trim().isEmpty) && fill == null) continue;
-      shapes.add(Shape(x: base.x, y: base.y, w: base.w, h: base.h, paras: paras, title: phType == 'title' || phType == 'ctrTitle', fill: fill));
-    }
-    slides.add(Slide(shapes));
-  }
-  return Deck(slides, cx / cy, cy / 12700);
 }
