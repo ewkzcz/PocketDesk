@@ -1679,9 +1679,13 @@
     });
   });
 
+  var composing = false, composeEnd = 0;
+  document.addEventListener('compositionstart', function () { composing = true; });
+  document.addEventListener('compositionend', function () { composing = false; composeEnd = Date.now(); });
   document.addEventListener('keydown', function (e) {
+    var ime = e.isComposing || e.keyCode === 229 || composing || Date.now() - composeEnd < 100;
     if (e.key === 'Escape') { closeMenu(); if (modalRoot.innerHTML) { if (pairInfo && route().page !== 'pair') { closePair(); } else { closeModal(); } } }
-    if (e.target.id === 'input' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    if (e.target.id === 'input' && e.key === 'Enter' && !e.shiftKey && !ime) {
       e.preventDefault();
       send();
     }

@@ -377,8 +377,12 @@
     if (t.dataset.dl) { download(t.dataset.dl); }
   });
 
+  var composing = false, composeEnd = 0;
+  document.addEventListener('compositionstart', function () { composing = true; });
+  document.addEventListener('compositionend', function () { composing = false; composeEnd = Date.now(); });
   document.addEventListener('keydown', function (e) {
-    if (e.target.id === 'text' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    var ime = e.isComposing || e.keyCode === 229 || composing || Date.now() - composeEnd < 100;
+    if (e.target.id === 'text' && e.key === 'Enter' && !e.shiftKey && !ime) {
       e.preventDefault();
       send();
     }
