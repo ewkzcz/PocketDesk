@@ -456,6 +456,36 @@ class SkillInfo {
   SkillInfo copyWith({bool? enabled}) => SkillInfo(name: name, description: description, path: path, scope: scope, enabled: enabled ?? this.enabled);
 }
 
+/** ExternalSession：电脑上的 Claude Code 或 Codex 会话（不限目录） */
+class ExternalSession {
+  const ExternalSession({required this.kind, required this.id, required this.title, required this.cwd, required this.updatedAt, this.workspaceId = '', this.session = ''});
+
+  final String kind;
+  final String id;
+  final String title;
+
+  /** cwd：会话所在目录（电脑上的绝对路径） */
+  final String cwd;
+  final int updatedAt;
+
+  /** workspaceId：目录所在的工作区，不在任何工作区时为空 */
+  final String workspaceId;
+
+  /** session：已经接入过的聊天 ID */
+  final String session;
+
+  /** fromJson：解析 */
+  factory ExternalSession.fromJson(Map<String, dynamic> j) => ExternalSession(
+        kind: _s(j['kind']),
+        id: _s(j['id']),
+        title: _s(j['title']),
+        cwd: _s(j['cwd']),
+        updatedAt: _i(j['updatedAt']),
+        workspaceId: _s(j['workspaceId']),
+        session: _s(j['session']),
+      );
+}
+
 /** 解析辅助：供其他模块复用 */
 abstract final class Json {
   static String str(Object? v, [String d = '']) => _s(v, d);

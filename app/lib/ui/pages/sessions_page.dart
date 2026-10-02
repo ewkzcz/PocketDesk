@@ -15,6 +15,7 @@ import '../format.dart';
 import '../swipe_row.dart';
 import '../tokens.dart';
 import '../widgets.dart';
+import 'agent_pickers.dart';
 import 'pair_page.dart';
 import 'session_actions.dart';
 
@@ -56,6 +57,9 @@ class _SessionsPageState extends State<SessionsPage> {
     final items = <(String, IconData, Future<void> Function())>[
       // 文件传输助手删除后从这里重新打开
       if (scope != null) ('新建文件传输助手', LucideIcons.send300, _openAssistant),
+      // 电脑上没聊完的 Claude Code 与 Codex 会话，在手机上接着聊
+      if (scope != null && (status?.features.agents ?? true) && installed.any((k) => k == 'claude' || k == 'codex'))
+        ('接着电脑上的会话', LucideIcons.history300, () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ExternalSessionsPage()))),
       if (scope != null && (status?.features.agents ?? true))
         for (final k in installed) ('新建 ${agentFor(k).label} 会话', LucideIcons.messageSquarePlus300, () => newAgentSession(context, k)),
       // 免审批：Claude Code 跳过全部权限确认，Codex 不审批也不进沙箱

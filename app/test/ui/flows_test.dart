@@ -15,6 +15,7 @@ import 'package:pocketdesk/core/discovery.dart';
 import 'package:pocketdesk/data/models.dart';
 import 'package:pocketdesk/transfer/task.dart';
 import 'package:pocketdesk/ui/chat/select_text_page.dart';
+import 'package:pocketdesk/ui/pages/chat_page.dart';
 import 'package:pocketdesk/ui/pages/diff_page.dart';
 import 'package:pocketdesk/ui/pages/pair_page.dart';
 import 'package:pocketdesk/ui/pages/terminal_page.dart';
@@ -672,6 +673,26 @@ void main() {
     await settle(tester);
     expect(find.text('+const a = 2;'), findsOneWidget);
     await shot(tester, 'flow-diff');
+    await finish(tester, env);
+  });
+
+  testWidgets('接着电脑上的会话：列出电脑上的会话，目录不是工作区时确认添加后进入聊天', (tester) async {
+    final env = await start(tester);
+    await tester.tap(find.bySemanticsLabel('新建'));
+    await settle(tester);
+    await tester.tap(find.text('接着电脑上的会话'));
+    await settle(tester);
+    expect(find.text('电脑上没聊完的重构'), findsOneWidget);
+    expect(find.text('/Users/me/site'), findsOneWidget);
+    await shot(tester, 'flow-external');
+    await tester.tap(find.text('电脑上没聊完的重构'));
+    await settle(tester);
+    expect(find.text('添加工作区'), findsOneWidget);
+    await tester.tap(find.text('添加并继续'));
+    await settle(tester, 20);
+    expect((env.server.bodies['POST /api/ws'] as Map)['path'], '/Users/me/site');
+    expect((env.server.bodies['POST /api/sessions/import'] as Map)['agentSessionId'], 'ext-1');
+    expect(find.byType(ChatPage), findsOneWidget);
     await finish(tester, env);
   });
 

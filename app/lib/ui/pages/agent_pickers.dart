@@ -1,5 +1,5 @@
 /**
- * Agent 选项：切换模型与模型供应商（电脑上 CC Switch 的供应商）、查看并选用 skill。
+ * Agent 选项：切换模型与模型供应商（电脑上 CC Switch 的供应商）、查看并选用 skill、接着电脑上已有的会话聊。
  */
 library;
 
@@ -8,11 +8,15 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_state.dart';
+import '../../core/auth_gate.dart';
 import '../../data/models.dart';
 import '../../net/api.dart';
+import '../agents.dart';
 import '../chat/markdown.dart';
+import '../format.dart';
 import '../tokens.dart';
 import '../widgets.dart';
+import 'chat_page.dart';
 
 /** supportsProvider：可以切换供应商与 skill 的 Agent */
 bool supportsProvider(SessionInfo s) => s.kind == 'claude' || s.kind == 'codex';
@@ -294,6 +298,142 @@ class _SkillDetailState extends State<_SkillDetail> {
                 Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(widget.skill.description, style: TextStyle(fontSize: PdFont.summary, color: c.text2, height: 1.5))),
               MdText(text),
             ]),
+    );
+  }
+}
+
+/**
+ * ExternalSessionsPage：电脑上最近的 Claude Code 与 Codex 会话（不限目录），选一个接着聊
+ */
+class ExternalSessionsPage extends StatefulWidget {
+  const ExternalSessionsPage({super.key, this.kind = ''});
+
+  /** kind：只显示某种 Agent 的会话，空为全部 */
+  final String kind;
+
+  @override
+  State<ExternalSessionsPage> createState() => _ExternalSessionsPageState();
+}
+
+class _ExternalSessionsPageState extends State<ExternalSessionsPage> {
+  List<ExternalSession>? _list;
+  String _error = '';
+  String _q = '';
+  bool _opening = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _error = '');
+    try {
+      final list = await context.read<AppState>().scope!.conn.api.external();
+      if (mounted) setState(() => _list = widget.kind.isEmpty ? list : list.where((x) => x.kind == widget.kind).toList());
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    }
+  }
+
+  /**
+   * _open：接入并打开
+   *
+   * 处理流程：
+   * 1、已接入过的直接打开原聊天
+   * 2、接入；目录还不是工作区时确认添加后重试
+   * 3、打开聊天
+   */
+  Future<void> _open(ExternalSession x) async {
+    if (_opening) return;
+    final scope = context.read<AppState>().scope;
+    if (scope == null) return;
+    setState(() => _opening = true);
+    try {
+      SessionInfo? s;
+      // 1、已接入
+      if (x.session.isNotEmpty) {
+        await scope.sessions.refresh().catchError((Object _) {});
+        s = scope.sessions.byId(x.session);
+      }
+      // 2、接入
+      if (s == null) {
+        try {
+          s = await scope.conn.api.importSession(x);
+        } on ApiException catch (e) {
+          if (e.code != 'no_workspace' || !mounted) rethrow;
+          final ok = await confirm(context, title: '添加工作区', message: '「${x.cwd}」还不是工作区。添加后手机可以浏览这个文件夹，并接着这个会话聊。', ok: '添加并继续');
+          if (!ok || !mounted) return;
+          await scope.conn.api.addWorkspace(x.cwd);
+          s = await scope.conn.api.importSession(x);
+        }
+        scope.sessions.upsert(s);
+      }
+      // 3、打开（替换当前列表页）
+      if (!mounted || !await context.read<AuthGate>().ensure('验证身份以进入会话') || !mounted) return;
+      final id = s.id;
+      await Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => ChatPage(sessionId: id)));
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.pd;
+    final all = _list;
+    final q = _q.trim().toLowerCase();
+    final list = all == null || q.isEmpty ? all : all.where((x) => x.title.toLowerCase().contains(q) || x.cwd.toLowerCase().contains(q)).toList();
+    return Scaffold(
+      appBar: const PdBar(title: '接着电脑上的会话'),
+      body: Column(children: [
+        Padding(padding: const EdgeInsets.fromLTRB(12, 8, 12, 8), child: SearchField(hint: '搜索标题或目录', onChanged: (v) => setState(() => _q = v))),
+        if (_opening) LinearProgressIndicator(minHeight: 2, color: c.accent, backgroundColor: Colors.transparent),
+        Expanded(
+          child: list == null
+              ? (_error.isNotEmpty ? EmptyHint(icon: LucideIcons.history300, text: _error, action: '重试', onAction: _load) : Center(child: CircularProgressIndicator(color: c.accent)))
+              : list.isEmpty
+                  ? const EmptyHint(icon: LucideIcons.history300, text: '电脑上没有找到 Claude Code 或 Codex 的会话')
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView.separated(
+                        itemCount: list.length,
+                        separatorBuilder: (_, _) => const InsetDivider(indent: 76),
+                        itemBuilder: (_, i) {
+                          final x = list[i];
+                          return Material(
+                            color: c.card,
+                            child: InkWell(
+                              onTap: () => _open(x),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: PdSize.gutter, vertical: 12),
+                                child: Row(children: [
+                                  AgentAvatar(x.kind),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                      Row(children: [
+                                        Flexible(child: Text(x.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.listTitle, color: c.text))),
+                                        if (x.session.isNotEmpty) ...[const SizedBox(width: 6), Tag('已接入', color: c.accent.withValues(alpha: 0.12), textColor: c.accent)],
+                                      ]),
+                                      const SizedBox(height: 4),
+                                      Text(x.cwd, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.time, color: c.text3)),
+                                    ]),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(formatListTime(x.updatedAt), style: TextStyle(fontSize: PdFont.time, color: c.text4)),
+                                ]),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+        ),
+      ]),
     );
   }
 }

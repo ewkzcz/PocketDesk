@@ -25,7 +25,6 @@ import '../chat/commands.dart';
 import '../chat/input_bar.dart';
 import '../chat/items.dart';
 import '../chat/select_text_page.dart';
-import '../format.dart';
 import '../pick.dart';
 import '../share.dart';
 import '../tokens.dart';
@@ -150,6 +149,8 @@ class _ChatPageState extends State<ChatPage> {
     _phrases = await db.phrases();
     // 从通知进入时直接弹出待审批
     if (widget.focusApproval.isNotEmpty) unawaited(_focusApproval());
+    // 接入过电脑上的会话时，补上电脑上新增的对话
+    if (scope.sessions.byId(_id)?.isAgent ?? false) unawaited(scope.conn.api.syncSession(_id).catchError((Object _) {}));
     try {
       _workspaces = await scope.conn.api.workspaces();
       if (mounted) setState(() {});
@@ -362,7 +363,7 @@ class _ChatPageState extends State<ChatPage> {
           _scope!.sessions.upsert(n);
           if (mounted) await Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => ChatPage(sessionId: n.id)));
         case '/resume':
-          await _resume();
+          await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ExternalSessionsPage(kind: s.kind)));
       }
     } on ApiException catch (e) {
       if (mounted) toast(context, e.message);
@@ -404,22 +405,6 @@ class _ChatPageState extends State<ChatPage> {
     if (dir == null) return;
     _scope!.sessions.upsert(await _api.patchSession(_id, cwd: dir));
     if (mounted) toast(context, '工作目录已切换');
-  }
-
-  /** _resume：从电脑上已有的会话中选一个接着聊 */
-  Future<void> _resume() async {
-    final s = _session!;
-    final list = await _api.history(s.kind, s.workspaceId, s.cwd);
-    if (!mounted) return;
-    if (list.isEmpty) {
-      toast(context, '这个目录下没有可以接着聊的会话');
-      return;
-    }
-    final i = await actionSheet(context, [for (final h in list.take(30)) SheetAction(h.title.isEmpty ? '（无标题）' : h.title, subtitle: formatListTime(h.updatedAt))], title: '接着电脑上的会话聊');
-    if (i == null) return;
-    final n = await _api.createSession(s.kind, s.workspaceId, s.cwd, agentSessionId: list[i].id);
-    _scope!.sessions.upsert(n);
-    if (mounted) await Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => ChatPage(sessionId: n.id)));
   }
 
   /** _openDiff：查看改动 */

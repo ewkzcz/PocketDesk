@@ -212,6 +212,17 @@ class UiServer {
       ]);
     }
     if (p.startsWith('/api/agents/') && p.endsWith('/skill')) return _json({'text': '---\nname: archify\n---\n# 架构图\n按说明画图'});
+    if (p == '/api/external') {
+      return _json([
+        {'kind': 'claude', 'id': 'ext-1', 'title': '电脑上没聊完的重构', 'cwd': '/Users/me/site', 'updatedAt': ago(const Duration(minutes: 5)), 'workspaceId': '', 'session': ''},
+      ]);
+    }
+    if (p == '/api/sessions/import') {
+      if (!workspaces.any((w) => w['rootPath'] == '/Users/me/site')) return _json({'code': 'no_workspace', 'message': '这个会话的目录还不是工作区'}, 409);
+      final s = {'id': 'imp1', 'kind': 'claude', 'title': 'Claude Code', 'workspaceId': 'w4', 'cwd': '.', 'model': '', 'state': 'idle', 'pinned': false, 'lastSeq': 0, 'preview': '', 'updatedAt': ago(Duration.zero), 'agentSessionId': 'ext-1'};
+      sessions.add(s);
+      return _json(s, 201);
+    }
     if (p.startsWith('/api/agents/') && p.endsWith('/history')) return _json(<Object>[]);
     if (p.endsWith('/diff')) {
       if (q.containsKey('ref')) return _json({'diff': '--- a/notes.md\n+++ b/notes.md\n@@ -1,1 +1,2 @@\n 标题\n+本轮新增的一行'});

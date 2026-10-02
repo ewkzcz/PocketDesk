@@ -285,6 +285,16 @@ class PdApi {
   Future<void> setSkill(String kind, String session, String path, bool enabled) =>
       json('PUT', '/api/agents/$kind/skills', query: {'session': session}, body: {'path': path, 'enabled': enabled}, wait: const Duration(seconds: 30));
 
+  /** external：电脑上最近的 Claude Code 与 Codex 会话 */
+  Future<List<ExternalSession>> external() async =>
+      Json.list(await json('GET', '/api/external', query: {'limit': '80'})).map((e) => ExternalSession.fromJson(Json.map(e))).toList();
+
+  /** importSession：接着电脑上的会话聊，返回聊天；目录还不是工作区时抛出 no_workspace */
+  Future<SessionInfo> importSession(ExternalSession x) async =>
+      SessionInfo.fromJson(Json.map(await json('POST', '/api/sessions/import', body: {'kind': x.kind, 'agentSessionId': x.id, 'cwd': x.cwd, 'title': x.title}, wait: const Duration(seconds: 60))));
+
+  /** syncSession：补上电脑上新增的对话 */
+  Future<void> syncSession(String id) => send('POST', '/api/sessions/$id/sync');
 
   /** history：电脑上已有的会话 */
   Future<List<HistoryItem>> history(String kind, String ws, String cwd) async =>
