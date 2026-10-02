@@ -674,4 +674,12 @@ void main() {
     await shot(tester, 'flow-diff');
     await finish(tester, env);
   });
+
+  testWidgets('本轮改动按编号查看差异', (tester) async {
+    final env = await start(tester, page: const DiffPage(sessionId: 'cc', ws: _ws, initial: FileChange(path: 'notes.md', added: 1, removed: 0, status: 'modified', ref: 'r1')));
+    await settle(tester);
+    expect(find.text('+本轮新增的一行'), findsOneWidget);
+    expect(env.server.calls, contains('GET /api/sessions/cc/diff'));
+    await finish(tester, env);
+  });
 }

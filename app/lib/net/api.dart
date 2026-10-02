@@ -253,8 +253,9 @@ class PdApi {
     return (files: Json.list(j['files']).map((e) => FileChange.fromJson(Json.map(e))).toList(), git: Json.boolean(j['git']));
   }
 
-  /** diffFile：单个文件差异 */
-  Future<String> diffFile(String id, String path) async => Json.str(Json.map(await json('GET', '/api/sessions/$id/diff', query: {'path': path}))['diff']);
+  /** diffFile：单个文件差异；带编号时取那一轮保存的差异 */
+  Future<String> diffFile(String id, String path, {String ref = ''}) async =>
+      Json.str(Json.map(await json('GET', '/api/sessions/$id/diff', query: ref.isNotEmpty ? {'ref': ref} : {'path': path}))['diff']);
 
   /** decide：审批 */
   Future<void> decide(String approvalId, String action) => send('POST', '/api/approvals/$approvalId', body: {'action': action});

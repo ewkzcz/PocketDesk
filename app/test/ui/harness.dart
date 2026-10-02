@@ -198,6 +198,7 @@ class UiServer {
     if (p.startsWith('/api/agents/') && p.endsWith('/models')) return _json(['sonnet', 'opus']);
     if (p.startsWith('/api/agents/') && p.endsWith('/history')) return _json(<Object>[]);
     if (p.endsWith('/diff')) {
+      if (q.containsKey('ref')) return _json({'diff': '--- a/notes.md\n+++ b/notes.md\n@@ -1,1 +1,2 @@\n 标题\n+本轮新增的一行'});
       if (q.containsKey('path')) return _json({'diff': 'diff --git a/x b/x\n@@ -1,3 +1,3 @@\n-const a = 1;\n+const a = 2;\n unchanged line'});
       return _json({'files': events['cc']![6]['data']['files'], 'git': true});
     }

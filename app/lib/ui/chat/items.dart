@@ -430,7 +430,10 @@ class DiffCard extends StatelessWidget {
   /** _stat：增删行数或状态 */
   static List<Widget> _stat(PdColors c, FileChange f) {
     const s = TextStyle(fontSize: 12);
-    if (f.binary) return [Text('二进制', style: s.copyWith(color: c.text3))];
+    if (f.binary) {
+      final what = f.status == 'A' || f.status == 'added' ? '新建' : (f.status == 'D' || f.status == 'deleted' ? '删除' : '已修改');
+      return [Text('$what · 二进制', style: s.copyWith(color: c.text3))];
+    }
     if (f.status == 'A' || f.status == 'added') return [Text('+${f.added} 新建', style: s.copyWith(color: c.accent))];
     if (f.status == 'D' || f.status == 'deleted') return [Text('删除', style: s.copyWith(color: c.danger))];
     return [

@@ -362,9 +362,13 @@ class HistoryItem {
 
 /** FileChange：改动清单中的一项 */
 class FileChange {
-  const FileChange({required this.path, required this.added, required this.removed, required this.status, this.binary = false});
+  const FileChange({required this.path, required this.added, required this.removed, required this.status, this.binary = false, this.abs = '', this.ref = ''});
 
   final String path;
+  final String abs;
+
+  /** ref：这一轮保存的差异编号，查看差异时带上 */
+  final String ref;
   final int added;
   final int removed;
   final String status;
@@ -373,10 +377,12 @@ class FileChange {
   /** fromJson：解析 */
   factory FileChange.fromJson(Map<String, dynamic> j) => FileChange(
         path: _s(j['path']),
+        abs: _s(j['abs']),
         added: _i(j['added']),
         removed: _i(j['removed']),
         status: _s(j['status']),
         binary: _b(j['binary']),
+        ref: _s(j['ref']),
       );
 }
 

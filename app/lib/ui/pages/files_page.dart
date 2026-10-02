@@ -30,10 +30,12 @@ import 'session_actions.dart';
 const _sorts = [('', '默认'), ('name', '名称'), ('time', '时间'), ('size', '大小')];
 
 /**
- * FilesPage：工作区浏览
+ * FilesPage：工作区浏览；指定 openDir 时作为独立页面打开，直接定位到「此电脑」中的这个文件夹
  */
 class FilesPage extends StatefulWidget {
-  const FilesPage({super.key});
+  const FilesPage({super.key, this.openDir = ''});
+
+  final String openDir;
 
   @override
   State<FilesPage> createState() => _FilesPageState();
@@ -56,6 +58,7 @@ class _FilesPageState extends State<FilesPage> {
   HostScope? _scope;
   int _req = 0;
   bool _wasOnline = false;
+  bool _opened = false;
 
   @override
   void didChangeDependencies() {
@@ -102,12 +105,19 @@ class _FilesPageState extends State<FilesPage> {
       // 默认工作目录在最前，「此电脑」放最后；初次打开默认工作目录
       // 手机自己的工作空间放在最后，两边都能在这里管理
       final sorted = [...list.where((w) => w.isDefault), ...list.where((w) => !w.isDefault && !w.system), ...list.where((w) => w.system), _phoneWs()];
+      final pc = list.where((w) => w.system).firstOrNull;
+      final target = widget.openDir.isEmpty || pc == null ? '' : pc.relOf(widget.openDir);
       setState(() {
         _workspaces = sorted;
-        _ws = sorted.where((w) => w.id == _ws?.id).firstOrNull ?? sorted.firstOrNull;
+        _ws = widget.openDir.isNotEmpty && pc != null && !_opened ? pc : sorted.where((w) => w.id == _ws?.id).firstOrNull ?? sorted.firstOrNull;
       });
       if (_ws != null) {
-        if (_ws!.system && _path.isEmpty) _path = _ws!.home;
+        if (_ws!.system && widget.openDir.isNotEmpty && !_opened) {
+          _path = target;
+          _opened = true;
+        } else if (_ws!.system && _path.isEmpty) {
+          _path = _ws!.home;
+        }
         await _load();
       } else {
         setState(() => _loading = false);
@@ -465,7 +475,7 @@ class _FilesPageState extends State<FilesPage> {
     final parts = _path.isEmpty ? <String>[] : _path.split('/');
     final sortLabel = _sorts.firstWhere((s) => s.$1 == _sort).$2;
     return PopScope(
-      canPop: _path.isEmpty && _results == null,
+      canPop: _results == null && (_path.isEmpty || widget.openDir.isNotEmpty),
       onPopInvokedWithResult: (did, _) {
         if (did) return;
         if (_results != null) {
@@ -480,7 +490,7 @@ class _FilesPageState extends State<FilesPage> {
       child: Scaffold(
         appBar: PdBar(
           title: '文件',
-          leading: parts.isNotEmpty ? PdIconButton(icon: LucideIcons.chevronLeft300, tooltip: '上一级', onTap: _up) : null,
+          leading: parts.isNotEmpty && widget.openDir.isEmpty ? PdIconButton(icon: LucideIcons.chevronLeft300, tooltip: '上一级', onTap: _up) : null,
           actions: [
             if (_ws != null && !_readOnly) PdIconButton(icon: LucideIcons.circlePlus300, tooltip: '上传或新建', onTap: _add),
             PdIconButton(icon: LucideIcons.ellipsis300, tooltip: '更多', onTap: _ws == null ? null : _more),
