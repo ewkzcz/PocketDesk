@@ -1,5 +1,5 @@
 /**
- * Agent 选项：切换模型与模型供应商（电脑上 CC Switch 的供应商）。
+ * Agent 选项：切换模型与模型供应商（电脑上 CC Switch 的供应商）、查看并选用 skill。
  */
 library;
 
@@ -10,6 +10,8 @@ import 'package:provider/provider.dart';
 import '../../core/app_state.dart';
 import '../../data/models.dart';
 import '../../net/api.dart';
+import '../chat/markdown.dart';
+import '../tokens.dart';
 import '../widgets.dart';
 
 /** supportsProvider：可以切换供应商与 skill 的 Agent */
@@ -111,5 +113,187 @@ Future<String> providerName(PdApi api, SessionInfo s) async {
     return (await api.providers(s.kind)).list.where((p) => p.id == s.provider).firstOrNull?.name ?? '';
   } on ApiException {
     return '';
+  }
+}
+
+/**
+ * SkillsPage：skill 列表，右侧开关启用或停用，勾选的随下一条消息使用，点开查看说明；返回勾选结果
+ */
+class SkillsPage extends StatefulWidget {
+  const SkillsPage({super.key, required this.session, this.picked = const []});
+
+  final SessionInfo session;
+  final List<SkillInfo> picked;
+
+  @override
+  State<SkillsPage> createState() => _SkillsPageState();
+}
+
+class _SkillsPageState extends State<SkillsPage> {
+  List<SkillInfo>? _list;
+  String _error = '';
+  late final Set<String> _picked = {for (final k in widget.picked) k.path};
+  final Set<String> _busy = {};
+
+  PdApi get _api => context.read<AppState>().scope!.conn.api;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  /** _load：读取 skill 列表 */
+  Future<void> _load() async {
+    setState(() => _error = '');
+    try {
+      final list = await _api.skills(widget.session.kind, widget.session.id);
+      if (mounted) setState(() => _list = list);
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    }
+  }
+
+  /** _toggle：启用或停用 */
+  Future<void> _toggle(SkillInfo k, bool on) async {
+    setState(() => _busy.add(k.path));
+    try {
+      await _api.setSkill(widget.session.kind, widget.session.id, k.path, on);
+      if (!mounted) return;
+      setState(() {
+        _list = [for (final x in _list!) x.path == k.path ? x.copyWith(enabled: on) : x];
+        if (!on) _picked.remove(k.path);
+      });
+      toast(context, on ? '已启用，新的一轮生效' : '已停用');
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } finally {
+      if (mounted) setState(() => _busy.remove(k.path));
+    }
+  }
+
+  /** _done：返回勾选的 skill */
+  void _done() => Navigator.of(context).pop([for (final k in _list ?? const <SkillInfo>[]) if (_picked.contains(k.path)) k]);
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.pd;
+    final list = _list;
+    const scope = {'project': '项目', 'user': '本机', 'system': '自带', 'admin': '管理员'};
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (did, _) {
+        if (!did) _done();
+      },
+      child: Scaffold(
+        appBar: PdBar(title: _picked.isEmpty ? 'Skills' : 'Skills（已选 ${_picked.length}）', actions: [
+          PdIconButton(icon: LucideIcons.check300, tooltip: '完成', color: c.accent, onTap: _done),
+        ]),
+        body: list == null
+            ? (_error.isNotEmpty ? EmptyHint(icon: LucideIcons.sparkles300, text: _error, action: '重试', onAction: _load) : Center(child: CircularProgressIndicator(color: c.accent)))
+            : list.isEmpty
+                ? const EmptyHint(icon: LucideIcons.sparkles300, text: '电脑上没有找到已安装的 skill')
+                : ListView(padding: const EdgeInsets.only(top: 12, bottom: 24), children: [
+                    PdGroup(
+                      footer: '勾选的 skill 会随下一条消息使用；右侧开关控制 Agent 是否加载它。',
+                      children: [
+                        for (final k in list)
+                          Material(
+                            color: c.card,
+                            child: InkWell(
+                              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => _SkillDetail(session: widget.session, skill: k))),
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(4, 6, PdSize.gutter, 6),
+                                child: Row(children: [
+                                  Checkbox(
+                                    value: _picked.contains(k.path),
+                                    activeColor: c.accent,
+                                    onChanged: !k.enabled
+                                        ? null
+                                        : (v) => setState(() {
+                                              if (v == true && _picked.length >= 8) {
+                                                toast(context, '一次最多选 8 个');
+                                                return;
+                                              }
+                                              v == true ? _picked.add(k.path) : _picked.remove(k.path);
+                                            }),
+                                  ),
+                                  Expanded(
+                                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                      Row(children: [
+                                        Flexible(child: Text(k.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.item, color: k.enabled ? c.text : c.text3))),
+                                        const SizedBox(width: 6),
+                                        Tag(scope[k.scope] ?? k.scope, color: c.page, textColor: c.text3),
+                                      ]),
+                                      if (k.description.isNotEmpty)
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 2),
+                                          child: Text(k.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.time, color: c.text3, height: 1.35)),
+                                        ),
+                                    ]),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _busy.contains(k.path)
+                                      ? SizedBox(width: 48, child: Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: c.accent))))
+                                      : Switch(value: k.enabled, onChanged: (v) => _toggle(k, v)),
+                                ]),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ]),
+      ),
+    );
+  }
+}
+
+/** _SkillDetail：skill 说明全文 */
+class _SkillDetail extends StatefulWidget {
+  const _SkillDetail({required this.session, required this.skill});
+
+  final SessionInfo session;
+  final SkillInfo skill;
+
+  @override
+  State<_SkillDetail> createState() => _SkillDetailState();
+}
+
+class _SkillDetailState extends State<_SkillDetail> {
+  String? _text;
+  String _error = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final t = await context.read<AppState>().scope!.conn.api.skillText(widget.session.kind, widget.session.id, widget.skill.path);
+      // 去掉开头的属性块，只显示正文
+      final body = t.replaceFirst(RegExp(r'^---\n[\s\S]*?\n---\n'), '');
+      if (mounted) setState(() => _text = body);
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.pd;
+    final text = _text;
+    return Scaffold(
+      appBar: PdBar(title: widget.skill.name, subtitle: widget.skill.path),
+      backgroundColor: c.card,
+      body: text == null
+          ? (_error.isNotEmpty ? EmptyHint(icon: LucideIcons.fileX300, text: _error) : Center(child: CircularProgressIndicator(color: c.accent)))
+          : ListView(padding: const EdgeInsets.all(PdSize.gutter), children: [
+              if (widget.skill.description.isNotEmpty)
+                Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(widget.skill.description, style: TextStyle(fontSize: PdFont.summary, color: c.text2, height: 1.5))),
+              MdText(text),
+            ]),
+    );
   }
 }

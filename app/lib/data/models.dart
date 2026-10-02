@@ -431,6 +431,31 @@ class ProviderInfo {
       );
 }
 
+/** SkillInfo：已安装的 skill */
+class SkillInfo {
+  const SkillInfo({required this.name, required this.description, required this.path, required this.scope, required this.enabled});
+
+  final String name;
+  final String description;
+  final String path;
+
+  /** scope：project 项目、user 本机、system 自带 */
+  final String scope;
+  final bool enabled;
+
+  /** fromJson：解析 */
+  factory SkillInfo.fromJson(Map<String, dynamic> j) => SkillInfo(
+        name: _s(j['name']),
+        description: _s(j['description']),
+        path: _s(j['path']),
+        scope: _s(j['scope']),
+        enabled: _b(j['enabled']),
+      );
+
+  /** copyWith：修改启用状态 */
+  SkillInfo copyWith({bool? enabled}) => SkillInfo(name: name, description: description, path: path, scope: scope, enabled: enabled ?? this.enabled);
+}
+
 /** 解析辅助：供其他模块复用 */
 abstract final class Json {
   static String str(Object? v, [String d = '']) => _s(v, d);

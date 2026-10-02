@@ -110,6 +110,15 @@ class UserBubble extends StatelessWidget {
         mine: true,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           if (text.isNotEmpty) Text(text, style: TextStyle(fontSize: PdFont.item, height: 1.5, color: c.bubbleMineText)),
+          for (final k in item.skills)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(LucideIcons.sparkles300, size: 14, color: c.bubbleMineText.withValues(alpha: 0.6)),
+                const SizedBox(width: 4),
+                Flexible(child: Text(k, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.summary, color: c.bubbleMineText.withValues(alpha: 0.75)))),
+              ]),
+            ),
           for (final a in item.attachments)
             Padding(
               padding: const EdgeInsets.only(top: 4),

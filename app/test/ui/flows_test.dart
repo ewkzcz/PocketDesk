@@ -675,6 +675,42 @@ void main() {
     await finish(tester, env);
   });
 
+  testWidgets('Skills：查看列表、勾选后随下一条消息发送；模型供应商只改这个会话', (tester) async {
+    final env = await start(tester);
+    await tester.tap(find.text('Claude Code · 重构支付模块'));
+    await settle(tester, 20);
+    expect(find.text('/skills 选用 skill'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).last, '/skills');
+    await settle(tester);
+    await tester.tap(find.text('发送'));
+    await settle(tester, 20);
+    expect(find.text('archify'), findsOneWidget);
+    expect(find.text('pdf'), findsOneWidget);
+    await shot(tester, 'flow-skills');
+    await tester.tap(find.byType(Checkbox).first);
+    await settle(tester);
+    expect(find.text('Skills（已选 1）'), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('完成'));
+    await settle(tester);
+    expect(find.text('archify'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).last, '画一张架构图');
+    await settle(tester);
+    await tester.tap(find.text('发送'));
+    await settle(tester);
+    expect((env.server.sent.last['skills'] as List).first['name'], 'archify');
+    // 供应商
+    await tester.tap(find.bySemanticsLabel('会话设置'));
+    await settle(tester);
+    await tester.tap(find.text('模型供应商'));
+    await settle(tester);
+    expect(find.text('跟随电脑当前设置'), findsOneWidget);
+    expect(find.text('当前：DeepSeek'), findsOneWidget);
+    await tester.tap(find.text('中转站'));
+    await settle(tester);
+    expect((env.server.bodies['PATCH /api/sessions/cc'] as Map)['provider'], 'relay');
+    await finish(tester, env);
+  });
+
   testWidgets('本轮改动按编号查看差异', (tester) async {
     final env = await start(tester, page: const DiffPage(sessionId: 'cc', ws: _ws, initial: FileChange(path: 'notes.md', added: 1, removed: 0, status: 'modified', ref: 'r1')));
     await settle(tester);

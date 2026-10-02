@@ -236,11 +236,12 @@ class PdApi {
   }
 
   /** sendMessage：发送消息 */
-  Future<void> sendMessage(String id, String text, {List<String> attachments = const [], String clientId = ''}) =>
+  Future<void> sendMessage(String id, String text, {List<String> attachments = const [], String clientId = '', List<SkillInfo> skills = const []}) =>
       send('POST', '/api/sessions/$id/messages', body: {
         'text': text,
         if (attachments.isNotEmpty) 'attachments': attachments,
         if (clientId.isNotEmpty) 'clientId': clientId,
+        if (skills.isNotEmpty) 'skills': [for (final k in skills) {'name': k.name, 'path': k.path}],
       });
 
   /** interrupt：打断 */
@@ -271,6 +272,18 @@ class PdApi {
     final j = Json.map(await json('GET', '/api/agents/$kind/providers'));
     return (available: Json.boolean(j['available']), list: Json.list(j['list']).map((e) => ProviderInfo.fromJson(Json.map(e))).toList());
   }
+
+  /** skills：会话可用的 skill */
+  Future<List<SkillInfo>> skills(String kind, String session) async =>
+      Json.list(await json('GET', '/api/agents/$kind/skills', query: {'session': session}, wait: const Duration(seconds: 30))).map((e) => SkillInfo.fromJson(Json.map(e))).toList();
+
+  /** skillText：skill 的说明全文 */
+  Future<String> skillText(String kind, String session, String path) async =>
+      Json.str(Json.map(await json('GET', '/api/agents/$kind/skill', query: {'session': session, 'path': path}, wait: const Duration(seconds: 30)))['text']);
+
+  /** setSkill：启用或停用 skill */
+  Future<void> setSkill(String kind, String session, String path, bool enabled) =>
+      json('PUT', '/api/agents/$kind/skills', query: {'session': session}, body: {'path': path, 'enabled': enabled}, wait: const Duration(seconds: 30));
 
 
   /** history：电脑上已有的会话 */

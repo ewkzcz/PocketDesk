@@ -196,6 +196,22 @@ class UiServer {
       return _json(s);
     }
     if (p.startsWith('/api/agents/') && p.endsWith('/models')) return _json(['sonnet', 'opus']);
+    if (p.startsWith('/api/agents/') && p.endsWith('/providers')) {
+      return _json({
+        'available': true,
+        'list': [
+          {'id': 'ds', 'name': 'DeepSeek', 'current': true, 'host': 'api.deepseek.com', 'models': ['deepseek-flash']},
+          {'id': 'relay', 'name': '中转站', 'current': false, 'host': 'relay.example', 'models': []},
+        ],
+      });
+    }
+    if (p.startsWith('/api/agents/') && p.endsWith('/skills') && req.method == 'GET') {
+      return _json([
+        {'name': 'archify', 'description': '画架构图', 'path': '/Users/me/.claude/skills/archify/SKILL.md', 'scope': 'user', 'enabled': true},
+        {'name': 'pdf', 'description': '处理 PDF', 'path': '/Users/me/.claude/skills/pdf/SKILL.md', 'scope': 'user', 'enabled': false},
+      ]);
+    }
+    if (p.startsWith('/api/agents/') && p.endsWith('/skill')) return _json({'text': '---\nname: archify\n---\n# 架构图\n按说明画图'});
     if (p.startsWith('/api/agents/') && p.endsWith('/history')) return _json(<Object>[]);
     if (p.endsWith('/diff')) {
       if (q.containsKey('ref')) return _json({'diff': '--- a/notes.md\n+++ b/notes.md\n@@ -1,1 +1,2 @@\n 标题\n+本轮新增的一行'});

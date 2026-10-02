@@ -18,12 +18,15 @@ sealed class ChatItem {
 
 /** UserItem：我发出的消息 */
 class UserItem extends ChatItem {
-  UserItem(super.seq, super.at, {required this.text, this.attachments = const [], this.queued = false, this.fileName = ''});
+  UserItem(super.seq, super.at, {required this.text, this.attachments = const [], this.queued = false, this.fileName = '', this.skills = const []});
 
   final String text;
   final List<String> attachments;
   bool queued;
   final String fileName;
+
+  /** skills：这条消息使用的 skill */
+  final List<String> skills;
 }
 
 /** AgentItem：Agent 的回复文本 */
@@ -217,7 +220,8 @@ class ChatLog {
             text: str('text'),
             attachments: Json.list(d['attachments']).map((x) => x.toString()).toList(),
             queued: Json.boolean(d['queued']),
-            fileName: Json.str(f['name'])));
+            fileName: Json.str(f['name']),
+            skills: Json.list(d['skills']).map((x) => x.toString()).toList()));
       case 'msg.host':
         add(null, AgentItem(e.seq, e.createdAt, id: 'host-${e.seq}', text: str('text'), streaming: false));
       case 'msg.delta':

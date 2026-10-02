@@ -1,5 +1,5 @@
 /**
- * 会话设置：改名、置顶、消息提醒、模型与供应商、工作目录、用量与费用、查看改动、删除手机上的记录。
+ * 会话设置：改名、置顶、消息提醒、模型与供应商、skill、工作目录、用量与费用、查看改动、删除手机上的记录。
  */
 library;
 
@@ -101,6 +101,12 @@ class SessionSettingsPage extends StatelessWidget {
                       value: s.provider.isEmpty ? '跟随电脑' : (snap.data ?? ''),
                       onTap: () => switchProvider(context, s),
                     ),
+                  ),
+                if (supportsProvider(s))
+                  PdCell(
+                    title: 'Skills',
+                    subtitle: '查看说明、启用或停用',
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => SkillsPage(session: s))),
                   ),
                 PdCell(
                   title: '工作目录',

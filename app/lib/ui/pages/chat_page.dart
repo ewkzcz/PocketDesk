@@ -86,6 +86,9 @@ class _ChatPageState extends State<ChatPage> {
   Timer? _draftTimer;
   bool _sending = false;
 
+  /** 随下一条消息使用的 skill */
+  List<SkillInfo> _skills = [];
+
   /** 所选模型供应商的名称（顶栏显示） */
   String _providerName = '';
   String _providerFor = '';
@@ -317,7 +320,8 @@ class _ChatPageState extends State<ChatPage> {
         if (s.isAssistant) {
           await _api.assistantText(text, clientId: _retryId);
         } else {
-          await _api.sendMessage(_id, text, attachments: attachments, clientId: _retryId);
+          await _api.sendMessage(_id, text, attachments: attachments, clientId: _retryId, skills: _skills);
+          if (mounted) setState(() => _skills = []);
         }
         _retryKey = '';
         _toBottom();
@@ -349,6 +353,8 @@ class _ChatPageState extends State<ChatPage> {
           await switchModel(context, s);
         case '/provider':
           await switchProvider(context, s);
+        case '/skills':
+          await _pickSkills();
         case '/cd':
           await _changeDir();
         case '/new':
@@ -361,6 +367,18 @@ class _ChatPageState extends State<ChatPage> {
     } on ApiException catch (e) {
       if (mounted) toast(context, e.message);
     }
+  }
+
+  /** _pickSkills：选择随下一条消息使用的 skill */
+  Future<void> _pickSkills() async {
+    final s = _session;
+    if (s == null) return;
+    if (!supportsProvider(s)) {
+      toast(context, '这个 Agent 暂不支持 skill');
+      return;
+    }
+    final picked = await Navigator.of(context).push<List<SkillInfo>>(MaterialPageRoute(builder: (_) => SkillsPage(session: s, picked: _skills)));
+    if (picked != null && mounted) setState(() => _skills = picked);
   }
 
   /** _modelMenu：模型与供应商 */
@@ -482,6 +500,8 @@ class _ChatPageState extends State<ChatPage> {
           await _phrasesSheet();
         case 'model':
           await _modelMenu(s);
+        case 'skills':
+          await _pickSkills();
         case 'stop':
           await _api.interrupt(_id);
         case 'terminal':
@@ -894,6 +914,7 @@ class _ChatPageState extends State<ChatPage> {
         if (s.isAgent) const PanelItem('wsfile', '工作区文件', LucideIcons.folderOpen300),
         const PanelItem('phrases', '快捷短语', LucideIcons.messageSquareText300),
         if (s.isAgent) PanelItem('model', supportsProvider(s) ? '模型与供应商' : '切换模型', LucideIcons.cpu300),
+        if (supportsProvider(s)) const PanelItem('skills', 'Skills', LucideIcons.sparkles300),
         if (s.isAgent) const PanelItem('stop', '打断', LucideIcons.circleStop300),
         if (s.isAgent && (_scope?.conn.status?.features.terminal ?? false)) const PanelItem('terminal', '终端', LucideIcons.squareTerminal300),
       ];
@@ -1020,6 +1041,23 @@ class _ChatPageState extends State<ChatPage> {
                 _input.selection = TextSelection.collapsed(offset: _input.text.length);
                 if (cmd.name != '/compact') unawaited(_send());
               })
+            else if (_skills.isNotEmpty)
+              SizedBox(
+                height: 42,
+                child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(12, 6, 12, 6), children: [
+                  for (final k in _skills) ...[
+                    QuickChip(
+                      label: k.name,
+                      icon: LucideIcons.sparkles300,
+                      trailing: LucideIcons.x300,
+                      accent: true,
+                      onTap: () => setState(() => _skills = [for (final x in _skills) if (x.path != k.path) x]),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  QuickChip(label: '修改', icon: LucideIcons.pencil300, onTap: _pickSkills),
+                ]),
+              )
             else if (s.isAgent && _input.text.isEmpty)
               SizedBox(
                 height: 42,
@@ -1027,6 +1065,10 @@ class _ChatPageState extends State<ChatPage> {
                   QuickChip(label: '/diff 查看改动', onTap: () => _runCommand('/diff', '')),
                   const SizedBox(width: 8),
                   QuickChip(label: '/model 切换模型', onTap: () => _runCommand('/model', '')),
+                  if (supportsProvider(s)) ...[
+                    const SizedBox(width: 8),
+                    QuickChip(label: '/skills 选用 skill', onTap: () => _runCommand('/skills', '')),
+                  ],
                 ]),
               ),
             ChatInputBar(

@@ -23,6 +23,7 @@ const slashCommands = [
   SlashCommand('/stop', '打断当前执行', LucideIcons.circleStop300),
   SlashCommand('/model', '切换模型', LucideIcons.cpu300),
   SlashCommand('/provider', '切换模型供应商（CC Switch）', LucideIcons.server300),
+  SlashCommand('/skills', '查看、启用并选用 skill', LucideIcons.sparkles300),
   SlashCommand('/cd', '切换工作目录', LucideIcons.folderInput300),
   SlashCommand('/diff', '查看本会话累计改动', LucideIcons.gitCompare300),
   SlashCommand('/compact', '压缩上下文', LucideIcons.minimize2300),
@@ -78,20 +79,31 @@ class CommandPopup extends StatelessWidget {
   }
 }
 
-/** QuickChip：输入栏上方的快捷指令 */
+/** QuickChip：输入栏上方的快捷指令；可带前后图标（如已选的 skill，点右侧叉号移除） */
 class QuickChip extends StatelessWidget {
-  const QuickChip({super.key, required this.label, required this.onTap});
+  const QuickChip({super.key, required this.label, required this.onTap, this.icon, this.trailing, this.accent = false});
 
   final String label;
   final VoidCallback onTap;
+  final IconData? icon;
+  final IconData? trailing;
+  final bool accent;
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(color: context.pd.card, borderRadius: BorderRadius.circular(14)),
-          child: Text(label, style: TextStyle(fontSize: PdFont.time, color: context.pd.text2)),
-        ),
-      );
+  Widget build(BuildContext context) {
+    final c = context.pd;
+    final fg = accent ? c.accent : c.text2;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(color: accent ? c.accent.withValues(alpha: 0.12) : c.card, borderRadius: BorderRadius.circular(14)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (icon != null) ...[Icon(icon, size: 14, color: fg), const SizedBox(width: 4)],
+          Text(label, style: TextStyle(fontSize: PdFont.time, color: fg)),
+          if (trailing != null) ...[const SizedBox(width: 4), Icon(trailing, size: 14, color: fg)],
+        ]),
+      ),
+    );
+  }
 }
