@@ -260,6 +260,7 @@ class SessionInfo {
     this.agentSessionId = '',
     this.autoApprove = false,
     this.muted = false,
+    this.provider = '',
   });
 
   final String id;
@@ -281,6 +282,9 @@ class SessionInfo {
   /** muted：关闭提醒，待审批与完成时不弹通知 */
   final bool muted;
 
+  /** provider：本会话使用的模型供应商（CC Switch 中的供应商 ID），空为跟随电脑 */
+  final String provider;
+
   /** fromJson：解析 */
   factory SessionInfo.fromJson(Map<String, dynamic> j) => SessionInfo(
         id: _s(j['id']),
@@ -297,6 +301,7 @@ class SessionInfo {
         agentSessionId: _s(j['agentSessionId']),
         autoApprove: _b(j['autoApprove']),
         muted: _b(j['muted']),
+        provider: _s(j['provider']),
       );
 
   /** copyWith：复制并修改部分字段 */
@@ -316,6 +321,7 @@ class SessionInfo {
         agentSessionId: agentSessionId,
         autoApprove: autoApprove,
         muted: muted ?? this.muted,
+        provider: provider,
       );
 
   /** isAgent：是否为 AI 编程工具会话 */
@@ -400,6 +406,28 @@ class FileChange {
         status: _s(j['status']),
         binary: _b(j['binary']),
         ref: _s(j['ref']),
+      );
+}
+
+/** ProviderInfo：模型供应商（来自电脑上的 CC Switch，不含密钥） */
+class ProviderInfo {
+  const ProviderInfo({required this.id, required this.name, required this.current, required this.host, required this.models});
+
+  final String id;
+  final String name;
+
+  /** current：电脑当前正在用的供应商 */
+  final bool current;
+  final String host;
+  final List<String> models;
+
+  /** fromJson：解析 */
+  factory ProviderInfo.fromJson(Map<String, dynamic> j) => ProviderInfo(
+        id: _s(j['id']),
+        name: _s(j['name']),
+        current: _b(j['current']),
+        host: _s(j['host']),
+        models: _l(j['models']).map((e) => e.toString()).toList(),
       );
 }
 

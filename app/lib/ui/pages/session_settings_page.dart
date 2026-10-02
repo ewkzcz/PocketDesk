@@ -1,10 +1,9 @@
 /**
- * 会话设置：改名、置顶、消息提醒、模型、工作目录、用量与费用、查看改动、删除手机上的记录。
+ * 会话设置：改名、置顶、消息提醒、模型与供应商、工作目录、用量与费用、查看改动、删除手机上的记录。
  */
 library;
 
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_state.dart';
@@ -13,6 +12,7 @@ import '../../net/api.dart';
 import '../agents.dart';
 import '../tokens.dart';
 import '../widgets.dart';
+import 'agent_pickers.dart';
 import 'diff_page.dart';
 import 'dir_picker.dart';
 import 'session_actions.dart';
@@ -90,24 +90,18 @@ class SessionSettingsPage extends StatelessWidget {
             ]),
             if (s.isAgent)
               PdGroup(children: [
-                PdCell(
-                  title: '模型',
-                  value: s.model.isEmpty ? '默认' : s.model,
-                  onTap: () async {
-                    try {
-                      final models = await scope.conn.api.models(s.kind);
-                      if (!context.mounted) return;
-                      if (models.isEmpty) {
-                        toast(context, '电脑端没有配置可选模型');
-                        return;
-                      }
-                      final i = await actionSheet(context, [for (final m in models) SheetAction(m, icon: m == s.model ? LucideIcons.check300 : null)], title: '切换模型');
-                      if (i != null && context.mounted) await _patch(context, (api) => api.patchSession(sessionId, model: models[i]));
-                    } on ApiException catch (e) {
-                      if (context.mounted) toast(context, e.message);
-                    }
-                  },
-                ),
+                PdCell(title: '模型', value: s.model.isEmpty ? '默认' : s.model, onTap: () => switchModel(context, s)),
+                if (supportsProvider(s))
+                  FutureBuilder<String>(
+                    key: ValueKey(s.provider),
+                    future: providerName(scope.conn.api, s),
+                    builder: (context, snap) => PdCell(
+                      title: '模型供应商',
+                      subtitle: '来自电脑上的 CC Switch，只对这个会话生效',
+                      value: s.provider.isEmpty ? '跟随电脑' : (snap.data ?? ''),
+                      onTap: () => switchProvider(context, s),
+                    ),
+                  ),
                 PdCell(
                   title: '工作目录',
                   value: [ws?.name ?? '', if (s.cwd != '.' && s.cwd.isNotEmpty) s.cwd].where((x) => x.isNotEmpty).join('/'),

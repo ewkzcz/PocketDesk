@@ -33,6 +33,7 @@ import '../widgets.dart';
 import '../file_kinds.dart';
 import '../viewers/fetch.dart';
 import '../viewers/open_file.dart';
+import 'agent_pickers.dart';
 import 'diff_page.dart';
 import 'dir_picker.dart';
 import 'session_actions.dart';
@@ -84,6 +85,10 @@ class _ChatPageState extends State<ChatPage> {
   final Set<ChatItem> _selected = {};
   Timer? _draftTimer;
   bool _sending = false;
+
+  /** 所选模型供应商的名称（顶栏显示） */
+  String _providerName = '';
+  String _providerFor = '';
 
   String get _id => widget.sessionId;
   SessionInfo? get _session => _scope?.sessions.byId(_id);
@@ -341,7 +346,9 @@ class _ChatPageState extends State<ChatPage> {
         case '/diff':
           await _openDiff(null, const []);
         case '/model':
-          await _switchModel();
+          await switchModel(context, s);
+        case '/provider':
+          await switchProvider(context, s);
         case '/cd':
           await _changeDir();
         case '/new':
@@ -356,19 +363,16 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  /** _switchModel：切换模型 */
-  Future<void> _switchModel() async {
-    final s = _session!;
-    final models = await _api.models(s.kind);
+  /** _modelMenu：模型与供应商 */
+  Future<void> _modelMenu(SessionInfo s) async {
+    if (!supportsProvider(s)) return switchModel(context, s);
+    final i = await actionSheet(context, const [SheetAction('切换模型', icon: LucideIcons.cpu300), SheetAction('模型供应商', icon: LucideIcons.server300)]);
     if (!mounted) return;
-    if (models.isEmpty) {
-      toast(context, '电脑端没有配置可选模型');
-      return;
+    if (i == 0) {
+      await switchModel(context, s);
+    } else if (i == 1) {
+      await switchProvider(context, s);
     }
-    final i = await actionSheet(context, [for (final m in models) SheetAction(m, icon: m == s.model ? LucideIcons.check300 : null)], title: '切换模型');
-    if (i == null) return;
-    _scope!.sessions.upsert(await _api.patchSession(_id, model: models[i]));
-    if (mounted) toast(context, '已切换到 ${models[i]}');
   }
 
   /** _changeDir：切换工作目录（限工作区内） */
@@ -477,7 +481,7 @@ class _ChatPageState extends State<ChatPage> {
         case 'phrases':
           await _phrasesSheet();
         case 'model':
-          await _switchModel();
+          await _modelMenu(s);
         case 'stop':
           await _api.interrupt(_id);
         case 'terminal':
@@ -889,7 +893,7 @@ class _ChatPageState extends State<ChatPage> {
         const PanelItem('file', '文件', LucideIcons.file300),
         if (s.isAgent) const PanelItem('wsfile', '工作区文件', LucideIcons.folderOpen300),
         const PanelItem('phrases', '快捷短语', LucideIcons.messageSquareText300),
-        if (s.isAgent) const PanelItem('model', '切换模型', LucideIcons.cpu300),
+        if (s.isAgent) PanelItem('model', supportsProvider(s) ? '模型与供应商' : '切换模型', LucideIcons.cpu300),
         if (s.isAgent) const PanelItem('stop', '打断', LucideIcons.circleStop300),
         if (s.isAgent && (_scope?.conn.status?.features.terminal ?? false)) const PanelItem('terminal', '终端', LucideIcons.squareTerminal300),
       ];
@@ -899,7 +903,16 @@ class _ChatPageState extends State<ChatPage> {
     if (s.isAssistant) return _scope?.host.name ?? '';
     final ws = _ws?.name ?? '';
     final dir = s.cwd == '.' || s.cwd.isEmpty ? ws : (ws.isEmpty ? s.cwd : '$ws/${s.cwd}');
-    return [dir, s.model, if (s.autoApprove) '免审批', if (s.muted) '已关闭提醒'].where((x) => x.isNotEmpty).join(' · ');
+    if (_providerFor != s.provider) {
+      _providerFor = s.provider;
+      _providerName = '';
+      if (s.provider.isNotEmpty) {
+        unawaited(providerName(_api, s).then((n) {
+          if (mounted && _providerFor == s.provider) setState(() => _providerName = n);
+        }));
+      }
+    }
+    return [dir, _providerName, s.model, if (s.autoApprove) '免审批', if (s.muted) '已关闭提醒'].where((x) => x.isNotEmpty).join(' · ');
   }
 
   @override

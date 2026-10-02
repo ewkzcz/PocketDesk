@@ -211,13 +211,14 @@ class PdApi {
   }
 
   /** patchSession：改名、置顶、切换模型或目录 */
-  Future<SessionInfo> patchSession(String id, {String? title, bool? pinned, String? model, String? cwd, bool? muted}) async {
+  Future<SessionInfo> patchSession(String id, {String? title, bool? pinned, String? model, String? cwd, bool? muted, String? provider}) async {
     final j = await json('PATCH', '/api/sessions/$id', body: {
       'title': ?title,
       'pinned': ?pinned,
       'model': ?model,
       'cwd': ?cwd,
       'muted': ?muted,
+      'provider': ?provider,
     });
     return SessionInfo.fromJson(Json.map(j));
   }
@@ -261,8 +262,16 @@ class PdApi {
   /** decide：审批 */
   Future<void> decide(String approvalId, String action) => send('POST', '/api/approvals/$approvalId', body: {'action': action});
 
-  /** models：可选模型 */
-  Future<List<String>> models(String kind) async => Json.list(await json('GET', '/api/agents/$kind/models')).map((e) => e.toString()).toList();
+  /** models：可选模型，指定供应商时包含该供应商配置的模型 */
+  Future<List<String>> models(String kind, {String provider = ''}) async =>
+      Json.list(await json('GET', '/api/agents/$kind/models', query: provider.isEmpty ? null : {'provider': provider})).map((e) => e.toString()).toList();
+
+  /** providers：电脑上 CC Switch 里的模型供应商，没装 CC Switch 时 available 为 false */
+  Future<({bool available, List<ProviderInfo> list})> providers(String kind) async {
+    final j = Json.map(await json('GET', '/api/agents/$kind/providers'));
+    return (available: Json.boolean(j['available']), list: Json.list(j['list']).map((e) => ProviderInfo.fromJson(Json.map(e))).toList());
+  }
+
 
   /** history：电脑上已有的会话 */
   Future<List<HistoryItem>> history(String kind, String ws, String cwd) async =>
