@@ -91,6 +91,7 @@ type Manager struct {
 	pend            map[string]*pending
 	approvalTimeout time.Duration
 	interruptGrace  time.Duration
+	syncSettle      time.Duration
 	now             func() time.Time
 	closed          atomic.Bool
 	models          *agent.ModelCache
@@ -148,7 +149,7 @@ func New(d Deps) *Manager {
 			return h
 		}
 	}
-	return &Manager{d: d, rts: map[string]*runtime{}, pend: map[string]*pending{}, approvalTimeout: 10 * time.Minute, interruptGrace: 10 * time.Second, now: time.Now, recent: idem.New(2000, 30*time.Minute), models: agent.NewModelCache(10 * time.Minute)}
+	return &Manager{d: d, rts: map[string]*runtime{}, pend: map[string]*pending{}, approvalTimeout: 10 * time.Minute, interruptGrace: 10 * time.Second, syncSettle: 3 * time.Second, now: time.Now, recent: idem.New(2000, 30*time.Minute), models: agent.NewModelCache(10 * time.Minute)}
 }
 
 /** SetTimeouts：调整审批超时与打断宽限，仅供测试 */
@@ -281,7 +282,7 @@ func (m *Manager) runtime(ctx context.Context, id string) (*runtime, error) {
  * 处理流程：
  * 1、校验开关，重发的同一条消息直接返回，首条消息时用内容生成标题
  * 2、执行中：排队，本轮结束后再发送
- * 3、空闲：记录用户消息并开始新一轮
+ * 3、空闲：补上电脑上新增的对话，记录用户消息并开始新一轮
  */
 func (m *Manager) Send(ctx context.Context, id string, in Input) error {
 	// 1、开关与标题
@@ -318,7 +319,8 @@ func (m *Manager) Send(ctx context.Context, id string, in Input) error {
 		rt.queue = append(rt.queue, in)
 		return nil
 	}
-	// 3、空闲
+	// 3、空闲：先补上电脑上新增的对话
+	m.syncTranscript(ctx, rt, false)
 	if err := m.emitUser(ctx, rt, in, false); err != nil {
 		return err
 	}
@@ -565,7 +567,7 @@ func (m *Manager) handle(ctx context.Context, rt *runtime, p agent.Process, e ag
  *
  * 处理流程：
  * 1、生成并推送改动清单
- * 2、状态回到空闲，清零异常计数
+ * 2、记下电脑会话记录的位置，状态回到空闲，清零异常计数
  * 3、推送完成通知
  * 4、排队中有消息则自动发送下一条
  */
@@ -580,7 +582,15 @@ func (m *Manager) finishTurn(ctx context.Context, rt *runtime, p agent.Process) 
 		}
 		rt.turn = nil
 	}
-	// 2、状态
+	// 2、状态；本轮写进电脑会话记录的内容不再当作电脑上新增的对话，Agent 可能稍后才写完，过一会儿再记一次
+	m.markSynced(ctx, rt)
+	time.AfterFunc(m.syncSettle, func() {
+		rt.mu.Lock()
+		defer rt.mu.Unlock()
+		if rt.state == StateIdle && rt.turn == nil {
+			m.markSynced(context.Background(), rt)
+		}
+	})
 	wasInterrupted := rt.state == StateInterrupted
 	m.denyPending(ctx, rt.id, "本轮已结束")
 	m.setState(ctx, rt, StateIdle)
@@ -1247,6 +1257,146 @@ func (m *Manager) measure(ctx context.Context, sid string, t *turn, fc *FileChan
 		fc.Ref = ref
 	}
 	return true
+}
+
+/** importLimit：第一次接入电脑上的会话时导入的最近对话条数 */
+const importLimit = 200
+
+/**
+ * Import：接着电脑上的会话聊：新建会话并导入电脑上最近的对话
+ *
+ * 处理流程：
+ * 1、确认电脑上有这个会话的记录
+ * 2、新建会话并绑定原会话 ID，聊天名称沿用电脑上原会话的标题
+ * 3、导入最近的对话，记下读到的位置
+ */
+func (m *Manager) Import(ctx context.Context, kind, agentID, wsID, cwd, title string) (store.Session, error) {
+	// 1、记录
+	if _, err := agent.TranscriptPath(kind, m.d.Home(), agentID); err != nil {
+		return store.Session{}, err
+	}
+	// 2、新建
+	s, err := m.CreateWith(ctx, NewSession{Kind: kind, WorkspaceID: wsID, Cwd: cwd})
+	if err != nil {
+		return s, err
+	}
+	patch := store.SessionPatch{AgentSessionID: &agentID}
+	if t := strings.TrimSpace(title); t != "" {
+		name := agent.Label(kind) + " · " + snippet(t, 16)
+		patch.Title = &name
+	}
+	if s, err = m.d.Store.UpdateSession(ctx, s.ID, patch); err != nil {
+		return s, err
+	}
+	// 3、导入
+	rt, err := m.runtime(ctx, s.ID)
+	if err != nil {
+		return s, err
+	}
+	rt.mu.Lock()
+	rt.sess = s
+	m.syncTranscript(ctx, rt, true)
+	rt.mu.Unlock()
+	return m.d.Store.Session(ctx, s.ID)
+}
+
+/** Sync：空闲时补上电脑上新增的对话（手机打开聊天时调用） */
+func (m *Manager) Sync(ctx context.Context, id string) error {
+	rt, err := m.runtime(ctx, id)
+	if err != nil {
+		return err
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.state == StateIdle || rt.state == StateError {
+		m.syncTranscript(ctx, rt, false)
+	}
+	return nil
+}
+
+/** transcript：会话对应的电脑会话记录，只有 Claude Code 与 Codex 有 */
+func (m *Manager) transcript(s store.Session) string {
+	if s.AgentSessionID == "" || s.Kind != agent.KindClaude && s.Kind != agent.KindCodex {
+		return ""
+	}
+	p, err := agent.TranscriptPath(s.Kind, m.d.Home(), s.AgentSessionID)
+	if err != nil {
+		return ""
+	}
+	return p
+}
+
+/**
+ * syncTranscript：把电脑会话记录里还没有的对话写成聊天记录（调用方持有 rt.mu）
+ *
+ * 处理流程：
+ * 1、只处理接入过的会话（记过位置或第一次导入），记录没有变长时直接返回
+ * 2、从上次的位置读到末尾；第一次导入只取最近的一批
+ * 3、写成用户消息、回复与工具调用，并记下新的位置
+ */
+func (m *Manager) syncTranscript(ctx context.Context, rt *runtime, first bool) {
+	// 1、条件
+	if !first && rt.sess.LogOffset <= 0 {
+		return
+	}
+	p := m.transcript(rt.sess)
+	if p == "" {
+		return
+	}
+	info, err := os.Stat(p)
+	if err != nil || info.Size() <= rt.sess.LogOffset {
+		return
+	}
+	// 2、读取
+	entries, pos, err := agent.ReadTranscript(rt.sess.Kind, p, rt.sess.LogOffset)
+	if err != nil {
+		return
+	}
+	if first && len(entries) > importLimit {
+		entries = entries[len(entries)-importLimit:]
+		for len(entries) > 1 && entries[0].Role != "user" {
+			entries = entries[1:]
+		}
+	}
+	// 3、写入
+	if len(entries) > 0 {
+		text := "以下是电脑上新增的对话"
+		if first {
+			text = "以下是电脑上这个会话最近的对话，接下来可以接着聊"
+		}
+		m.emit(ctx, rt.id, "system", map[string]any{"text": text})
+		for i, e := range entries {
+			id := fmt.Sprintf("imp-%d-%d", pos, i)
+			switch e.Role {
+			case "user":
+				m.emit(ctx, rt.id, "msg.user", map[string]any{"text": e.Text, "imported": true})
+			case "assistant":
+				m.emit(ctx, rt.id, "msg.done", map[string]any{"id": id, "text": e.Text})
+			case "tool":
+				m.emit(ctx, rt.id, "tool.start", map[string]any{"id": id, "name": e.Tool, "kind": e.Kind, "summary": e.Summary, "input": trimInput(e.Input)})
+				m.emit(ctx, rt.id, "tool.end", map[string]any{"id": id, "output": e.Output, "isError": e.IsError})
+			}
+		}
+	}
+	if s, err := m.d.Store.UpdateSession(ctx, rt.id, store.SessionPatch{LogOffset: &pos}); err == nil {
+		rt.sess = s
+	}
+}
+
+/** markSynced：本轮结束时把电脑会话记录的当前末尾记为已同步（调用方持有 rt.mu） */
+func (m *Manager) markSynced(ctx context.Context, rt *runtime) {
+	p := m.transcript(rt.sess)
+	if p == "" {
+		return
+	}
+	info, err := os.Stat(p)
+	if err != nil || info.Size() == rt.sess.LogOffset {
+		return
+	}
+	size := info.Size()
+	if s, err := m.d.Store.UpdateSession(ctx, rt.id, store.SessionPatch{LogOffset: &size}); err == nil {
+		rt.sess = s
+	}
 }
 
 /**

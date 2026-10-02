@@ -658,3 +658,28 @@ func TestClaudeSkills(t *testing.T) {
 		t.Fatalf("单个 skill 应以斜杠指令调用 %q", got)
 	}
 }
+
+/** Codex 会话记录：跳过 Agent 塞进去的说明，脚本调用显示其中的命令，工具结果合并到调用上 */
+func TestCodexTranscript(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "rollout.jsonl")
+	lines := []string{
+		`{"type":"session_meta","payload":{"id":"x","cwd":"/w"}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# AGENTS.md instructions\n\n<INSTRUCTIONS>规则</INSTRUCTIONS>"}]}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>x</environment_context>"}]}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"列出文件"}]}}`,
+		`{"type":"response_item","payload":{"type":"custom_tool_call","name":"exec","call_id":"c1","input":"const r = await tools.exec_command({cmd:\"ls -la\",workdir:\"/w\"})"}}`,
+		`{"type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"c1","output":[{"type":"input_text","text":"a.txt"}]}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"只有 a.txt"}]}}`,
+	}
+	os.WriteFile(p, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
+	es, pos, err := ReadTranscript(KindCodex, p, 0)
+	if err != nil || pos == 0 {
+		t.Fatal(err)
+	}
+	if len(es) != 3 || es[0].Text != "列出文件" || es[1].Summary != "ls -la" || es[1].Kind != "command" || es[1].Output != "a.txt" || es[2].Text != "只有 a.txt" {
+		t.Fatalf("解析结果 %+v", es)
+	}
+	if _, _, title := codexMeta(p); title != "列出文件" {
+		t.Fatalf("标题 %q", title)
+	}
+}

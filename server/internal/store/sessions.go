@@ -32,6 +32,8 @@ type Session struct {
 	Muted bool `json:"muted"`
 	// Provider：本会话使用的模型供应商（CC Switch 中的供应商 ID），空为跟随电脑当前设置
 	Provider string `json:"provider"`
+	// LogOffset：电脑上原会话记录已同步到的位置，用于接着电脑上的会话聊时补上电脑端新增的对话
+	LogOffset int64 `json:"-"`
 }
 
 /** Event：会话内按序号递增的事件 */
@@ -43,16 +45,16 @@ type Event struct {
 	CreatedAt int64           `json:"createdAt"`
 }
 
-const sessionCols = `id,kind,title,workspace_id,cwd,model,agent_session_id,state,pinned,last_seq,preview,created_at,updated_at,auto_approve,muted,provider`
+const sessionCols = `id,kind,title,workspace_id,cwd,model,agent_session_id,state,pinned,last_seq,preview,created_at,updated_at,auto_approve,muted,provider,log_offset`
 
 /** CreateSession：新建会话 */
 func (s *Store) CreateSession(ctx context.Context, x Session) (Session, error) {
 	now := s.nowMs()
 	x.CreatedAt, x.UpdatedAt = now, now
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO sessions(`+sessionCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO sessions(`+sessionCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		x.ID, x.Kind, x.Title, x.WorkspaceID, x.Cwd, x.Model, x.AgentSessionID, x.State,
-		boolInt(x.Pinned), x.LastSeq, x.Preview, x.CreatedAt, x.UpdatedAt, boolInt(x.AutoApprove), boolInt(x.Muted), x.Provider)
+		boolInt(x.Pinned), x.LastSeq, x.Preview, x.CreatedAt, x.UpdatedAt, boolInt(x.AutoApprove), boolInt(x.Muted), x.Provider, x.LogOffset)
 	return x, err
 }
 
@@ -90,6 +92,7 @@ type SessionPatch struct {
 	Preview        *string
 	Muted          *bool
 	Provider       *string
+	LogOffset      *int64
 }
 
 /**
@@ -136,11 +139,14 @@ func (s *Store) UpdateSession(ctx context.Context, id string, p SessionPatch) (S
 		if p.Provider != nil {
 			cur.Provider = *p.Provider
 		}
+		if p.LogOffset != nil {
+			cur.LogOffset = *p.LogOffset
+		}
 		cur.UpdatedAt = s.nowMs()
 		// 3、写回
 		_, err = t.ExecContext(ctx,
-			`UPDATE sessions SET title=?,cwd=?,model=?,agent_session_id=?,state=?,pinned=?,preview=?,muted=?,provider=?,updated_at=? WHERE id=?`,
-			cur.Title, cur.Cwd, cur.Model, cur.AgentSessionID, cur.State, boolInt(cur.Pinned), cur.Preview, boolInt(cur.Muted), cur.Provider, cur.UpdatedAt, id)
+			`UPDATE sessions SET title=?,cwd=?,model=?,agent_session_id=?,state=?,pinned=?,preview=?,muted=?,provider=?,log_offset=?,updated_at=? WHERE id=?`,
+			cur.Title, cur.Cwd, cur.Model, cur.AgentSessionID, cur.State, boolInt(cur.Pinned), cur.Preview, boolInt(cur.Muted), cur.Provider, cur.LogOffset, cur.UpdatedAt, id)
 		out = cur
 		return err
 	})
@@ -272,7 +278,7 @@ func scanSession(r scanner) (Session, error) {
 	var x Session
 	var pinned, auto, muted int
 	err := r.Scan(&x.ID, &x.Kind, &x.Title, &x.WorkspaceID, &x.Cwd, &x.Model, &x.AgentSessionID,
-		&x.State, &pinned, &x.LastSeq, &x.Preview, &x.CreatedAt, &x.UpdatedAt, &auto, &muted, &x.Provider)
+		&x.State, &pinned, &x.LastSeq, &x.Preview, &x.CreatedAt, &x.UpdatedAt, &auto, &muted, &x.Provider, &x.LogOffset)
 	if errors.Is(err, sql.ErrNoRows) {
 		return x, ErrNotFound
 	}

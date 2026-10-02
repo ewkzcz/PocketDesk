@@ -130,7 +130,7 @@ func codexMeta(p string) (id, cwd, title string) {
 		case "response_item":
 			if title == "" && m.Payload["type"] == "message" && m.Payload["role"] == "user" {
 				t := contentString(m.Payload["content"])
-				if !strings.HasPrefix(strings.TrimSpace(t), "<") {
+				if !injected(t) {
 					title = t
 				}
 			}
@@ -156,7 +156,7 @@ func firstUserText(p string, pick func(map[string]any) string) string {
 		if json.Unmarshal(sc.Bytes(), &m) != nil {
 			continue
 		}
-		if t := strings.TrimSpace(pick(m)); t != "" && !strings.HasPrefix(t, "<") {
+		if t := strings.TrimSpace(pick(m)); t != "" && !injected(t) {
 			return snippet(t)
 		}
 	}

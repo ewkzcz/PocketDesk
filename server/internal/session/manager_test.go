@@ -664,6 +664,59 @@ func TestAutoApproveSessionSkipsApprovals(t *testing.T) {
 	}
 }
 
+/** 接着电脑上的会话聊：导入最近的对话，电脑上又聊了几句后发消息前补上，手机这边的轮次不重复导入 */
+func TestImportAndSyncTranscript(t *testing.T) {
+	f := newFixture(t)
+	home := t.TempDir()
+	f.m.d.Home = func() string { return home }
+	f.m.syncSettle = 10 * time.Millisecond
+	ctx := context.Background()
+	dir := filepath.Join(home, ".claude", "projects", "-x")
+	os.MkdirAll(dir, 0o755)
+	log := filepath.Join(dir, "abc-123.jsonl")
+	line := func(typ, content string) string {
+		return `{"type":"` + typ + `","timestamp":"2026-10-01T10:00:00Z","message":{"content":` + content + `}}` + "\n"
+	}
+	os.WriteFile(log, []byte(line("user", `"电脑上问的问题"`)+
+		line("assistant", `[{"type":"text","text":"电脑上的回答"},{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"}}]`)+
+		line("user", `[{"type":"tool_result","tool_use_id":"t1","content":"a.txt"}]`)+
+		line("user", `"<command-name>/clear</command-name>"`)), 0o644)
+	if _, err := f.m.Import(ctx, "claude", "missing", "w1", ".", ""); err == nil {
+		t.Fatal("没有记录的会话应报错")
+	}
+	s, err := f.m.Import(ctx, "claude", "abc-123", "w1", ".", "电脑上问的问题")
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs := f.events(t, s.ID)
+	if !hasEvent(evs, "msg.user", "电脑上问的问题") || !hasEvent(evs, "msg.done", "电脑上的回答") || !hasEvent(evs, "tool.end", "a.txt") || hasEvent(evs, "msg.user", "command-name") {
+		t.Fatalf("导入内容不对：%v", evs)
+	}
+	if s.AgentSessionID != "abc-123" || s.LogOffset == 0 || s.Title != "Claude Code · 电脑上问的问题" {
+		t.Fatalf("应绑定原会话并记下位置：%+v", s)
+	}
+	// 电脑上又聊了一句
+	fh, _ := os.OpenFile(log, os.O_APPEND|os.O_WRONLY, 0)
+	fh.WriteString(line("user", `"电脑上追问"`) + line("assistant", `[{"type":"text","text":"电脑上追答"}]`))
+	fh.Close()
+	f.m.Send(ctx, s.ID, Input{Text: "手机接着问"})
+	f.waitState(t, s.ID, StateIdle)
+	evs = f.events(t, s.ID)
+	if !hasEvent(evs, "msg.done", "电脑上追答") || !hasEvent(evs, "system", "电脑上新增") {
+		t.Fatal("发消息前应补上电脑上新增的对话")
+	}
+	// 手机这轮写进记录的内容不应再被当成电脑上新增的对话
+	fh, _ = os.OpenFile(log, os.O_APPEND|os.O_WRONLY, 0)
+	fh.WriteString(line("user", `"手机接着问"`))
+	fh.Close()
+	time.Sleep(50 * time.Millisecond)
+	before := len(f.events(t, s.ID))
+	f.m.Sync(ctx, s.ID)
+	if len(f.events(t, s.ID)) != before {
+		t.Fatal("手机自己的轮次不应重复导入")
+	}
+}
+
 /** fakeNotifier：记录推送 */
 type fakeNotifier struct {
 	mu   sync.Mutex

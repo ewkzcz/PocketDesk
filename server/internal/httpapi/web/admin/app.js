@@ -40,7 +40,7 @@
       return res.text().then(function (t) {
         var data = null;
         try { data = t ? JSON.parse(t) : null; } catch (e) { data = null; }
-        if (!res.ok) { throw new Error((data && data.message) || '操作失败'); }
+        if (!res.ok) { var err = new Error((data && data.message) || '操作失败'); err.code = data && data.code; throw err; }
         return data;
       });
     });
@@ -768,6 +768,8 @@
     renderHead();
     renderPending();
     renderChosen();
+    // 接入过电脑上的会话时，补上电脑上新增的对话
+    if (isAgent(s)) { api('POST', P + '/api/sessions/' + encodeURIComponent(s.id) + '/sync').catch(function () {}); }
     var draft = load('pd.draft', {})[s.id];
     var input = document.getElementById('input');
     if (input) { input.value = draft || ''; syncSend(); input.focus(); }
@@ -1087,6 +1089,36 @@
     el.innerHTML = list.map(function (k, i) {
       return '<span>' + icon('sparkles', 12) + esc(k.name) + '<button class="pd-icon-btn" style="width:18px;height:18px" data-act="unskill" data-i="' + i + '" aria-label="移除">' + icon('x', 12) + '</button></span>';
     }).join('');
+  }
+
+  /** externalModal：电脑上最近的 Claude Code 与 Codex 会话，选一个接着聊 */
+  var externalList = [];
+  function externalModal() {
+    modal('接着电脑上的会话', '<div class="pd-muted">正在读取…</div>', '<button class="pd-btn" data-act="modal-close">取消</button>');
+    api('GET', P + '/api/external?limit=80').then(function (list) {
+      externalList = list || [];
+      modal('接着电脑上的会话', externalList.length ? '<div class="pd-pick-list" style="max-height:440px">' + externalList.map(function (x, i) {
+        return '<button class="pd-pick-row" data-act="external-pick" data-i="' + i + '">' + avatarHtml(x.kind, true) +
+          '<span style="flex:1;min-width:0"><div style="display:flex;gap:6px;align-items:baseline"><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(x.title) + '</span>' + (x.session ? '<span class="pd-muted" style="font-size:12px;flex-shrink:0">已接入</span>' : '') + '</div>' +
+          '<div class="pd-path" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(x.cwd) + ' · ' + listTime(x.updatedAt) + '</div></span></button>';
+      }).join('') + '</div>' : '<div class="pd-muted">电脑上没有找到 Claude Code 或 Codex 的会话</div>', '<button class="pd-btn" data-act="modal-close">取消</button>');
+    }).catch(function (er) { closeModal(); toast(er.message); });
+  }
+
+  /** importExternal：接入电脑上的会话；目录还不是工作区时先确认添加 */
+  function importExternal(x) {
+    if (x.session) { closeModal(); unhideSession(x.session); location.hash = 'chat/' + encodeURIComponent(x.session); return; }
+    api('POST', P + '/api/sessions/import', { kind: x.kind, agentSessionId: x.id, cwd: x.cwd, title: x.title }).then(function (s2) {
+      closeModal();
+      if (!session(s2.id)) { sessions.push(s2); }
+      delete logs[s2.id];
+      location.hash = 'chat/' + encodeURIComponent(s2.id);
+    }).catch(function (er) {
+      if (er.code !== 'no_workspace') { toast(er.message); return; }
+      confirmBox('添加工作区', '「' + esc(x.cwd) + '」还不是工作区。添加后手机也能浏览这个文件夹，并接着这个会话聊。', '添加并继续', function () {
+        api('POST', P + '/api/ws', { path: x.cwd }).then(function () { importExternal(x); }).catch(function (e2) { toast(e2.message); });
+      });
+    });
   }
 
   /** diffModal：查看本轮某个文件的改动 */
@@ -1731,6 +1763,7 @@
         (chosenSkills[sid] || []).splice(+t.dataset.i, 1);
         renderChosen();
         break;
+      case 'external-pick': importExternal(externalList[+t.dataset.i]); break;
       case 'diff-ref': diffModal(sid, t.dataset.ref, t.dataset.path); break;
       case 'notify-random':
         var nt = document.getElementById('ntopic'), nk = document.getElementById('nkind');
@@ -1754,12 +1787,13 @@
         if (!installed.length) { installed = Object.keys(AGENT); }
         var items = installed.map(function (k) { return ['new:' + k, '新建 ' + AGENT[k] + ' 会话', false, 'message-circle']; });
         installed.filter(function (k) { return k === 'claude' || k === 'codex'; }).forEach(function (k) { items.push(['auto:' + k, AGENT[k] + ' 免审批', false, 'shield-alert']); });
-        items.unshift(['assistant', '新建文件传输助手', false, 'send'], '-');
+        items.unshift(['assistant', '新建文件传输助手', false, 'send'], ['resume', '接着电脑上的会话', false, 'history'], '-');
         items.push('-', ['pair', '配对新手机', false, 'qr-code']);
         popMenu(rc.left, rc.bottom + 4, items).then(function (k) {
           if (!k) { return; }
           if (k === 'pair') { startPair(); return; }
           if (k === 'assistant') { openAssistant(); return; }
+          if (k === 'resume') { externalModal(); return; }
           var p = k.split(':');
           newSession(p[1], p[0] === 'auto');
         });
