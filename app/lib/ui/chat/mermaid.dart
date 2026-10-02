@@ -4,6 +4,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -11,6 +12,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../tokens.dart';
 import '../widgets.dart';
+import 'code_image.dart';
 
 /**
  * MermaidView：一个图表
@@ -54,6 +56,13 @@ class _MermaidViewState extends State<MermaidView> {
           });
         }
       })
+      ..addJavaScriptChannel('P', onMessageReceived: (m) {
+        if (m.message == 'ERR') {
+          if (mounted) toast(context, '生成图片失败');
+          return;
+        }
+        unawaited(sharePng(base64Decode(m.message), '图表'));
+      })
       ..addJavaScriptChannel('E', onMessageReceived: (m) {
         if (mounted) setState(() => _error = m.message);
       })
@@ -93,6 +102,12 @@ class _MermaidViewState extends State<MermaidView> {
     unawaited(_web.runJavaScript(js));
   }
 
+  /** _save：把图表画成图片，交给系统分享面板保存 */
+  void _save() {
+    if (!_ready) return;
+    unawaited(_web.runJavaScript('exportPng(${_quote(widget.code)}, $_dark)'));
+  }
+
   /** _quote：转成 JS 字符串 */
   static String _quote(String s) => "'${s.replaceAll(r'\', r'\\').replaceAll("'", r"\'").replaceAll('\n', r'\n').replaceAll('\r', '')}'";
 
@@ -112,7 +127,8 @@ class _MermaidViewState extends State<MermaidView> {
       );
     }
     final view = SizedBox(height: widget.full ? null : _height, child: WebViewWidget(controller: _web));
-    if (widget.full) return view;
+    final save = Positioned(top: 4, right: widget.full ? 8 : 26, child: PdIconButton(icon: LucideIcons.download300, tooltip: '下载图片', size: 16, color: c.text3, onTap: _save));
+    if (widget.full) return Stack(children: [view, save]);
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(color: c.card, borderRadius: BorderRadius.circular(PdSize.smallRadius), border: Border.all(color: c.divider, width: 0.5)),
@@ -126,6 +142,7 @@ class _MermaidViewState extends State<MermaidView> {
           ),
         ),
         Positioned(top: 4, right: 4, child: Icon(LucideIcons.maximize2300, size: 16, color: c.text4)),
+        save,
       ]),
     );
   }

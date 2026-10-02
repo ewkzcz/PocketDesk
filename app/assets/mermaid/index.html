@@ -34,6 +34,24 @@
       try { E.postMessage(String((e && e.message) || e)); } catch (x) {}
     }
   }
+  async function exportPng(code, dark) {
+    try {
+      mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'default', securityLevel: 'strict', htmlLabels: false, flowchart: { htmlLabels: false } });
+      var r = await mermaid.render('x' + (++seq), code);
+      var el = new DOMParser().parseFromString(r.svg, 'image/svg+xml').documentElement;
+      var vb = (el.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number);
+      var w = vb[2] || parseFloat(el.getAttribute('width')) || 800, h = vb[3] || parseFloat(el.getAttribute('height')) || 600;
+      el.setAttribute('width', w); el.setAttribute('height', h); el.removeAttribute('style');
+      var img = new Image();
+      await new Promise(function (ok, no) { img.onload = ok; img.onerror = no; img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(el)); });
+      var k = Math.min(3, 4096 / Math.max(w, h)), c = document.createElement('canvas');
+      c.width = Math.ceil(w * k); c.height = Math.ceil(h * k);
+      var g = c.getContext('2d');
+      g.fillStyle = dark ? '#1c1c1e' : '#ffffff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+      P.postMessage(c.toDataURL('image/png').split(',')[1]);
+    } catch (e) { P.postMessage('ERR'); }
+    document.querySelectorAll('[id^="dx"]').forEach(function (x) { x.remove(); });
+  }
   try { R.postMessage('ready'); } catch (e) {}
 </script>
 </body>

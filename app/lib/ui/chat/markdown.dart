@@ -9,6 +9,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:markdown_widget/markdown_widget.dart';
 
 import '../tokens.dart';
+import 'code_image.dart';
 import 'mermaid.dart';
 import '../widgets.dart';
 
@@ -82,16 +83,28 @@ class _CodeBlock extends StatelessWidget {
       Positioned(
         top: 8,
         right: 2,
-        child: PdIconButton(
-          icon: LucideIcons.copy300,
-          tooltip: '复制代码',
-          size: 16,
-          color: c.text3,
-          onTap: () async {
-            await Clipboard.setData(ClipboardData(text: code));
-            if (context.mounted) toast(context, '已复制');
-          },
-        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          PdIconButton(
+            icon: LucideIcons.image300,
+            tooltip: '保存为图片',
+            size: 16,
+            color: c.text3,
+            onTap: () async {
+              final dark = Theme.of(context).brightness == Brightness.dark;
+              await sharePng(await codeToPng(code, dark: dark), '代码');
+            },
+          ),
+          PdIconButton(
+            icon: LucideIcons.copy300,
+            tooltip: '复制代码',
+            size: 16,
+            color: c.text3,
+            onTap: () async {
+              await Clipboard.setData(ClipboardData(text: code));
+              if (context.mounted) toast(context, '已复制');
+            },
+          ),
+        ]),
       ),
     ]);
   }
