@@ -5,8 +5,10 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"github.com/ewkzcz/pocketdesk/server/internal/idem"
 	"log/slog"
 	"os"
@@ -59,6 +61,8 @@ type Deps struct {
 	Config     func() config.Config
 	Notifier   func() notify.Notifier
 	ApproveCmd func(sessionID string) []string
+	// Home：Agent 会话记录所在的用户主目录，测试时替换
+	Home func() string
 }
 
 /** Manager：会话管理器 */
@@ -95,6 +99,15 @@ type turn struct {
 	snap   gitSnap
 	writes map[string]bool
 	cwd    string
+	// base：本轮写过的文件在改动前的内容（按绝对路径），用于统计行数和查看差异
+	base map[string]*baseline
+	// patch：Agent 自带的差异文本，改动前内容没记下时使用
+	patch map[string]string
+	// probes：命令里提到的文件，本轮结束时看是否有变化
+	probes map[string]bool
+	// dir：非 git 目录在本轮开始时的文件状态（文件太多时为空）
+	dir  map[string]string
+	home string
 }
 
 /** Input：一条发送请求 */
@@ -108,6 +121,12 @@ type Input struct {
 func New(d Deps) *Manager {
 	if d.Notifier == nil {
 		d.Notifier = func() notify.Notifier { return notify.Nop{} }
+	}
+	if d.Home == nil {
+		d.Home = func() string {
+			h, _ := os.UserHomeDir()
+			return h
+		}
 	}
 	return &Manager{d: d, rts: map[string]*runtime{}, pend: map[string]*pending{}, approvalTimeout: 10 * time.Minute, interruptGrace: 10 * time.Second, now: time.Now, recent: idem.New(2000, 30*time.Minute), models: agent.NewModelCache(10 * time.Minute)}
 }
@@ -316,7 +335,10 @@ func (m *Manager) startTurn(ctx context.Context, rt *runtime, in Input) {
 		m.setState(ctx, rt, StateIdle)
 		return
 	}
-	rt.turn = &turn{snap: snapshot(ctx, cwd), writes: map[string]bool{}, cwd: cwd}
+	rt.turn = &turn{snap: snapshot(ctx, cwd), writes: map[string]bool{}, cwd: cwd, base: map[string]*baseline{}, patch: map[string]string{}, probes: map[string]bool{}, home: m.d.Home()}
+	if !rt.turn.snap.repo {
+		rt.turn.dir = dirSnapshot(cwd)
+	}
 	// 2、进程
 	if rt.proc == nil {
 		rt.proc, err = m.startProc(ctx, rt, rt.sess.Kind, cwd, rt.sess.AgentSessionID, rt.sess.Model)
@@ -448,6 +470,7 @@ func deltaKey(e agent.Event) string {
  * 2、写文件记录：加入本轮改动
  * 3、本轮结束：生成改动清单并处理排队
  * 4、其他：写库推送
+ * 写文件与改动前内容的记录只用于本轮改动清单，不推送
  */
 func (m *Manager) handle(ctx context.Context, rt *runtime, p agent.Process, e agent.Event) {
 	rt.mu.Lock()
@@ -471,10 +494,13 @@ func (m *Manager) handle(ctx context.Context, rt *runtime, p agent.Process, e ag
 			}
 		}
 	// 2、写文件
-	case agent.EvFileWrite:
+	case agent.EvFileWrite, agent.EvFileBase:
 		if rt.turn != nil {
 			if p, _ := e.Data["path"].(string); p != "" {
-				rt.turn.writes[p] = true
+				if e.Type == agent.EvFileWrite {
+					rt.turn.writes[p] = true
+				}
+				rt.turn.noteBase(absWrite(rt.turn.cwd, p), e.Data)
 			}
 		}
 	// 3、本轮结束
@@ -482,8 +508,13 @@ func (m *Manager) handle(ctx context.Context, rt *runtime, p agent.Process, e ag
 		if p == rt.proc {
 			m.finishTurn(ctx, rt, p)
 		}
-	// 4、其他
+	// 4、其他；执行命令前记下命令里提到的文件，找出命令生成或修改的文件
 	default:
+		if e.Type == agent.EvToolStart && rt.turn != nil {
+			if cmd := commandText(e.Data["input"]); cmd != "" {
+				rt.turn.probe(cmd)
+			}
+		}
 		m.emit(ctx, rt.id, e.Type, e.Data)
 	}
 }
@@ -500,7 +531,7 @@ func (m *Manager) handle(ctx context.Context, rt *runtime, p agent.Process, e ag
 func (m *Manager) finishTurn(ctx context.Context, rt *runtime, p agent.Process) {
 	// 1、改动清单
 	if rt.turn != nil {
-		files, git := m.turnChanges(ctx, rt.turn)
+		files, git := m.turnChanges(ctx, rt.id, rt.turn)
 		if len(files) > 0 {
 			m.emit(ctx, rt.id, "diff.summary", map[string]any{"files": files, "git": git})
 			preview := fmt.Sprintf("已完成：改动了 %d 个文件", len(files))
@@ -528,23 +559,44 @@ func (m *Manager) finishTurn(ctx context.Context, rt *runtime, p agent.Process) 
 	}
 }
 
-/** turnChanges：git 仓库用快照对比，否则用写文件记录 */
-func (m *Manager) turnChanges(ctx context.Context, t *turn) ([]FileChange, bool) {
-	if t.snap.repo {
-		return changedSince(ctx, t.snap), true
-	}
+/**
+ * turnChanges：本轮改动清单
+ *
+ * 处理流程：
+ * 1、git 仓库用快照对比，再补上仓库之外的写文件记录；否则用写文件记录；再补上命令生成或修改的文件
+ * 2、记下了改动前内容的文件，按前后内容重新统计行数并保存差异，没有实际变化的写文件记录去掉
+ */
+func (m *Manager) turnChanges(ctx context.Context, sid string, t *turn) ([]FileChange, bool) {
+	// 1、清单
 	var out []FileChange
-	for p := range t.writes {
-		rel := p
-		if filepath.IsAbs(p) {
-			if r, err := filepath.Rel(t.cwd, p); err == nil && !strings.HasPrefix(r, "..") {
-				rel = filepath.ToSlash(r)
+	if t.snap.repo {
+		out = append(changedSince(ctx, t.snap), outsideWrites(t.snap.root, t.writes, t.cwd)...)
+	} else {
+		for p := range t.writes {
+			rel := p
+			if filepath.IsAbs(p) {
+				if r, err := filepath.Rel(t.cwd, p); err == nil && !strings.HasPrefix(r, "..") {
+					rel = filepath.ToSlash(r)
+				}
 			}
+			abs := absWrite(t.cwd, p)
+			status := "modified"
+			if _, err := os.Stat(abs); err != nil {
+				status = "deleted"
+			}
+			out = append(out, FileChange{Path: rel, Abs: abs, Status: status})
 		}
-		out = append(out, FileChange{Path: rel, Status: "modified"})
 	}
-	sortChanges(out)
-	return out, false
+	out = append(out, t.commandChanges(out)...)
+	// 2、行数与差异
+	kept := out[:0]
+	for i, fc := range out {
+		if keep := m.measure(ctx, sid, t, &fc, i); keep {
+			kept = append(kept, fc)
+		}
+	}
+	sortChanges(kept)
+	return kept, t.snap.repo
 }
 
 /**
@@ -729,8 +781,15 @@ func (m *Manager) Update(ctx context.Context, id string, p Patch) (store.Session
 	return s, nil
 }
 
-/** Diff：本会话工作目录的累计改动或单个文件差异 */
-func (m *Manager) Diff(ctx context.Context, id, path string) (any, error) {
+/** Diff：本会话工作目录的累计改动或单个文件差异；带编号时返回那一轮保存的差异 */
+func (m *Manager) Diff(ctx context.Context, id, path, ref string) (any, error) {
+	if ref != "" {
+		text, err := m.d.Store.Diff(ctx, id, ref)
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, ErrNoDiff
+		}
+		return text, err
+	}
 	s, err := m.d.Store.Session(ctx, id)
 	if err != nil {
 		return nil, err
@@ -743,10 +802,41 @@ func (m *Manager) Diff(ctx context.Context, id, path string) (any, error) {
 		return fileDiff(ctx, cwd, path)
 	}
 	files, git := cumulative(ctx, cwd)
+	if !git {
+		files = m.recorded(ctx, id)
+	}
 	if files == nil {
 		files = []FileChange{}
 	}
 	return map[string]any{"files": files, "git": git}, nil
+}
+
+/**
+ * recorded：不是 git 仓库时，本会话累计改动取各轮改动清单，同一文件以最近一轮为准
+ */
+func (m *Manager) recorded(ctx context.Context, id string) []FileChange {
+	evs, err := m.d.Store.EventsOfType(ctx, id, "diff.summary")
+	if err != nil {
+		return nil
+	}
+	latest := map[string]FileChange{}
+	for _, e := range evs {
+		var d struct {
+			Files []FileChange `json:"files"`
+		}
+		if json.Unmarshal(e.Data, &d) != nil {
+			continue
+		}
+		for _, f := range d.Files {
+			latest[f.Path] = f
+		}
+	}
+	out := make([]FileChange, 0, len(latest))
+	for _, f := range latest {
+		out = append(out, f)
+	}
+	sortChanges(out)
+	return out
 }
 
 /** Shutdown：关闭全部进程 */
@@ -893,4 +983,258 @@ func (m *Manager) Models(ctx context.Context, kind string) []string {
 	qctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	return m.models.Get(qctx, d, cfg.Agents[kind], []string{})
+}
+
+/** baseline：本轮第一次写某文件之前的内容 */
+type baseline struct {
+	text    string
+	existed bool
+	// skip：太大或不是文本，不做逐行对比
+	skip bool
+	// firm：来自 Agent 工具结果里的原文，比事前读取更可靠，不再被覆盖
+	firm bool
+	// office：Word、PowerPoint、Excel 文件，text 为取出的文字内容
+	office bool
+	// sig：修改时间与大小，用于判断二进制文件有没有变化
+	sig string
+}
+
+/** maxBaseline：参与逐行对比的文件大小上限 */
+const maxBaseline = 2 << 20
+
+/**
+ * noteBase：记下文件改动前的内容
+ *
+ * 处理流程：
+ * 1、Agent 自带差异文本时保存，作为兜底
+ * 2、工具结果带原文时以原文为准（仅限本轮第一次写这个文件）
+ * 3、否则第一次出现时立即读取磁盘上的内容
+ */
+func (t *turn) noteBase(abs string, data map[string]any) {
+	// 1、差异文本
+	if p, _ := data["patch"].(string); p != "" {
+		if _, ok := t.patch[abs]; !ok {
+			t.patch[abs] = p
+		}
+	}
+	cur := t.base[abs]
+	// 2、工具结果原文
+	if orig, ok := data["original"].(string); ok {
+		if cur == nil || !cur.firm {
+			existed, _ := data["existed"].(bool)
+			t.base[abs] = &baseline{text: orig, existed: existed, firm: true, skip: len(orig) > maxBaseline}
+		}
+		return
+	}
+	// 3、读取磁盘
+	if cur == nil {
+		t.base[abs] = readBaseline(abs)
+	}
+}
+
+/** readBaseline：读取文件当前内容，不存在记为新建；Office 文件取文字内容，过大或其他二进制只记修改时间与大小 */
+func readBaseline(abs string) *baseline {
+	info, err := os.Stat(abs)
+	if err != nil {
+		return &baseline{}
+	}
+	sig := sigOf(abs)
+	if isOffice(abs) && info.Size() <= maxOffice {
+		if text, ok := officeText(abs); ok {
+			return &baseline{text: text, existed: true, office: true, sig: sig}
+		}
+	}
+	if info.IsDir() || info.Size() > maxBaseline {
+		return &baseline{existed: true, skip: true, sig: sig}
+	}
+	b, err := os.ReadFile(abs)
+	if err != nil || isBinary(b) {
+		return &baseline{existed: true, skip: true, sig: sig}
+	}
+	return &baseline{text: string(b), existed: true, sig: sig}
+}
+
+/** isBinary：前 8KB 含零字节视为二进制 */
+func isBinary(b []byte) bool {
+	n := len(b)
+	if n > 8192 {
+		n = 8192
+	}
+	for _, c := range b[:n] {
+		if c == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+/**
+ * measure：按改动前后内容统计一个文件的增删行数并保存差异，返回是否保留在清单里
+ *
+ * 处理流程：
+ * 1、Office 文件：对比取出的文字内容
+ * 2、其他二进制文件：只标记为二进制改动
+ * 3、文本文件：与改动前内容逐行对比；工具结果原文与当前内容一致且只来自写文件记录时去掉
+ * 4、没有改动前内容但 Agent 给了差异文本：按差异文本统计
+ * 5、保存差异文本并带上编号，手机点开时按编号读取
+ */
+func (m *Manager) measure(ctx context.Context, sid string, t *turn, fc *FileChange, i int) bool {
+	abs := fc.Abs
+	if abs == "" {
+		return true
+	}
+	var text string
+	b := t.base[abs]
+	// 新出现的文件没有改动前内容，按空文件对比
+	if b == nil && fc.Status == "added" {
+		b = &baseline{}
+	}
+	name := fc.Path
+	if filepath.IsAbs(name) {
+		name = filepath.Base(name)
+	}
+	switch {
+	// 1、Office 文件对比文字内容，文字没变但文件变了（例如只改了格式）记为二进制改动
+	case b != nil && (b.office || !b.existed && isOffice(abs)):
+		now := readBaseline(abs)
+		if now.existed && !now.office {
+			fc.Binary, fc.Added, fc.Removed = true, 0, 0
+			return true
+		}
+		fc.Added, fc.Removed, text = unifiedDiff(filepath.ToSlash(name)+"（文字内容）", b.text, now.text, b.existed, now.existed)
+		if !now.existed {
+			fc.Status = "deleted"
+		} else if !b.existed {
+			fc.Status = "added"
+		}
+		if text == "" {
+			fc.Binary = true
+			return b.sig != now.sig || !b.firm
+		}
+	// 2、其他二进制文件只记录有变化
+	case b != nil && b.skip:
+		fc.Binary, fc.Added, fc.Removed = true, 0, 0
+		if sigOf(abs) == "" {
+			fc.Status = "deleted"
+		}
+		return true
+	// 3、文本前后对比
+	case b != nil:
+		now := readBaseline(abs)
+		if now.skip || now.office {
+			fc.Binary, fc.Added, fc.Removed = true, 0, 0
+			return true
+		}
+		fc.Added, fc.Removed, text = unifiedDiff(filepath.ToSlash(name), b.text, now.text, b.existed, now.existed)
+		if text == "" {
+			// 原文可靠且来自写文件记录时去掉；git 看到的改动（例如先改后还原）与事后才读到的内容保留原样
+			return !b.firm || t.snap.repo && !filepath.IsAbs(fc.Path)
+		}
+		switch {
+		case !b.existed && now.existed:
+			fc.Status = "added"
+		case b.existed && !now.existed:
+			fc.Status = "deleted"
+		}
+	// 4、Agent 差异
+	case t.patch[abs] != "":
+		text = t.patch[abs]
+		fc.Added, fc.Removed = 0, 0
+		for _, l := range strings.Split(text, "\n") {
+			switch {
+			case strings.HasPrefix(l, "+++") || strings.HasPrefix(l, "---"):
+			case strings.HasPrefix(l, "+"):
+				fc.Added++
+			case strings.HasPrefix(l, "-"):
+				fc.Removed++
+			}
+		}
+	default:
+		return true
+	}
+	// 5、保存
+	if len(text) > 512<<10 {
+		text = text[:512<<10] + "\n…"
+	}
+	ref := fmt.Sprintf("%d-%d", m.now().UnixMilli(), i)
+	if err := m.d.Store.SaveDiff(ctx, sid, ref, text); err == nil {
+		fc.Ref = ref
+	}
+	return true
+}
+
+/**
+ * commandChanges：命令生成或修改的文件（清单里还没有的）
+ *
+ * 处理流程：
+ * 1、命令里提到的文件：修改时间或大小有变化即计入
+ * 2、非 git 工作目录：与本轮开始时的文件状态对比，新出现、变化与消失的文件计入
+ */
+func (t *turn) commandChanges(have []FileChange) []FileChange {
+	present := map[string]bool{}
+	for _, fc := range have {
+		present[canon(fc.Abs)] = true
+	}
+	cwd := t.cwd
+	if r, err := filepath.EvalSymlinks(cwd); err == nil {
+		cwd = r
+	}
+	var out []FileChange
+	add := func(abs, status string) {
+		if present[abs] {
+			return
+		}
+		present[abs] = true
+		path := abs
+		if r, err := filepath.Rel(cwd, abs); err == nil && r != ".." && !strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+			path = filepath.ToSlash(r)
+		}
+		out = append(out, FileChange{Path: path, Abs: abs, Status: status})
+	}
+	status := func(existed bool, now string) string {
+		switch {
+		case now == "":
+			return "deleted"
+		case !existed:
+			return "added"
+		}
+		return "modified"
+	}
+	// 1、命令里提到的文件
+	probes := make([]string, 0, len(t.probes))
+	for p := range t.probes {
+		probes = append(probes, p)
+	}
+	sort.Strings(probes)
+	for _, p := range probes {
+		b := t.base[p]
+		if now := sigOf(p); b != nil && now != b.sig {
+			add(p, status(b.existed, now))
+		}
+	}
+	// 2、工作目录
+	if t.dir == nil {
+		return out
+	}
+	now := dirSnapshot(t.cwd)
+	if now == nil {
+		return out
+	}
+	var paths []string
+	for p := range now {
+		paths = append(paths, p)
+	}
+	for p := range t.dir {
+		if _, ok := now[p]; !ok {
+			paths = append(paths, p)
+		}
+	}
+	sort.Strings(paths)
+	for _, p := range paths {
+		before, existed := t.dir[p]
+		if after := now[p]; after != before {
+			add(p, status(existed, after))
+		}
+	}
+	return out
 }

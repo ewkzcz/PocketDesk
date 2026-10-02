@@ -63,6 +63,7 @@ func (s *Server) AdminHandler() http.Handler {
 	mux.HandleFunc("POST /admin/api/approve", s.adminApprove)
 	mux.HandleFunc("GET /admin/api/audit", s.adminAudit)
 	mux.HandleFunc("POST /admin/api/open", s.adminOpen)
+	mux.HandleFunc("GET /admin/api/local-file", s.adminLocalFile)
 	mux.HandleFunc("POST /admin/api/save-image", s.adminSaveImage)
 	mux.HandleFunc("POST /admin/api/pick-folder", s.adminPickFolder)
 	mux.HandleFunc("GET /admin/api/remote", s.adminRemote)
@@ -456,6 +457,23 @@ func (s *Server) adminOpen(w http.ResponseWriter, r *http.Request) {
 	cfg := s.Cfg.Get()
 	var dir string
 	switch in.Which {
+	case "abs":
+		p, info, err := localPath(in.Path)
+		if err != nil {
+			writeErr(w, r, err)
+			return
+		}
+		if info.IsDir() {
+			err = openFolder(p)
+		} else {
+			err = s.open(p, in.Reveal)
+		}
+		if err != nil {
+			writeErr(w, r, err)
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"ok": true})
+		return
 	case "wsfile":
 		ws, err := s.Store.Workspace(r.Context(), in.ID)
 		if err != nil {
@@ -498,6 +516,38 @@ func (s *Server) adminOpen(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
+/** localPath：电脑上已存在的文件或文件夹的绝对路径 */
+func localPath(p string) (string, os.FileInfo, error) {
+	if !filepath.IsAbs(p) {
+		return "", nil, errf(400, "bad_path", "路径不正确")
+	}
+	p = filepath.Clean(p)
+	info, err := os.Stat(p)
+	if err != nil {
+		return "", nil, errf(404, "not_found", "文件已被移动或删除")
+	}
+	return p, info, nil
+}
+
+/** adminLocalFile：桌面端预览电脑上任意位置的文件（例如不在工作区里的改动文件） */
+func (s *Server) adminLocalFile(w http.ResponseWriter, r *http.Request) {
+	p, info, err := localPath(r.URL.Query().Get("path"))
+	if err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	if info.IsDir() {
+		writeErr(w, r, workspace.ErrIsDir)
+		return
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	defer f.Close()
+	serveUserFile(w, r, filepath.Base(p), info.ModTime(), f)
+}
 
 /**
  * adminSaveImage：把网页里画好的图片（图表、代码图）存到电脑的「下载」文件夹并定位到它

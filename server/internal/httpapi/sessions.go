@@ -186,7 +186,7 @@ func (s *Server) retry(w http.ResponseWriter, r *http.Request) {
 /** diff：累计改动清单或单个文件差异 */
 func (s *Server) diff(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Query().Get("path")
-	res, err := s.Sessions.Diff(r.Context(), r.PathValue("id"), p)
+	res, err := s.Sessions.Diff(r.Context(), r.PathValue("id"), p, r.URL.Query().Get("ref"))
 	if err != nil {
 		writeErr(w, r, err)
 		return

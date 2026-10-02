@@ -264,7 +264,12 @@ func (c *codexApp) notification(method string, raw json.RawMessage) []Event {
 		case "commandExecution":
 			return []Event{ev(EvToolStart, "id", it.ID, "name", "Shell", "kind", "command", "summary", codexCommand(it.Command, it), "input", map[string]any{"command": codexCommand(it.Command, it)})}
 		case "fileChange":
-			return []Event{ev(EvToolStart, "id", it.ID, "name", "Edit", "kind", "edit", "summary", strings.Join(codexPaths(it, c.opt.Cwd), ", "))}
+			// 改动落盘前先报告文件，便于记下改动前的内容
+			out := []Event{ev(EvToolStart, "id", it.ID, "name", "Edit", "kind", "edit", "summary", strings.Join(codexPaths(it, c.opt.Cwd), ", "))}
+			for _, ch := range it.Changes {
+				out = append(out, ev(EvFileBase, "path", ch.Path))
+			}
+			return out
 		case "mcpToolCall":
 			return []Event{ev(EvToolStart, "id", it.ID, "name", it.Server+"."+it.Tool, "kind", "other", "summary", it.Server+"."+it.Tool)}
 		case "webSearch":
@@ -333,7 +338,7 @@ func (c *codexApp) completed(it codexAppItem) []Event {
 		out := []Event{ev(EvToolEnd, "id", it.ID, "output", strings.Join(codexPaths(it, c.opt.Cwd), ", "), "isError", it.Status != "completed")}
 		if it.Status == "completed" {
 			for _, ch := range it.Changes {
-				out = append(out, ev(EvFileWrite, "path", ch.Path))
+				out = append(out, ev(EvFileWrite, "path", ch.Path, "patch", ch.Diff))
 			}
 		}
 		return out

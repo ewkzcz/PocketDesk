@@ -1,5 +1,5 @@
 /**
- * 数据维护：旧事件归档为压缩 JSONL，过期审计日志清理。
+ * 数据维护：旧事件归档为压缩 JSONL，过期审计日志与改动差异清理。
  */
 package store
 
@@ -35,7 +35,7 @@ var DefaultRetention = RetentionPolicy{
  * 1、找出每个会话中超龄或超量的事件
  * 2、写入归档目录下的压缩 JSONL 文件
  * 3、从数据库删除已归档事件
- * 4、删除过期审计记录
+ * 4、删除过期审计记录与过期的改动差异
  */
 func (s *Store) Maintain(ctx context.Context, archiveDir string, p RetentionPolicy) (int, error) {
 	// 1、按会话计算归档上限序号
@@ -91,8 +91,11 @@ func (s *Store) Maintain(ctx context.Context, archiveDir string, p RetentionPoli
 		}
 		archived += len(evs)
 	}
-	// 4、审计
-	_, err = s.db.ExecContext(ctx, `DELETE FROM audit WHERE created_at<?`, s.now().Add(-p.AuditMaxAge).UnixMilli())
+	// 4、审计与差异
+	if _, err = s.db.ExecContext(ctx, `DELETE FROM audit WHERE created_at<?`, s.now().Add(-p.AuditMaxAge).UnixMilli()); err != nil {
+		return archived, err
+	}
+	_, err = s.db.ExecContext(ctx, `DELETE FROM turn_diffs WHERE created_at<?`, cutoff)
 	return archived, err
 }
 

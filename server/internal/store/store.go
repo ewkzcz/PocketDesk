@@ -115,6 +115,13 @@ var migrations = []string{
 		created_at INTEGER NOT NULL,
 		updated_at INTEGER NOT NULL
 	)`,
+	`CREATE TABLE IF NOT EXISTS turn_diffs (
+		session_id TEXT NOT NULL,
+		ref TEXT NOT NULL,
+		text TEXT NOT NULL,
+		created_at INTEGER NOT NULL,
+		PRIMARY KEY (session_id, ref)
+	)`,
 }
 
 /** columns：后来新增的列，已有数据库启动时按需补上 */

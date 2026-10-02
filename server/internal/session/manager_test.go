@@ -4,6 +4,7 @@
 package session
 
 import (
+	"archive/zip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -82,11 +83,22 @@ func (p *mockProc) Send(_ context.Context, m agent.Message) error {
 		case m.Text == "stuck":
 		case m.Text == "crash":
 			p.crash(errors.New("segfault"))
+		case strings.HasPrefix(m.Text, "docx:"):
+			// 用脚本生成 Word 文件：没有写文件记录，只有一条命令
+			target := strings.TrimPrefix(m.Text, "docx:")
+			paras := strings.Split(filepath.Base(target), "+")
+			target = filepath.Dir(target) + "/out.docx"
+			p.emit(agent.EvToolStart, "id", "c1", "name", "Bash", "kind", "command", "summary", "make", "input", map[string]any{"command": `python3 make.py "` + target + `"`})
+			time.Sleep(30 * time.Millisecond)
+			writeDocx(target, paras...)
+			p.emit(agent.EvToolEnd, "id", "c1", "output", "ok")
+			p.emit(agent.EvTurnEnd)
 		case strings.HasPrefix(m.Text, "write:"):
 			name := strings.TrimPrefix(m.Text, "write:")
-			os.WriteFile(filepath.Join(p.opt.Cwd, name), []byte("a\nb\n"), 0o644)
 			p.emit(agent.EvToolStart, "id", "t1", "name", "Write", "kind", "edit", "summary", name)
 			p.emit(agent.EvFileWrite, "path", filepath.Join(p.opt.Cwd, name))
+			time.Sleep(30 * time.Millisecond)
+			os.WriteFile(filepath.Join(p.opt.Cwd, name), []byte("a\nb\n"), 0o644)
 			p.emit(agent.EvToolEnd, "id", "t1", "output", "ok")
 			p.emit(agent.EvTurnEnd)
 		default:
@@ -481,8 +493,21 @@ func TestDiffSummaryGitAndPlain(t *testing.T) {
 	f.m.Send(ctx, s.ID, Input{Text: "write:plain.txt"})
 	f.waitState(t, s.ID, StateIdle)
 	time.Sleep(20 * time.Millisecond)
-	if !hasEvent(f.events(t, s.ID), "diff.summary", `"path":"plain.txt"`) {
-		t.Fatal("非 git 目录应按写文件记录生成清单")
+	if !hasEvent(f.events(t, s.ID), "diff.summary", `"path":"plain.txt"`) || !hasEvent(f.events(t, s.ID), "diff.summary", `"added":2`) {
+		t.Fatalf("非 git 目录应按写文件记录生成清单并统计行数: %s", lastData(f.events(t, s.ID), "diff.summary"))
+	}
+	var sum struct {
+		Files []FileChange `json:"files"`
+	}
+	json.Unmarshal([]byte(lastData(f.events(t, s.ID), "diff.summary")), &sum)
+	if len(sum.Files) != 1 || sum.Files[0].Ref == "" {
+		t.Fatalf("应带差异编号: %+v", sum.Files)
+	}
+	if d, err := f.m.Diff(ctx, s.ID, "", sum.Files[0].Ref); err != nil || !strings.Contains(d.(string), "+a\n+b") {
+		t.Fatalf("按编号取差异 %v %v", d, err)
+	}
+	if all, _ := f.m.Diff(ctx, s.ID, "", ""); !strings.Contains(toJSON(all), "plain.txt") {
+		t.Fatalf("非 git 目录的累计改动应取各轮清单 %v", all)
 	}
 	repo := filepath.Join(f.root, "repo")
 	os.MkdirAll(repo, 0o755)
@@ -506,19 +531,19 @@ func TestDiffSummaryGitAndPlain(t *testing.T) {
 	if !hasEvent(evs, "diff.summary", `"path":"new.txt"`) || hasEvent(evs, "diff.summary", "keep.txt") {
 		t.Fatalf("git 清单应只含本轮改动: %s", lastData(evs, "diff.summary"))
 	}
-	all, err := f.m.Diff(ctx, g.ID, "")
+	all, err := f.m.Diff(ctx, g.ID, "", "")
 	if err != nil || !strings.Contains(toJSON(all), "keep.txt") {
 		t.Fatalf("累计改动应含之前的修改: %v %v", all, err)
 	}
-	d, err := f.m.Diff(ctx, g.ID, "new.txt")
+	d, err := f.m.Diff(ctx, g.ID, "new.txt", "")
 	if err != nil || !strings.Contains(d.(string), "+a") {
 		t.Fatalf("新文件差异 %v %v", d, err)
 	}
-	d, _ = f.m.Diff(ctx, g.ID, "keep.txt")
+	d, _ = f.m.Diff(ctx, g.ID, "keep.txt", "")
 	if !strings.Contains(d.(string), "+changed before turn") {
 		t.Fatalf("已跟踪文件差异 %v", d)
 	}
-	if _, err := f.m.Diff(ctx, g.ID, "../../etc/passwd"); err == nil {
+	if _, err := f.m.Diff(ctx, g.ID, "../../etc/passwd", ""); err == nil {
 		t.Fatal("越界路径应拒绝")
 	}
 }
@@ -635,5 +660,62 @@ func TestAutoApproveSessionSkipsApprovals(t *testing.T) {
 		if e.Type == "msg.done" && !strings.Contains(string(e.Data), "allowed") {
 			t.Fatalf("应自动放行：%s", e.Data)
 		}
+	}
+}
+
+/** writeDocx：写一个只有正文段落的 Word 文件 */
+func writeDocx(p string, paras ...string) {
+	f, _ := os.Create(p)
+	zw := zip.NewWriter(f)
+	w, _ := zw.Create("word/document.xml")
+	w.Write([]byte(`<w:document xmlns:w="w"><w:body>`))
+	for _, x := range paras {
+		w.Write([]byte(`<w:p><w:r><w:t>` + x + `</w:t></w:r></w:p>`))
+	}
+	w.Write([]byte(`</w:body></w:document>`))
+	zw.Close()
+	f.Close()
+}
+
+/** 命令生成、修改工作区外的 Word 文件：按文字内容统计增删并可查看差异；脚本改动工作目录里的文件也能发现 */
+func TestCommandChangesOffice(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	desk := t.TempDir()
+	old := skipRoots
+	skipRoots = []string{"/dev/"}
+	t.Cleanup(func() { skipRoots = old })
+	s, _ := f.m.Create(ctx, "claude", "w1", "sub", "")
+	sum := func() []FileChange {
+		var d struct {
+			Files []FileChange `json:"files"`
+		}
+		json.Unmarshal([]byte(lastData(f.events(t, s.ID), "diff.summary")), &d)
+		return d.Files
+	}
+	f.m.Send(ctx, s.ID, Input{Text: "docx:" + filepath.Join(desk, "标题+第一段")})
+	f.waitState(t, s.ID, StateIdle)
+	time.Sleep(20 * time.Millisecond)
+	got := sum()
+	if len(got) != 1 || got[0].Path != canon(filepath.Join(desk, "out.docx")) || got[0].Status != "added" || got[0].Added != 2 || got[0].Ref == "" {
+		t.Fatalf("新建 docx %+v", got)
+	}
+	f.m.Send(ctx, s.ID, Input{Text: "docx:" + filepath.Join(desk, "标题+改过的段落+新增段落")})
+	f.waitState(t, s.ID, StateIdle)
+	time.Sleep(20 * time.Millisecond)
+	got = sum()
+	if len(got) != 1 || got[0].Status != "modified" || got[0].Added != 2 || got[0].Removed != 1 {
+		t.Fatalf("修改 docx %+v", got)
+	}
+	d, _ := f.m.Diff(ctx, s.ID, "", got[0].Ref)
+	if !strings.Contains(d.(string), "-第一段") || !strings.Contains(d.(string), "+新增段落") {
+		t.Fatalf("文字差异 %v", d)
+	}
+	// 脚本在工作目录里生成文件（命令里没写文件名）
+	f.m.Send(ctx, s.ID, Input{Text: "docx:" + filepath.Join(f.root, "sub", "仅工作目录")})
+	f.waitState(t, s.ID, StateIdle)
+	time.Sleep(20 * time.Millisecond)
+	if got = sum(); len(got) != 1 || got[0].Path != "out.docx" || got[0].Status != "added" {
+		t.Fatalf("工作目录里的新文件 %+v", got)
 	}
 }

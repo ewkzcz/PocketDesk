@@ -145,7 +145,7 @@ func (s *Store) DeleteSession(ctx context.Context, id string) error {
 		if n, _ := res.RowsAffected(); n == 0 {
 			return ErrNotFound
 		}
-		for _, q := range []string{`DELETE FROM events WHERE session_id=?`, `DELETE FROM approvals WHERE session_id=?`, `DELETE FROM rules WHERE session_id=?`} {
+		for _, q := range []string{`DELETE FROM events WHERE session_id=?`, `DELETE FROM approvals WHERE session_id=?`, `DELETE FROM rules WHERE session_id=?`, `DELETE FROM turn_diffs WHERE session_id=?`} {
 			if _, err := t.ExecContext(ctx, q, id); err != nil {
 				return err
 			}
@@ -267,4 +267,41 @@ func scanSession(r scanner) (Session, error) {
 	x.Pinned = pinned == 1
 	x.AutoApprove = auto == 1
 	return x, err
+}
+
+/** SaveDiff：保存本轮某个文件的差异文本，供手机点开查看 */
+func (s *Store) SaveDiff(ctx context.Context, sessionID, ref, text string) error {
+	_, err := s.db.ExecContext(ctx, `INSERT OR REPLACE INTO turn_diffs(session_id,ref,text,created_at) VALUES(?,?,?,?)`, sessionID, ref, text, s.nowMs())
+	return err
+}
+
+/** Diff：读取保存的差异文本 */
+func (s *Store) Diff(ctx context.Context, sessionID, ref string) (string, error) {
+	var text string
+	err := s.db.QueryRowContext(ctx, `SELECT text FROM turn_diffs WHERE session_id=? AND ref=?`, sessionID, ref).Scan(&text)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return text, err
+}
+
+/** EventsOfType：某会话某类型的全部事件（升序） */
+func (s *Store) EventsOfType(ctx context.Context, sessionID, typ string) ([]Event, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT session_id,seq,type,data,created_at FROM events WHERE session_id=? AND type=? ORDER BY seq`, sessionID, typ)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Event{}
+	for rows.Next() {
+		var e Event
+		var data string
+		if err := rows.Scan(&e.Session, &e.Seq, &e.Type, &data, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		e.Data = json.RawMessage(data)
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }

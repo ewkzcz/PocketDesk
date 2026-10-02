@@ -20,10 +20,13 @@ import (
 /** FileChange：改动清单中的一个文件 */
 type FileChange struct {
 	Path    string `json:"path"`
+	Abs     string `json:"abs,omitempty"`
 	Added   int    `json:"added"`
 	Removed int    `json:"removed"`
 	Status  string `json:"status"`
 	Binary  bool   `json:"binary,omitempty"`
+	// Ref：本轮保存的差异编号，查看差异时带上
+	Ref string `json:"ref,omitempty"`
 }
 
 /** gitSnap：某一时刻的工作区状态 */
@@ -128,7 +131,7 @@ func changedSince(ctx context.Context, before gitSnap) []FileChange {
 		if before.tracked[p] == v {
 			continue
 		}
-		fc := FileChange{Path: p, Status: "modified"}
+		fc := FileChange{Path: p, Abs: filepath.Join(before.root, p), Status: "modified"}
 		counts := strings.SplitN(cur[p], "\t", 2)
 		if len(counts) == 2 {
 			if counts[0] == "-" {
@@ -147,7 +150,7 @@ func changedSince(ctx context.Context, before gitSnap) []FileChange {
 		if before.untrack[p] == v {
 			continue
 		}
-		out = append(out, FileChange{Path: p, Added: countLines(filepath.Join(before.root, p)), Status: "added"})
+		out = append(out, FileChange{Path: p, Abs: filepath.Join(before.root, p), Added: countLines(filepath.Join(before.root, p)), Status: "added"})
 	}
 	// 3、排序
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
@@ -228,4 +231,29 @@ func fileDiff(ctx context.Context, cwd, path string) (string, error) {
 		return "", ErrNoDiff
 	}
 	return string(d), nil
+}
+
+/** absWrite：写文件记录还原为绝对路径，相对路径按工作目录解析 */
+func absWrite(cwd, p string) string {
+	if filepath.IsAbs(p) {
+		return filepath.Clean(p)
+	}
+	return filepath.Join(cwd, p)
+}
+
+/** outsideWrites：写文件记录里落在仓库之外的文件，仓库快照看不到它们 */
+func outsideWrites(root string, writes map[string]bool, cwd string) []FileChange {
+	var out []FileChange
+	for p := range writes {
+		abs := absWrite(cwd, p)
+		if r, err := filepath.Rel(root, abs); err == nil && r != ".." && !strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+			continue
+		}
+		status := "modified"
+		if _, err := os.Stat(abs); err != nil {
+			status = "deleted"
+		}
+		out = append(out, FileChange{Path: abs, Abs: abs, Status: status})
+	}
+	return out
 }

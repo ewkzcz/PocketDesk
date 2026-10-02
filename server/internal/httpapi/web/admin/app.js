@@ -849,7 +849,15 @@
       case 'diff':
         mine = false; who = agentKind;
         body = '<div class="pd-card-msg"><div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">' + icon('git-compare', 16) + '改动了 ' + it.files.length + ' 个文件</div>' +
-          it.files.map(function (f) { return '<div class="pd-diff-row"><span>' + esc(f.path) + '</span><span class="pd-add">+' + (f.added || 0) + '</span><span class="pd-del">-' + (f.removed || 0) + '</span></div>'; }).join('') + '</div>';
+          it.files.map(function (f) {
+            var gone = f.status === 'deleted' || f.status === 'D';
+            var name = f.ref ? '<button class="pd-link" data-act="diff-ref" data-ref="' + esc(f.ref) + '" data-path="' + esc(f.path) + '" title="查看改动">' + esc(f.path) + '</button>' :
+              f.abs && !gone ? '<button class="pd-link" data-act="diff-open" data-abs="' + esc(f.abs) + '">' + esc(f.path) + '</button>' : '<span>' + esc(f.path) + '</span>';
+            var reveal = (f.ref && f.abs && !gone ? '<button class="pd-icon-btn" data-act="diff-open" data-abs="' + esc(f.abs) + '" title="打开文件" aria-label="打开文件">' + icon('file-text', 14) + '</button>' : '') + (f.abs ? '<button class="pd-icon-btn" data-act="diff-reveal" data-abs="' + esc(f.abs) + '" data-gone="' + (gone ? 1 : 0) + '" title="显示所在文件夹" aria-label="显示所在文件夹">' + icon('folder-open', 14) + '</button>' : '');
+            var stat = f.binary ? '<span class="pd-muted">' + (f.status === 'added' || f.status === 'A' ? '新建' : gone ? '删除' : '已修改') + ' · 二进制</span>' :
+              '<span class="pd-add">+' + (f.added || 0) + '</span><span class="pd-del">-' + (f.removed || 0) + '</span>';
+            return '<div class="pd-diff-row">' + name + stat + reveal + '</div>';
+          }).join('') + '</div>';
         break;
       case 'sys':
         return '<div class="pd-sys' + (it.error ? ' err' : '') + '" data-seq="' + it.seq + '">' + esc(it.text) + (it.retryable ? ' <button class="pd-link" data-act="retry">重试</button>' : '') + '</div>';
@@ -995,6 +1003,19 @@
     var it = lg && buildItems(lg.events).filter(function (x) { return x.seq === seq; })[0];
     if (!it) { return ''; }
     return it.text || it.output || it.name || '';
+  }
+
+  /** diffModal：查看本轮某个文件的改动 */
+  function diffModal(sid, ref, path) {
+    api('GET', P + '/api/sessions/' + encodeURIComponent(sid) + '/diff?ref=' + encodeURIComponent(ref)).then(function (r) {
+      var lines = String((r && r.diff) || '').split('\n').map(function (l) {
+        var cls = /^(\+\+\+|---)/.test(l) ? 'pd-diff-meta' : l[0] === '+' ? 'pd-diff-add' : l[0] === '-' ? 'pd-diff-del' : l.indexOf('@@') === 0 ? 'pd-diff-hunk' : '';
+        return '<div class="' + cls + '">' + (esc(l) || '&nbsp;') + '</div>';
+      }).join('');
+      modalRoot.innerHTML = '<div class="pd-scrim"><div class="pd-dialog pd-dialog-wide" role="dialog" aria-modal="true" aria-label="改动">' +
+        '<div class="pd-dialog-head"><div class="pd-dialog-title">' + esc(path) + '</div><button class="pd-icon-btn" data-act="modal-close" aria-label="关闭">' + icon('x', 18) + '</button></div>' +
+        '<div class="pd-modal-body"><div class="pd-diff-text">' + lines + '</div></div></div></div>';
+    }).catch(function (er) { toast(er.message); });
   }
 
   /** popMenu：在指定位置弹出菜单 */
@@ -1565,10 +1586,24 @@
           '<button class="pd-btn" data-act="file-open" data-seq="' + t.dataset.seq + '">' + icon('external-link', 16) + '打开</button>' +
           '<button class="pd-btn" data-act="file-reveal" data-seq="' + t.dataset.seq + '">' + icon('folder-open', 16) + '显示</button>', t.dataset.seq);
         break;
+      case 'diff-open':
+        if (isImage(t.dataset.abs)) {
+          imagePreview(t.dataset.abs.split(/[\\/]/).pop(), '/admin/api/local-file?path=' + encodeURIComponent(t.dataset.abs),
+            '<button class="pd-btn" data-act="diff-open-app" data-abs="' + esc(t.dataset.abs) + '">' + icon('external-link', 16) + '打开</button>' +
+            '<button class="pd-btn" data-act="diff-reveal" data-abs="' + esc(t.dataset.abs) + '">' + icon('folder-open', 16) + '显示</button>');
+          break;
+        }
+      case 'diff-open-app':
+        api('POST', '/admin/api/open', { which: 'abs', path: t.dataset.abs }).catch(function (er) { toast(er.message); });
+        break;
+      case 'diff-reveal':
+        api('POST', '/admin/api/open', { which: 'abs', path: t.dataset.gone === '1' ? t.dataset.abs.replace(/[\\/][^\\/]*$/, '') : t.dataset.abs, reveal: t.dataset.gone !== '1' }).catch(function (er) { toast(er.message); });
+        break;
       case 'file-open':
       case 'file-reveal':
         api('POST', '/admin/api/assistant/open', { seq: +t.dataset.seq, reveal: act === 'file-reveal' }).catch(function (er) { toast(er.message); });
         break;
+      case 'diff-ref': diffModal(sid, t.dataset.ref, t.dataset.path); break;
       case 'chat-more':
         var rect = t.getBoundingClientRect(), s = session(sid);
         popMenu(rect.right - 170, rect.bottom + 4, [['copy-all', '复制全部对话', false, 'copy'], ['pin', s && s.pinned ? '取消置顶' : '置顶聊天', false, 'pin'], '-', ['delete', '删除聊天', true, 'trash']]).then(function (k) { chatMenu(k, sid); });

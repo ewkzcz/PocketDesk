@@ -192,6 +192,9 @@ type claudeLine struct {
 	Result    string          `json:"result"`
 	IsError   bool            `json:"is_error"`
 	CostUSD   float64         `json:"total_cost_usd"`
+	// 工具结果附带的结构化信息，写文件类工具含改动前的原文
+	ToolResult  json.RawMessage `json:"tool_use_result"`
+	ToolResult2 json.RawMessage `json:"toolUseResult"`
 	Duration  int64           `json:"duration_ms"`
 	Usage     struct {
 		Input       int64 `json:"input_tokens"`
@@ -243,7 +246,15 @@ func (p *claudeParser) parse(line []byte) []Event {
 		return p.assistant(l.Message)
 	// 4、工具结果
 	case "user":
-		return p.toolResults(l.Message)
+		out := p.toolResults(l.Message)
+		raw := l.ToolResult
+		if len(raw) == 0 {
+			raw = l.ToolResult2
+		}
+		if e, ok := originalOf(raw); ok {
+			out = append(out, e)
+		}
+		return out
 	// 5、结果
 	case "result":
 		out := []Event{ev(EvUsage, "inputTokens", l.Usage.Input+l.Usage.CacheRead+l.Usage.CacheCreate, "outputTokens", l.Usage.Output, "costUsd", l.CostUSD, "durationMs", l.Duration)}
@@ -359,6 +370,28 @@ func (p *claudeParser) toolResults(raw json.RawMessage) []Event {
 		}
 	}
 	return out
+}
+
+/**
+ * originalOf：写文件类工具结果里的改动前原文，用于统计本轮改动行数（新建文件原文为空）
+ */
+func originalOf(raw json.RawMessage) (Event, bool) {
+	var r map[string]json.RawMessage
+	if len(raw) == 0 || json.Unmarshal(raw, &r) != nil {
+		return Event{}, false
+	}
+	var fp string
+	json.Unmarshal(r["filePath"], &fp)
+	orig, ok := r["originalFile"]
+	if fp == "" || !ok {
+		return Event{}, false
+	}
+	var text *string
+	json.Unmarshal(orig, &text)
+	if text == nil {
+		return ev(EvFileWrite, "path", fp, "original", "", "existed", false), true
+	}
+	return ev(EvFileWrite, "path", fp, "original", *text, "existed", true), true
 }
 
 /** contentText：工具结果可能是字符串或内容块数组 */

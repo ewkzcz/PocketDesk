@@ -32,6 +32,8 @@ const (
 	EvSessionID = "agent.session"
 	EvTurnEnd   = "turn.end"
 	EvFileWrite = "file.write"
+	// EvFileBase：文件即将被改动，只用于记下改动前的内容，不计入改动清单
+	EvFileBase = "file.base"
 )
 
 /** ErrUnsupported：驱动不支持该操作 */

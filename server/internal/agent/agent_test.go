@@ -602,3 +602,20 @@ func TestAutoApproveArgs(t *testing.T) {
 		t.Fatalf("Codex app-server 免审批参数 %v", p)
 	}
 }
+
+/** 写文件工具结果中的原文会作为改动前内容上报，新建文件原文为空 */
+func TestClaudeOriginalFile(t *testing.T) {
+	p := newClaudeParser()
+	evs := p.parse([]byte(`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]},"tool_use_result":{"filePath":"/a/b.txt","originalFile":"old\n","structuredPatch":[]}}`))
+	e, ok := find(evs, EvFileWrite)
+	if !ok || e.Data["original"] != "old\n" || e.Data["existed"] != true {
+		t.Fatalf("应上报原文 %+v", evs)
+	}
+	evs = p.parse([]byte(`{"type":"user","message":{"content":[]},"tool_use_result":{"type":"create","filePath":"/a/n.txt","originalFile":null}}`))
+	if e, ok := find(evs, EvFileWrite); !ok || e.Data["existed"] != false {
+		t.Fatalf("新建文件 %+v", evs)
+	}
+	if evs := p.parse([]byte(`{"type":"user","message":{"content":[]},"tool_use_result":{"stdout":"x"}}`)); len(evs) != 0 {
+		t.Fatalf("非写文件结果不应上报 %+v", evs)
+	}
+}
