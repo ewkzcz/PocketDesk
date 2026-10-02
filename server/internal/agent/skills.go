@@ -15,6 +15,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/ewkzcz/pocketdesk/server/internal/confdir"
 )
 
 /** Skill：一个已安装的 skill */
@@ -43,7 +45,7 @@ var claudeSettingsMu sync.Mutex
 /**
  * ListSkills：某 Agent 在某目录下可用的 skill
  *
- * Claude Code：~/.claude/skills 与项目 .claude/skills 下的 SKILL.md，启用状态取用户设置里的 skillOverrides。
+ * Claude Code：配置目录（默认 ~/.claude）下的 skills 与项目 .claude/skills 下的 SKILL.md，启用状态取用户设置里的 skillOverrides。
  * Codex：通过 app-server 的 skills/list 查询，包含启用状态。
  */
 func ListSkills(ctx context.Context, kind, home, cwd string, command []string) ([]Skill, error) {
@@ -65,7 +67,7 @@ func ListSkills(ctx context.Context, kind, home, cwd string, command []string) (
 				out = append(out, Skill{Name: name, Description: desc, Path: p, Scope: scope, Enabled: off[name] != "off"})
 			}
 		}
-		add(filepath.Join(home, ".claude", "skills"), "user")
+		add(filepath.Join(confdir.Claude(home), "skills"), "user")
 		if cwd != "" && filepath.Clean(cwd) != filepath.Clean(home) {
 			add(filepath.Join(cwd, ".claude", "skills"), "project")
 		}
@@ -133,7 +135,9 @@ func skillMeta(p string) (name, desc string) {
 }
 
 /** claudeSettingsPath：Claude Code 用户设置文件 */
-func claudeSettingsPath(home string) string { return filepath.Join(home, ".claude", "settings.json") }
+func claudeSettingsPath(home string) string {
+	return filepath.Join(confdir.Claude(home), "settings.json")
+}
 
 /** claudeOverrides：用户设置里的 skillOverrides */
 func claudeOverrides(home string) map[string]string {

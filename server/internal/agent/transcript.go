@@ -16,6 +16,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/ewkzcz/pocketdesk/server/internal/confdir"
 )
 
 /** External：电脑上的一条会话 */
@@ -86,14 +88,14 @@ func transcriptFiles(kind, home string) []fileAt {
 	var out []fileAt
 	switch kind {
 	case KindClaude:
-		matches, _ := filepath.Glob(filepath.Join(home, ".claude", "projects", "*", "*.jsonl"))
+		matches, _ := filepath.Glob(filepath.Join(confdir.Claude(home), "projects", "*", "*.jsonl"))
 		for _, p := range matches {
 			if info, err := os.Stat(p); err == nil {
 				out = append(out, fileAt{p, info.ModTime()})
 			}
 		}
 	case KindCodex:
-		filepath.WalkDir(filepath.Join(home, ".codex", "sessions"), func(p string, d fs.DirEntry, err error) error {
+		filepath.WalkDir(filepath.Join(confdir.Codex(home), "sessions"), func(p string, d fs.DirEntry, err error) error {
 			if err != nil || d.IsDir() || !strings.HasPrefix(d.Name(), "rollout-") || !strings.HasSuffix(d.Name(), ".jsonl") {
 				return nil
 			}
@@ -177,12 +179,12 @@ func TranscriptPath(kind, home, id string) (string, error) {
 	}
 	switch kind {
 	case KindClaude:
-		if m, _ := filepath.Glob(filepath.Join(home, ".claude", "projects", "*", id+".jsonl")); len(m) > 0 {
+		if m, _ := filepath.Glob(filepath.Join(confdir.Claude(home), "projects", "*", id+".jsonl")); len(m) > 0 {
 			return m[0], nil
 		}
 	case KindCodex:
 		var found string
-		filepath.WalkDir(filepath.Join(home, ".codex", "sessions"), func(p string, d fs.DirEntry, err error) error {
+		filepath.WalkDir(filepath.Join(confdir.Codex(home), "sessions"), func(p string, d fs.DirEntry, err error) error {
 			if err == nil && !d.IsDir() && strings.HasSuffix(d.Name(), "-"+id+".jsonl") {
 				found = p
 				return fs.SkipAll

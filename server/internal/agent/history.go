@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/ewkzcz/pocketdesk/server/internal/confdir"
 )
 
 /** History：一条可续聊的会话 */
@@ -46,7 +48,7 @@ func ListHistory(kind, home, cwd string, limit int) []History {
 }
 
 /**
- * claudeHistory：~/.claude/projects/<编码后的目录>/<会话ID>.jsonl
+ * claudeHistory：配置目录（默认 ~/.claude）下的 projects/<编码后的目录>/<会话ID>.jsonl
  *
  * 处理流程：
  * 1、按目录编码规则找到项目目录
@@ -54,7 +56,7 @@ func ListHistory(kind, home, cwd string, limit int) []History {
  */
 func claudeHistory(home, cwd string) []History {
 	// 1、项目目录
-	dir := filepath.Join(home, ".claude", "projects", nonAlnum.ReplaceAllString(cwd, "-"))
+	dir := filepath.Join(confdir.Claude(home), "projects", nonAlnum.ReplaceAllString(cwd, "-"))
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
@@ -86,10 +88,10 @@ func claudeHistory(home, cwd string) []History {
 }
 
 /**
- * codexHistory：遍历 ~/.codex/sessions 下各日期目录的 rollout 记录，按 session_meta 中的 cwd 过滤
+ * codexHistory：遍历数据目录（默认 ~/.codex）的 sessions 下各日期目录的 rollout 记录，按 session_meta 中的 cwd 过滤
  */
 func codexHistory(home, cwd string) []History {
-	root := filepath.Join(home, ".codex", "sessions")
+	root := filepath.Join(confdir.Codex(home), "sessions")
 	var out []History
 	filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasPrefix(d.Name(), "rollout-") || !strings.HasSuffix(d.Name(), ".jsonl") {

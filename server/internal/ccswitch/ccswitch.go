@@ -19,6 +19,8 @@ import (
 
 	"github.com/BurntSushi/toml"
 	_ "modernc.org/sqlite"
+
+	"github.com/ewkzcz/pocketdesk/server/internal/confdir"
 )
 
 /** Home：用户主目录，测试时替换 */
@@ -56,7 +58,7 @@ type Launch struct {
 }
 
 /** dbPath：CC Switch 数据库位置 */
-func dbPath() string { return filepath.Join(Home(), ".cc-switch", "cc-switch.db") }
+func dbPath() string { return filepath.Join(confdir.CCSwitch(Home()), "cc-switch.db") }
 
 /** Available：电脑上装了 CC Switch 并有数据 */
 func Available() bool {
@@ -238,7 +240,7 @@ func claudeLaunch(raw json.RawMessage) (Launch, error) {
 	var live struct {
 		Env map[string]any `json:"env"`
 	}
-	if b, err := os.ReadFile(filepath.Join(Home(), ".claude", "settings.json")); err == nil {
+	if b, err := os.ReadFile(filepath.Join(confdir.Claude(Home()), "settings.json")); err == nil {
 		json.Unmarshal(b, &live)
 	}
 	for k := range live.Env {
