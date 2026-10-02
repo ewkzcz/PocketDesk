@@ -760,7 +760,7 @@
       '<button class="pd-icon-btn" data-act="attach" title="发送文件" aria-label="发送文件">' + icon('folder', 20) + '</button>' +
       '<button class="pd-icon-btn" data-act="attach-image" title="发送图片" aria-label="发送图片">' + icon('image', 20) + '</button>' +
       (isAgent(s) ? '<button class="pd-icon-btn" data-act="interrupt" title="打断" aria-label="打断"' + (s.state === 'running' || s.state === 'awaiting' ? '' : ' disabled') + '>' + icon('square', 18) + '</button>' : '') +
-      '</div><div class="pd-pending" id="chosen"></div><div class="pd-pending" id="pending"></div><textarea id="input" placeholder=""></textarea>' +
+      '</div><div class="pd-cmds" id="cmds" hidden></div><div class="pd-pending" id="chosen"></div><div class="pd-pending" id="pending"></div><textarea id="input" placeholder="' + (isAgent(s) ? '输入 / 查看指令' : '') + '"></textarea>' +
       '<div class="pd-composer-foot"><span class="pd-hint">Enter 发送，Shift + Enter 换行；可直接粘贴或拖入图片、文件</span>' +
       '<button class="pd-btn pd-btn-primary" id="send" data-act="send" disabled>发送</button></div>' +
       '<input type="file" id="file-any" class="pd-file-input" multiple tabindex="-1" aria-hidden="true"><input type="file" id="file-img" class="pd-file-input" accept="image/*" multiple tabindex="-1" aria-hidden="true"></div>';
@@ -929,6 +929,16 @@
     if (!s || !input) { return; }
     var text = input.value;
     if (!text.trim() && !pending.length) { return; }
+    // 指令在电脑端执行（/compact 交给 Agent）
+    var cmd = isAgent(s) && !pending.length ? /^\/(\S+)(?:\s|$)/.exec(text.trim()) : null;
+    if (cmd && cmd[1] !== 'compact' && CMDS.some(function (c) { return c[0] === '/' + cmd[1].toLowerCase(); })) {
+      input.value = '';
+      saveDraft(s.id, '');
+      syncSend();
+      renderCmds();
+      runCmd('/' + cmd[1].toLowerCase());
+      return;
+    }
     input.value = '';
     saveDraft(s.id, '');
     syncSend();
@@ -942,6 +952,7 @@
       delete chosenSkills[s.id];
       renderPending();
       renderChosen();
+      renderCmds();
       p = api('POST', P + '/api/sessions/' + encodeURIComponent(s.id) + '/messages', { text: text, attachments: att, skills: skills, clientId: 'desk-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) });
     }
     p.catch(function (e) { input.value = text; syncSend(); if (skills && skills.length) { chosenSkills[s.id] = skills; renderChosen(); } toast(e.message); });
@@ -1018,7 +1029,74 @@
     return it.text || it.output || it.name || '';
   }
 
+  /* ---------- 斜杠指令、模型与供应商、skill、接着电脑上的会话 ---------- */
+  var CMDS = [
+    ['/model', '切换模型', 'cpu'],
+    ['/provider', '切换模型供应商', 'server'],
+    ['/skills', '查看、启用并选用 skill', 'sparkles'],
+    ['/resume', '接着电脑上的会话聊', 'history'],
+    ['/new', '在同一 Agent 和目录下开新会话', 'plus'],
+    ['/stop', '打断当前执行', 'square'],
+    ['/compact', '压缩上下文', 'layout-grid']
+  ];
+  var cmdIndex = 0;
   var chosenSkills = {};          // 会话 ID → 下一条消息要用的 skill [{ name, path }]
+
+  /** matchCmds：输入以 / 开头且还没有空格时匹配指令 */
+  function matchCmds(text) {
+    if (!/^\/\S*$/.test(text || '')) { return []; }
+    return CMDS.filter(function (c) { return c[0].indexOf(text.toLowerCase()) === 0; });
+  }
+
+  /** renderCmds：输入框上方的指令候选 */
+  function renderCmds() {
+    var box = document.getElementById('cmds'), input = document.getElementById('input');
+    var s = session(route().sid);
+    if (!box || !input) { return; }
+    var list = s && isAgent(s) ? matchCmds(input.value) : [];
+    if (!list.length) { box.innerHTML = ''; box.hidden = true; return; }
+    cmdIndex = Math.min(cmdIndex, list.length - 1);
+    box.hidden = false;
+    box.innerHTML = list.map(function (c, i) {
+      return '<button class="pd-cmd' + (i === cmdIndex ? ' active' : '') + '" data-act="cmd" data-cmd="' + c[0] + '">' + icon(c[2], 16) + '<span class="pd-mono">' + c[0] + '</span><span class="pd-muted">' + c[1] + '</span></button>';
+    }).join('');
+  }
+
+  /** pickCmd：选中指令；/compact 交给 Agent，其余在这里执行 */
+  function pickCmd(name) {
+    var input = document.getElementById('input');
+    if (!input) { return; }
+    if (name === '/compact') { input.value = '/compact'; renderCmds(); send(); return; }
+    input.value = '';
+    saveDraft(route().sid, '');
+    syncSend();
+    renderCmds();
+    runCmd(name);
+  }
+
+  /** runCmd：执行指令 */
+  function runCmd(name) {
+    var s = session(route().sid);
+    if (!s) { return; }
+    switch (name) {
+      case '/model': chooseModel(s); break;
+      case '/provider': chooseProvider(s); break;
+      case '/skills': skillsModal(s); break;
+      case '/resume': externalModal(); break;
+      case '/stop':
+        api('POST', P + '/api/sessions/' + encodeURIComponent(s.id) + '/interrupt').then(function () { toast('已打断'); }).catch(function (er) { toast(er.message); });
+        break;
+      case '/new':
+        api('POST', P + '/api/sessions', { kind: s.kind, workspaceId: s.workspaceId, cwd: s.cwd, model: s.model }).then(function (s2) {
+          if (s.provider) { return api('PATCH', P + '/api/sessions/' + encodeURIComponent(s2.id), { provider: s.provider }); }
+          return s2;
+        }).then(function (s2) {
+          sessions.push(s2);
+          location.hash = 'chat/' + encodeURIComponent(s2.id);
+        }).catch(function (er) { toast(er.message); });
+        break;
+    }
+  }
 
   /** patchSession：修改会话并刷新界面 */
   function patchSession(s, body, done) {
@@ -1721,6 +1799,7 @@
       case 'file-reveal':
         api('POST', '/admin/api/assistant/open', { seq: +t.dataset.seq, reveal: act === 'file-reveal' }).catch(function (er) { toast(er.message); });
         break;
+      case 'cmd': pickCmd(t.dataset.cmd); break;
       case 'head-model':
         var rm = t.getBoundingClientRect(), sm = session(sid);
         var mopts = [['model', '切换模型', false, 'cpu']];
@@ -2060,6 +2139,13 @@
   document.addEventListener('keydown', function (e) {
     var ime = e.isComposing || e.keyCode === 229 || composing || Date.now() - composeEnd < 100;
     if (e.key === 'Escape') { closeMenu(); if (modalRoot.innerHTML) { if (pairInfo && route().page !== 'pair') { closePair(); } else { closeModal(); } } }
+    var cmds = document.getElementById('cmds');
+    if (e.target.id === 'input' && cmds && !cmds.hidden && !ime) {
+      var n = cmds.children.length;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); cmdIndex = (cmdIndex + (e.key === 'ArrowDown' ? 1 : n - 1)) % n; renderCmds(); return; }
+      if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') { e.preventDefault(); pickCmd(cmds.children[cmdIndex].dataset.cmd); return; }
+      if (e.key === 'Escape') { cmds.hidden = true; return; }
+    }
     if (e.target.id === 'input' && e.key === 'Enter' && !e.shiftKey && !ime) {
       e.preventDefault();
       send();
@@ -2072,7 +2158,7 @@
     mermaidStep(box, e.deltaY < 0 ? 'in' : 'out');
   }, { passive: false });
   document.addEventListener('input', function (e) {
-    if (e.target.id === 'input') { syncSend(); saveDraft(route().sid, e.target.value); }
+    if (e.target.id === 'input') { syncSend(); saveDraft(route().sid, e.target.value); cmdIndex = 0; renderCmds(); }
     if (e.target.id === 'search') { query = e.target.value; renderList(); }
   });
 
