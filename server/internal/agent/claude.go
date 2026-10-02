@@ -127,7 +127,7 @@ func (c *claudeProc) Send(_ context.Context, m Message) error {
 	c.mu.Unlock()
 	return c.writeJSON(map[string]any{
 		"type":    "user",
-		"message": map[string]any{"role": "user", "content": []map[string]any{{"type": "text", "text": PromptWithAttachments(m)}}},
+		"message": map[string]any{"role": "user", "content": []map[string]any{{"type": "text", "text": SkillPrompt(KindClaude, m.Skills, PromptWithAttachments(m))}}},
 	})
 }
 

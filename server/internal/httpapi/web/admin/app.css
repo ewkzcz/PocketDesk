@@ -310,13 +310,16 @@ select.pd-input { cursor: pointer; }
 .pd-hint { flex: 1; font-size: 11px; color: var(--pd-text-3); }
 .pd-pending { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 14px 0; }
 .pd-pending span { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 2px 4px 2px 8px; border-radius: 3px; background: var(--pd-tool); color: var(--pd-text-2); }
+#chosen:empty { display: none; }
 .pd-notify-tip { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 14px; }
+#chosen span { background: var(--pd-accent-soft); color: var(--pd-accent); }
 .pd-dialog.pd-dialog-wide { width: 760px; }
 .pd-diff-text { font: 12px/1.6 var(--pd-mono); white-space: pre-wrap; word-break: break-all; user-select: text; -webkit-user-select: text; }
 .pd-diff-add { background: var(--pd-accent-soft); color: var(--pd-accent); }
 .pd-diff-del { background: rgba(250, 81, 81, .1); color: var(--pd-danger); }
 .pd-diff-hunk { color: var(--pd-text-3); }
 .pd-diff-meta { color: var(--pd-text-3); font-weight: 600; }
+.pd-skill-md { max-height: 56vh; overflow: auto; font-size: 13px; }
 .pd-app.pd-dragging .pd-drop { outline: 2px dashed var(--pd-accent); outline-offset: -8px; }
 
 /* 右键菜单与弹出菜单 */

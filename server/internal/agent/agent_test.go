@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -617,5 +618,43 @@ func TestClaudeOriginalFile(t *testing.T) {
 	}
 	if evs := p.parse([]byte(`{"type":"user","message":{"content":[]},"tool_use_result":{"stdout":"x"}}`)); len(evs) != 0 {
 		t.Fatalf("非写文件结果不应上报 %+v", evs)
+	}
+}
+
+/** Claude skill 列表读取说明，停用写入 skillOverrides 且保留其他设置，启用时去掉 */
+func TestClaudeSkills(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, ".claude", "skills", "demo")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: demo\ndescription: \"演示用\"\n---\n正文"), 0o644)
+	os.WriteFile(filepath.Join(home, ".claude", "settings.json"), []byte(`{"env":{"A":"1"}}`), 0o644)
+	list, err := ListSkills(context.Background(), KindClaude, home, "", nil)
+	if err != nil || len(list) != 1 || list[0].Name != "demo" || list[0].Description != "演示用" || !list[0].Enabled {
+		t.Fatalf("列表 %+v %v", list, err)
+	}
+	if err := SetSkill(context.Background(), KindClaude, home, "", nil, "demo", list[0].Path, false); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+	if !strings.Contains(string(b), `"demo": "off"`) || !strings.Contains(string(b), `"A": "1"`) {
+		t.Fatalf("停用后设置 %s", b)
+	}
+	list, _ = ListSkills(context.Background(), KindClaude, home, "", nil)
+	if list[0].Enabled {
+		t.Fatal("应显示为停用")
+	}
+	SetSkill(context.Background(), KindClaude, home, "", nil, "demo", list[0].Path, true)
+	b, _ = os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+	if strings.Contains(string(b), "skillOverrides") {
+		t.Fatalf("启用后应去掉覆盖项 %s", b)
+	}
+	if text, err := ReadSkill(list, list[0].Path); err != nil || !strings.Contains(text, "正文") {
+		t.Fatal("应能读取说明")
+	}
+	if _, err := ReadSkill(list, "/etc/passwd"); err != ErrNoSkill {
+		t.Fatal("不在列表里的文件不能读取")
+	}
+	if got := SkillPrompt(KindClaude, []SkillRef{{Name: "demo"}}, "做事"); got != "/demo 做事" {
+		t.Fatalf("单个 skill 应以斜杠指令调用 %q", got)
 	}
 }

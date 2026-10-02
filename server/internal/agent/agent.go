@@ -70,6 +70,8 @@ type Approver interface {
 type Message struct {
 	Text        string
 	Attachments []string
+	// Skills：本条消息要使用的 skill
+	Skills []SkillRef
 }
 
 /** Options：启动一个 Agent 进程所需参数 */

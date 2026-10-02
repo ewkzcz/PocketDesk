@@ -154,7 +154,7 @@ func (c *codexProc) Send(_ context.Context, m Message) error {
 	c.cur = lp
 	c.curEnded = false
 	c.mu.Unlock()
-	if err := lp.writeJSONRaw(PromptWithAttachments(m)); err != nil {
+	if err := lp.writeJSONRaw(SkillPrompt(KindCodex, m.Skills, PromptWithAttachments(m))); err != nil {
 		lp.Close()
 	}
 	lp.stdin.Close()

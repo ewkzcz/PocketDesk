@@ -133,6 +133,8 @@ type Input struct {
 	Text        string   `json:"text"`
 	Attachments []string `json:"attachments"`
 	ClientID    string   `json:"clientId"`
+	// Skills：本条消息要使用的 skill
+	Skills []agent.SkillRef `json:"skills"`
 }
 
 /** New：创建管理器 */
@@ -326,7 +328,15 @@ func (m *Manager) Send(ctx context.Context, id string, in Input) error {
 
 /** emitUser：记录用户消息事件 */
 func (m *Manager) emitUser(ctx context.Context, rt *runtime, in Input, queued bool) error {
-	if err := m.emit(ctx, rt.id, "msg.user", map[string]any{"text": in.Text, "attachments": in.Attachments, "queued": queued, "clientId": in.ClientID}); err != nil {
+	data := map[string]any{"text": in.Text, "attachments": in.Attachments, "queued": queued, "clientId": in.ClientID}
+	if len(in.Skills) > 0 {
+		names := make([]string, 0, len(in.Skills))
+		for _, sk := range in.Skills {
+			names = append(names, sk.Name)
+		}
+		data["skills"] = names
+	}
+	if err := m.emit(ctx, rt.id, "msg.user", data); err != nil {
 		return err
 	}
 	// 记录成功后才登记编号，失败时手机重发会重新处理
@@ -370,7 +380,7 @@ func (m *Manager) startTurn(ctx context.Context, rt *runtime, in Input) {
 	}
 	// 3、发送
 	m.setState(ctx, rt, StateRunning)
-	if err := proc.Send(ctx, agent.Message{Text: in.Text, Attachments: in.Attachments}); err != nil {
+	if err := proc.Send(ctx, agent.Message{Text: in.Text, Attachments: in.Attachments, Skills: in.Skills}); err != nil {
 		m.emit(ctx, rt.id, "error", map[string]any{"message": "发送失败：" + err.Error(), "retryable": true})
 		m.finishTurn(ctx, rt, proc)
 	}

@@ -141,7 +141,7 @@ type piProc struct{ *lineProc }
 
 /** Send：发送提示词 */
 func (p *piProc) Send(_ context.Context, m Message) error {
-	return p.writeJSON(map[string]any{"type": "prompt", "message": PromptWithAttachments(m)})
+	return p.writeJSON(map[string]any{"type": "prompt", "message": SkillPrompt(KindPi, m.Skills, PromptWithAttachments(m))})
 }
 
 /** Interrupt：发送 abort 指令 */

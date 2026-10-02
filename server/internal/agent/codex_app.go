@@ -365,7 +365,12 @@ func (c *codexApp) Send(ctx context.Context, m Message) error {
 			ID string `json:"id"`
 		} `json:"turn"`
 	}
-	params := map[string]any{"threadId": tid, "input": []map[string]any{{"type": "text", "text": PromptWithAttachments(m)}}}
+	input := []map[string]any{{"type": "text", "text": PromptWithAttachments(m)}}
+	// 选中的 skill 以原生 skill 输入交给 Codex
+	for _, sk := range m.Skills {
+		input = append(input, map[string]any{"type": "skill", "name": sk.Name, "path": sk.Path})
+	}
+	params := map[string]any{"threadId": tid, "input": input}
 	if err := c.call(cctx, "turn/start", params, &res); err != nil {
 		return err
 	}

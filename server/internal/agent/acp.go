@@ -378,7 +378,7 @@ func (a *acpProc) Send(_ context.Context, m Message) error {
 		var res struct {
 			StopReason string `json:"stopReason"`
 		}
-		err := a.call(ctx, "session/prompt", map[string]any{"sessionId": sid, "prompt": []map[string]any{{"type": "text", "text": PromptWithAttachments(m)}}}, &res)
+		err := a.call(ctx, "session/prompt", map[string]any{"sessionId": sid, "prompt": []map[string]any{{"type": "text", "text": SkillPrompt(KindDSH, m.Skills, PromptWithAttachments(m))}}}, &res)
 		a.flush()
 		if err != nil && !errors.Is(err, context.Canceled) {
 			a.emit(ev(EvError, "message", err.Error()))

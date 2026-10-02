@@ -502,7 +502,7 @@
         case 'msg.user':
           // 新一轮开始：之前的回复与思考不再续写（有的 Agent 重启后编号从头开始，避免新回复并进旧气泡）
           if (!d.queued) { Object.keys(by).forEach(function (k) { if (k.indexOf('m:') === 0 || k.indexOf('t:') === 0) { delete by[k]; } }); }
-          add(null, Object.assign(base, { t: 'user', text: d.text || '', attachments: d.attachments || [], queued: !!d.queued, phone: e.session === 'assistant' }));
+          add(null, Object.assign(base, { t: 'user', text: d.text || '', attachments: d.attachments || [], skills: d.skills || [], queued: !!d.queued, phone: e.session === 'assistant' }));
           break;
         case 'msg.host':
           add(null, Object.assign(base, { t: 'host', text: d.text || '' }));
@@ -760,13 +760,14 @@
       '<button class="pd-icon-btn" data-act="attach" title="发送文件" aria-label="发送文件">' + icon('folder', 20) + '</button>' +
       '<button class="pd-icon-btn" data-act="attach-image" title="发送图片" aria-label="发送图片">' + icon('image', 20) + '</button>' +
       (isAgent(s) ? '<button class="pd-icon-btn" data-act="interrupt" title="打断" aria-label="打断"' + (s.state === 'running' || s.state === 'awaiting' ? '' : ' disabled') + '>' + icon('square', 18) + '</button>' : '') +
-      '</div><div class="pd-pending" id="pending"></div><textarea id="input" placeholder=""></textarea>' +
+      '</div><div class="pd-pending" id="chosen"></div><div class="pd-pending" id="pending"></div><textarea id="input" placeholder=""></textarea>' +
       '<div class="pd-composer-foot"><span class="pd-hint">Enter 发送，Shift + Enter 换行；可直接粘贴或拖入图片、文件</span>' +
       '<button class="pd-btn pd-btn-primary" id="send" data-act="send" disabled>发送</button></div>' +
       '<input type="file" id="file-any" class="pd-file-input" multiple tabindex="-1" aria-hidden="true"><input type="file" id="file-img" class="pd-file-input" accept="image/*" multiple tabindex="-1" aria-hidden="true"></div>';
     el.innerHTML = '<header class="pd-head" id="head"></header><div class="pd-msgs" id="msgs"><div class="pd-empty">正在加载…</div></div>' + composer;
     renderHead();
     renderPending();
+    renderChosen();
     var draft = load('pd.draft', {})[s.id];
     var input = document.getElementById('input');
     if (input) { input.value = draft || ''; syncSend(); input.focus(); }
@@ -790,6 +791,7 @@
     }
     el.innerHTML = '<div class="pd-head-main"><div class="pd-head-title">' + esc(title(s)) + '</div>' + (sub.length ? '<div class="pd-head-sub">' + esc(sub.join(' · ')) + '</div>' : '') + '</div>' +
       '<div class="pd-head-acts">' + (isAgent(s) ? '<button class="pd-icon-btn" data-act="head-model" title="模型与供应商" aria-label="模型与供应商">' + icon('cpu', 18) + '</button>' +
+      ((s.kind === 'claude' || s.kind === 'codex') ? '<button class="pd-icon-btn" data-act="head-skills" title="Skills" aria-label="Skills">' + icon('sparkles', 18) + '</button>' : '') +
       '<button class="pd-icon-btn" data-act="head-mute" title="' + (s.muted ? '打开提醒' : '关闭提醒') + '" aria-label="' + (s.muted ? '打开提醒' : '关闭提醒') + '">' + icon(s.muted ? 'bell-off' : 'bell', 18) + '</button>' : '') +
       '<button class="pd-icon-btn" data-act="chat-more" title="更多" aria-label="更多">' + icon('menu', 18) + '</button></div>';
   }
@@ -825,6 +827,7 @@
         mine = !it.phone;
         body = '<div class="pd-bubble plain">' + esc(it.text) + '</div>' +
           (it.attachments.length ? '<div class="pd-attach">' + it.attachments.map(function (a) { return '<span>' + esc(a.split('/').pop()) + '</span>'; }).join('') + '</div>' : '') +
+          (it.skills && it.skills.length ? '<div class="pd-attach">' + it.skills.map(function (k) { return '<span>' + icon('sparkles', 12) + esc(k) + '</span>'; }).join('') + '</div>' : '') +
           (it.queued ? '<div class="pd-queued">排队中，Agent 空闲后发送</div>' : '');
         who = mine ? 'host' : 'phone';
         break;
@@ -932,11 +935,14 @@
       p = api('POST', '/admin/api/assistant/text', { text: text });
     } else {
       var att = pending.map(function (x) { return x.path; });
+      var skills = chosenSkills[s.id] || [];
       pending = [];
+      delete chosenSkills[s.id];
       renderPending();
-      p = api('POST', P + '/api/sessions/' + encodeURIComponent(s.id) + '/messages', { text: text, attachments: att, clientId: 'desk-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) });
+      renderChosen();
+      p = api('POST', P + '/api/sessions/' + encodeURIComponent(s.id) + '/messages', { text: text, attachments: att, skills: skills, clientId: 'desk-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) });
     }
-    p.catch(function (e) { input.value = text; syncSend(); toast(e.message); });
+    p.catch(function (e) { input.value = text; syncSend(); if (skills && skills.length) { chosenSkills[s.id] = skills; renderChosen(); } toast(e.message); });
   }
 
   function saveDraft(id, text) {
@@ -1010,6 +1016,8 @@
     return it.text || it.output || it.name || '';
   }
 
+  var chosenSkills = {};          // 会话 ID → 下一条消息要用的 skill [{ name, path }]
+
   /** patchSession：修改会话并刷新界面 */
   function patchSession(s, body, done) {
     return api('PATCH', P + '/api/sessions/' + encodeURIComponent(s.id), body).then(function (s2) {
@@ -1046,6 +1054,39 @@
           '<span style="flex:1;min-width:0"><div>' + esc(p.name) + (p.current ? ' <span class="pd-muted" style="font-size:12px">电脑当前</span>' : '') + '</div>' + (p.host ? '<div class="pd-path">' + esc(p.host) + '</div>' : '') + '</span></button>';
       }).join('') + '</div>', '<button class="pd-btn" data-act="modal-close">关闭</button>');
     }).catch(function (er) { toast(er.message); });
+  }
+
+  /** skillsModal：skill 列表；开关控制是否启用，勾选后随下一条消息使用，点名称查看说明 */
+  var skillList = [];
+  function skillsModal(s) {
+    if (s.kind !== 'claude' && s.kind !== 'codex') { toast('这个 Agent 暂不支持 skill'); return; }
+    modal('Skills', '<div class="pd-muted">正在读取…</div>', '<button class="pd-btn" data-act="modal-close">完成</button>');
+    api('GET', P + '/api/agents/' + s.kind + '/skills?session=' + encodeURIComponent(s.id)).then(function (list) {
+      skillList = list || [];
+      renderSkills(s);
+    }).catch(function (er) { closeModal(); toast(er.message); });
+  }
+  function renderSkills(s) {
+    var chosen = chosenSkills[s.id] || [];
+    var scope = { project: '项目', user: '本机', system: '自带', admin: '管理员' };
+    modal('Skills', skillList.length ? '<div class="pd-muted" style="font-size:12px;margin-bottom:8px">勾选的 skill 会随下一条消息使用；右侧开关控制是否启用</div><div class="pd-pick-list" style="max-height:420px">' + skillList.map(function (k) {
+      var picked = chosen.some(function (c) { return c.path === k.path; });
+      return '<div class="pd-pick-row" style="cursor:default">' +
+        '<input type="checkbox" class="pd-skill-pick" data-path="' + esc(k.path) + '"' + (picked ? ' checked' : '') + (k.enabled ? '' : ' disabled') + ' aria-label="随下一条消息使用">' +
+        '<button class="pd-link" style="flex:1;min-width:0;text-align:left" data-act="skill-view" data-path="' + esc(k.path) + '"><div>' + esc(k.name) + ' <span class="pd-muted" style="font-size:12px">' + (scope[k.scope] || k.scope) + '</span></div>' +
+        '<div class="pd-path" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(k.description || '') + '</div></button>' +
+        '<label class="pd-switch"><input type="checkbox" class="pd-skill-toggle" data-path="' + esc(k.path) + '"' + (k.enabled ? ' checked' : '') + ' aria-label="启用"><span></span></label></div>';
+    }).join('') + '</div>' : '<div class="pd-muted">没有找到已安装的 skill</div>', '<button class="pd-btn pd-btn-primary" data-act="modal-close">完成</button>');
+  }
+
+  /** renderChosen：输入框上方显示已选的 skill */
+  function renderChosen() {
+    var el = document.getElementById('chosen');
+    var sid = route().sid, list = chosenSkills[sid] || [];
+    if (!el) { return; }
+    el.innerHTML = list.map(function (k, i) {
+      return '<span>' + icon('sparkles', 12) + esc(k.name) + '<button class="pd-icon-btn" style="width:18px;height:18px" data-act="unskill" data-i="' + i + '" aria-label="移除">' + icon('x', 12) + '</button></span>';
+    }).join('');
   }
 
   /** diffModal：查看本轮某个文件的改动 */
@@ -1656,6 +1697,7 @@
           if (k === 'model') { chooseModel(sm); } else if (k === 'provider') { chooseProvider(sm); }
         });
         break;
+      case 'head-skills': skillsModal(session(sid)); break;
       case 'head-mute':
         var su = session(sid);
         if (su) { patchSession(su, { muted: !su.muted }, su.muted ? '已打开提醒' : '已关闭提醒'); }
@@ -1675,6 +1717,19 @@
         var pv = t.querySelector('div');
         if (id) { providerNames[id] = pv ? pv.firstChild.textContent.trim() : ''; }
         patchSession(session(sid), { provider: id || '' }, id ? '已切换供应商' : '已改为跟随电脑当前设置');
+        break;
+      case 'skill-view':
+        var sv = session(sid), kv = skillList.filter(function (x) { return x.path === t.dataset.path; })[0];
+        if (!sv || !kv) { break; }
+        api('GET', P + '/api/agents/' + sv.kind + '/skill?session=' + encodeURIComponent(sv.id) + '&path=' + encodeURIComponent(kv.path)).then(function (r) {
+          modal(kv.name, '<div class="pd-path" style="margin-bottom:8px">' + esc(kv.path) + '</div><div class="pd-md pd-skill-md">' + md(String(r.text || '').replace(/^---\n[\s\S]*?\n---\n/, '')) + '</div>',
+            '<button class="pd-btn" data-act="skills-back">返回</button>');
+        }).catch(function (er) { toast(er.message); });
+        break;
+      case 'skills-back': renderSkills(session(sid)); break;
+      case 'unskill':
+        (chosenSkills[sid] || []).splice(+t.dataset.i, 1);
+        renderChosen();
         break;
       case 'diff-ref': diffModal(sid, t.dataset.ref, t.dataset.path); break;
       case 'notify-random':
@@ -1993,6 +2048,30 @@
       var files = Array.prototype.slice.call(t.files || []);
       t.value = '';
       if (t.id === 'fs-file') { fsUpload(files); } else { sendFiles(files); }
+      return;
+    }
+    if (t.classList.contains('pd-skill-pick')) {
+      var ss = session(route().sid), k = skillList.filter(function (x) { return x.path === t.dataset.path; })[0];
+      if (!ss || !k) { return; }
+      var cur = (chosenSkills[ss.id] || []).filter(function (x) { return x.path !== k.path; });
+      if (t.checked) {
+        if (cur.length >= 8) { t.checked = false; toast('一次最多选 8 个'); return; }
+        cur.push({ name: k.name, path: k.path });
+      }
+      chosenSkills[ss.id] = cur;
+      renderChosen();
+      return;
+    }
+    if (t.classList.contains('pd-skill-toggle')) {
+      var s3 = session(route().sid), k3 = skillList.filter(function (x) { return x.path === t.dataset.path; })[0];
+      if (!s3 || !k3) { return; }
+      t.disabled = true;
+      api('PUT', P + '/api/agents/' + s3.kind + '/skills?session=' + encodeURIComponent(s3.id), { path: k3.path, enabled: t.checked }).then(function () {
+        k3.enabled = t.checked;
+        if (!k3.enabled) { chosenSkills[s3.id] = (chosenSkills[s3.id] || []).filter(function (x) { return x.path !== k3.path; }); renderChosen(); }
+        renderSkills(s3);
+        toast(k3.enabled ? '已启用，新开始的一轮生效' : '已停用');
+      }).catch(function (er) { t.checked = !t.checked; t.disabled = false; toast(er.message); });
       return;
     }
     if (t.id === 'pause-all') { api('POST', '/admin/api/transfers/pause', { paused: t.checked }).then(loadHost); }

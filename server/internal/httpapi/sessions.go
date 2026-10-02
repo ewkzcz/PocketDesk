@@ -6,6 +6,7 @@ package httpapi
 import (
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/ewkzcz/pocketdesk/server/internal/agent"
@@ -157,6 +158,14 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
+	// 只接受 skill 说明文件，避免把任意文件当作 skill 交给 Agent
+	skills := in.Skills[:0]
+	for _, sk := range in.Skills {
+		if filepath.Base(sk.Path) == "SKILL.md" && filepath.IsAbs(sk.Path) && sk.Name != "" {
+			skills = append(skills, sk)
+		}
+	}
+	in.Skills = skills
 	if err := s.Sessions.Send(r.Context(), id, in); err != nil {
 		writeErr(w, r, err)
 		return
