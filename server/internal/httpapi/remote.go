@@ -6,10 +6,10 @@ package httpapi
 import (
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 
+	"github.com/ewkzcz/pocketdesk/server/internal/agent"
 	"github.com/ewkzcz/pocketdesk/server/internal/desktop"
 	"github.com/ewkzcz/pocketdesk/server/internal/netutil"
 )
@@ -17,9 +17,13 @@ import (
 /** tailscaleDownload：官方下载页 */
 const tailscaleDownload = "https://tailscale.com/download"
 
-/** tailscaleInstalled：电脑上是否装了 Tailscale */
+/**
+ * tailscaleInstalled：电脑上是否装了 Tailscale
+ *
+ * 先按命令名查找（含登录 shell 的 PATH 与 Homebrew 等常见安装位置），再看系统应用目录里的安装包
+ */
 func tailscaleInstalled() bool {
-	if _, err := exec.LookPath("tailscale"); err == nil {
+	if _, err := agent.LookPath("tailscale"); err == nil {
 		return true
 	}
 	var paths []string
@@ -28,7 +32,11 @@ func tailscaleInstalled() bool {
 		home, _ := os.UserHomeDir()
 		paths = []string{"/Applications/Tailscale.app", filepath.Join(home, "Applications", "Tailscale.app")}
 	case "windows":
-		paths = []string{filepath.Join(os.Getenv("ProgramFiles"), "Tailscale", "tailscale.exe")}
+		for _, k := range []string{"ProgramFiles", "ProgramW6432"} {
+			if d := os.Getenv(k); d != "" {
+				paths = append(paths, filepath.Join(d, "Tailscale", "tailscale.exe"))
+			}
+		}
 	}
 	for _, p := range paths {
 		if _, err := os.Stat(p); err == nil {
