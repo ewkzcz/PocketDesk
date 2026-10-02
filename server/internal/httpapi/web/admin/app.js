@@ -499,6 +499,8 @@
       var base = { seq: e.seq, at: e.createdAt };
       switch (e.type) {
         case 'msg.user':
+          // 新一轮开始：之前的回复与思考不再续写（有的 Agent 重启后编号从头开始，避免新回复并进旧气泡）
+          if (!d.queued) { Object.keys(by).forEach(function (k) { if (k.indexOf('m:') === 0 || k.indexOf('t:') === 0) { delete by[k]; } }); }
           add(null, Object.assign(base, { t: 'user', text: d.text || '', attachments: d.attachments || [], queued: !!d.queued, phone: e.session === 'assistant' }));
           break;
         case 'msg.host':

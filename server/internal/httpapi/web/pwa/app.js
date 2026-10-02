@@ -152,10 +152,14 @@
     var add = function (key, item) { m.items.push(item); if (key) { m.byId[key] = item; } };
     switch (e.type) {
       case 'state': m.state = d.state; break;
-      case 'msg.user': add(null, { kind: 'user', text: d.text, queued: d.queued, file: d.file }); break;
+      case 'msg.user':
+        // 新一轮开始：之前的回复不再续写，避免重启后编号重复时新回复并进旧气泡
+        if (!d.queued) { Object.keys(m.byId).forEach(function (k) { if (k.indexOf('m:') === 0) { delete m.byId[k]; } }); }
+        add(null, { kind: 'user', text: d.text, queued: d.queued, file: d.file });
         break;
       case 'msg.delta':
         var it = find('m:' + d.id);
+        if (it) { it.text += d.text; } else { add('m:' + d.id, { kind: 'agent', text: d.text }); }
         break;
       case 'msg.done':
         var dn = find('m:' + d.id);
