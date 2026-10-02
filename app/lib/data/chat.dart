@@ -210,6 +210,8 @@ class ChatLog {
       case 'session.model':
         model = str('model');
       case 'msg.user':
+        // 新一轮开始：之前的回复与思考不再续写（有的 Agent 重启后编号从头开始，避免新回复并进旧气泡）
+        if (!Json.boolean(d['queued'])) _byKey.removeWhere((k, _) => k.startsWith('m:') || k.startsWith('t:'));
         final f = Json.map(d['file']);
         add(null, UserItem(e.seq, e.createdAt,
             text: str('text'),

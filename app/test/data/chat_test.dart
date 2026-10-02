@@ -25,6 +25,19 @@ void main() {
     expect(log.firstSeq, 1);
   });
 
+  test('Agent 重启后回复编号重复：新一轮的回复显示为新气泡，不并进以前的气泡', () {
+    final log = ChatLog('s');
+    log.apply(e(1, 'msg.user', {'text': '第一问'}));
+    log.apply(e(2, 'msg.delta', {'id': 'acp-0', 'text': '第一答'}));
+    log.apply(e(3, 'msg.done', {'id': 'acp-0', 'text': '第一答'}));
+    log.apply(e(4, 'msg.user', {'text': '第二问'}));
+    log.apply(e(5, 'msg.delta', {'id': 'acp-0', 'text': '第二答'}));
+    log.apply(e(6, 'msg.user', {'text': '排队的', 'queued': true}));
+    log.apply(e(7, 'msg.done', {'id': 'acp-0', 'text': '第二答完整'}));
+    final texts = log.items.map((x) => x is AgentItem ? x.text : (x as UserItem).text).toList();
+    expect(texts, ['第一问', '第一答', '第二问', '第二答完整', '排队的']);
+  });
+
   test('重复序号被忽略', () {
     final log = ChatLog('s');
     expect(log.apply(e(1, 'msg.user', {'text': 'a'})), isTrue);
