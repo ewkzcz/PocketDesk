@@ -234,12 +234,10 @@ class PdApi {
   }
 
   /** sendMessage：发送消息 */
-  Future<void> sendMessage(String id, String text, {List<String> attachments = const [], String mode = '', String delegate = '', String clientId = ''}) =>
+  Future<void> sendMessage(String id, String text, {List<String> attachments = const [], String clientId = ''}) =>
       send('POST', '/api/sessions/$id/messages', body: {
         'text': text,
         if (attachments.isNotEmpty) 'attachments': attachments,
-        if (mode.isNotEmpty) 'mode': mode,
-        if (delegate.isNotEmpty) 'delegate': delegate,
         if (clientId.isNotEmpty) 'clientId': clientId,
       });
 

@@ -24,9 +24,6 @@ type ClaudeDriver struct{}
 /** Kind：类型 */
 func (ClaudeDriver) Kind() string { return KindClaude }
 
-/** SupportsSteer：运行中不支持插话 */
-func (ClaudeDriver) SupportsSteer() bool { return false }
-
 /**
  * ClaudeArgs：组装启动参数
  *
@@ -99,9 +96,6 @@ func (c *claudeProc) Send(_ context.Context, m Message) error {
 		"message": map[string]any{"role": "user", "content": []map[string]any{{"type": "text", "text": PromptWithAttachments(m)}}},
 	})
 }
-
-/** Steer：不支持 */
-func (c *claudeProc) Steer(context.Context, Message) error { return ErrUnsupported }
 
 /**
  * Interrupt：先发中断控制请求，3 秒内未结束本轮再发中断信号

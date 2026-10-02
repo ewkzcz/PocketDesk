@@ -1,5 +1,5 @@
 /**
- * 会话管理器：维护每个会话的 Agent 进程与状态机，写入事件并推送，处理排队、插话、打断、恢复与改动清单。
+ * 会话管理器：维护每个会话的 Agent 进程与状态机，写入事件并推送，处理排队、打断、恢复与改动清单。
  */
 package session
 
@@ -83,8 +83,6 @@ type runtime struct {
 	id       string
 	sess     store.Session
 	proc     agent.Process
-	dproc    agent.Process
-	dkind    string
 	state    string
 	queue    []Input
 	last     *Input
@@ -103,8 +101,6 @@ type turn struct {
 type Input struct {
 	Text        string   `json:"text"`
 	Attachments []string `json:"attachments"`
-	Mode        string   `json:"mode"`
-	Delegate    string   `json:"delegate"`
 	ClientID    string   `json:"clientId"`
 }
 
@@ -245,7 +241,7 @@ func (m *Manager) runtime(ctx context.Context, id string) (*runtime, error) {
  *
  * 处理流程：
  * 1、校验开关，重发的同一条消息直接返回，首条消息时用内容生成标题
- * 2、执行中：支持插话且要求插话时立即送达，否则排队
+ * 2、执行中：排队，本轮结束后再发送
  * 3、空闲：记录用户消息并开始新一轮
  */
 func (m *Manager) Send(ctx context.Context, id string, in Input) error {
@@ -268,14 +264,6 @@ func (m *Manager) Send(ctx context.Context, id string, in Input) error {
 	if in.ClientID != "" && m.recent.Has(id+"\x00"+in.ClientID) {
 		return nil
 	}
-	if in.Delegate == rt.sess.Kind {
-		in.Delegate = ""
-	}
-	if in.Delegate != "" {
-		if _, ok := m.d.Registry.Get(in.Delegate); !ok {
-			return ErrUnknownKind
-		}
-	}
 	if rt.sess.Title == agent.Label(rt.sess.Kind) && in.Text != "" {
 		title := agent.Label(rt.sess.Kind) + " · " + snippet(in.Text, 16)
 		if s, err := m.d.Store.UpdateSession(ctx, id, store.SessionPatch{Title: &title}); err == nil {
@@ -285,14 +273,6 @@ func (m *Manager) Send(ctx context.Context, id string, in Input) error {
 	busy := rt.state == StateRunning || rt.state == StateAwaiting || rt.state == StateInterrupted
 	// 2、执行中
 	if busy {
-		if in.Mode == "steer" && rt.proc != nil && rt.dproc == nil {
-			if d, _ := m.d.Registry.Get(rt.sess.Kind); d.SupportsSteer() {
-				if err := m.emitUser(ctx, rt, in, false); err != nil {
-					return err
-				}
-				return rt.proc.Steer(ctx, agent.Message{Text: in.Text, Attachments: in.Attachments})
-			}
-		}
 		if err := m.emitUser(ctx, rt, in, true); err != nil {
 			return err
 		}
@@ -309,7 +289,7 @@ func (m *Manager) Send(ctx context.Context, id string, in Input) error {
 
 /** emitUser：记录用户消息事件 */
 func (m *Manager) emitUser(ctx context.Context, rt *runtime, in Input, queued bool) error {
-	if err := m.emit(ctx, rt.id, "msg.user", map[string]any{"text": in.Text, "attachments": in.Attachments, "queued": queued, "mode": in.Mode, "delegate": in.Delegate, "clientId": in.ClientID}); err != nil {
+	if err := m.emit(ctx, rt.id, "msg.user", map[string]any{"text": in.Text, "attachments": in.Attachments, "queued": queued, "clientId": in.ClientID}); err != nil {
 		return err
 	}
 	// 记录成功后才登记编号，失败时手机重发会重新处理
@@ -322,7 +302,7 @@ func (m *Manager) emitUser(ctx context.Context, rt *runtime, in Input, queued bo
  *
  * 处理流程：
  * 1、解析工作目录并记录改动快照
- * 2、确保进程已启动（委托给其他 Agent 时单独启动）
+ * 2、确保进程已启动
  * 3、状态切到执行中并发送消息
  */
 func (m *Manager) startTurn(ctx context.Context, rt *runtime, in Input) {
@@ -338,18 +318,10 @@ func (m *Manager) startTurn(ctx context.Context, rt *runtime, in Input) {
 	}
 	rt.turn = &turn{snap: snapshot(ctx, cwd), writes: map[string]bool{}, cwd: cwd}
 	// 2、进程
-	var proc agent.Process
-	if in.Delegate != "" {
-		proc, err = m.startProc(ctx, rt, in.Delegate, cwd, "", "")
-		if err == nil {
-			rt.dproc, rt.dkind = proc, in.Delegate
-		}
-	} else {
-		if rt.proc == nil {
-			rt.proc, err = m.startProc(ctx, rt, rt.sess.Kind, cwd, rt.sess.AgentSessionID, rt.sess.Model)
-		}
-		proc = rt.proc
+	if rt.proc == nil {
+		rt.proc, err = m.startProc(ctx, rt, rt.sess.Kind, cwd, rt.sess.AgentSessionID, rt.sess.Model)
 	}
+	proc := rt.proc
 	if err != nil {
 		m.emit(ctx, rt.id, "error", map[string]any{"message": "启动失败：" + err.Error(), "retryable": true})
 		m.setState(ctx, rt, StateIdle)
@@ -379,11 +351,7 @@ func (m *Manager) startProc(ctx context.Context, rt *runtime, kind, cwd, resume,
 	if err != nil {
 		return nil, err
 	}
-	tag := ""
-	if kind != rt.sess.Kind {
-		tag = kind
-	}
-	go m.pump(rt, p, tag)
+	go m.pump(rt, p)
 	return p, nil
 }
 
@@ -396,14 +364,14 @@ func (m *Manager) startProc(ctx context.Context, rt *runtime, kind, cwd, resume,
  * 2、其他事件到达前先发出已合并的片段，保证顺序不变
  * 3、事件通道关闭后处理退出
  */
-func (m *Manager) pump(rt *runtime, p agent.Process, tag string) {
+func (m *Manager) pump(rt *runtime, p agent.Process) {
 	ctx := context.Background()
 	var pend *agent.Event
 	var timer *time.Timer
 	var tick <-chan time.Time
 	flush := func() {
 		if pend != nil {
-			m.handle(ctx, rt, p, tag, *pend)
+			m.handle(ctx, rt, p, *pend)
 			pend = nil
 		}
 		if timer != nil {
@@ -443,7 +411,7 @@ func (m *Manager) pump(rt *runtime, p agent.Process, tag string) {
 			}
 			// 2、其他事件
 			flush()
-			m.handle(ctx, rt, p, tag, e)
+			m.handle(ctx, rt, p, e)
 		case <-tick:
 			timer, tick = nil, nil
 			flush()
@@ -476,18 +444,18 @@ func deltaKey(e agent.Event) string {
  * handle：处理一条驱动事件
  *
  * 处理流程：
- * 1、会话 ID：保存用于续聊（委托进程除外）
+ * 1、会话 ID：保存用于续聊
  * 2、写文件记录：加入本轮改动
  * 3、本轮结束：生成改动清单并处理排队
- * 4、其他：附加来源后写库推送
+ * 4、其他：写库推送
  */
-func (m *Manager) handle(ctx context.Context, rt *runtime, p agent.Process, tag string, e agent.Event) {
+func (m *Manager) handle(ctx context.Context, rt *runtime, p agent.Process, e agent.Event) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	switch e.Type {
 	// 1、会话 ID
 	case agent.EvSessionID:
-		if tag != "" || p != rt.proc {
+		if p != rt.proc {
 			return
 		}
 		id, _ := e.Data["id"].(string)
@@ -511,14 +479,11 @@ func (m *Manager) handle(ctx context.Context, rt *runtime, p agent.Process, tag 
 		}
 	// 3、本轮结束
 	case agent.EvTurnEnd:
-		if p == rt.proc || p == rt.dproc {
+		if p == rt.proc {
 			m.finishTurn(ctx, rt, p)
 		}
 	// 4、其他
 	default:
-		if tag != "" {
-			e.Data["agent"] = tag
-		}
 		m.emit(ctx, rt.id, e.Type, e.Data)
 	}
 }
@@ -528,7 +493,7 @@ func (m *Manager) handle(ctx context.Context, rt *runtime, p agent.Process, tag 
  *
  * 处理流程：
  * 1、生成并推送改动清单
- * 2、关闭委托进程，状态回到空闲，清零异常计数
+ * 2、状态回到空闲，清零异常计数
  * 3、推送完成通知
  * 4、排队中有消息则自动发送下一条
  */
@@ -544,10 +509,6 @@ func (m *Manager) finishTurn(ctx context.Context, rt *runtime, p agent.Process) 
 		rt.turn = nil
 	}
 	// 2、状态
-	if p != nil && p == rt.dproc {
-		rt.dproc.Close()
-		rt.dproc, rt.dkind = nil, ""
-	}
 	wasInterrupted := rt.state == StateInterrupted
 	m.denyPending(ctx, rt.id, "本轮已结束")
 	m.setState(ctx, rt, StateIdle)
@@ -590,7 +551,7 @@ func (m *Manager) turnChanges(ctx context.Context, t *turn) ([]FileChange, bool)
  * onExit：进程退出处理
  *
  * 处理流程：
- * 1、不是当前进程（已被替换或委托进程）只做清理
+ * 1、不是当前进程（已被替换）只做清理
  * 2、空闲时退出：清空进程，下次发送时再启动
  * 3、打断后被强制结束：回到空闲
  * 4、执行中异常退出：未超过上限则用会话 ID 重启并提示已恢复，否则进入出错状态
@@ -599,15 +560,6 @@ func (m *Manager) onExit(ctx context.Context, rt *runtime, p agent.Process) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	// 1、非当前进程
-	if p == rt.dproc {
-		if rt.state == StateRunning || rt.state == StateAwaiting || rt.state == StateInterrupted {
-			if err := p.Err(); err != nil {
-				m.emit(ctx, rt.id, "error", map[string]any{"message": "进程异常退出：" + err.Error(), "retryable": true})
-			}
-			m.finishTurn(ctx, rt, p)
-		}
-		return
-	}
 	if p != rt.proc {
 		return
 	}
@@ -674,9 +626,6 @@ func (m *Manager) Interrupt(ctx context.Context, id string) error {
 	m.emit(ctx, rt.id, "system", map[string]any{"text": "已打断"})
 	// 3、中止
 	p := rt.proc
-	if rt.dproc != nil {
-		p = rt.dproc
-	}
 	if p == nil {
 		m.setState(ctx, rt, StateIdle)
 		return nil
@@ -687,7 +636,7 @@ func (m *Manager) Interrupt(ctx context.Context, id string) error {
 	grace := m.interruptGrace
 	time.AfterFunc(grace, func() {
 		rt.mu.Lock()
-		still := rt.state == StateInterrupted && (rt.proc == p || rt.dproc == p)
+		still := rt.state == StateInterrupted && rt.proc == p
 		rt.mu.Unlock()
 		if still {
 			p.Close()
@@ -813,9 +762,6 @@ func (m *Manager) Shutdown() {
 		rt.mu.Lock()
 		if rt.proc != nil {
 			rt.proc.Close()
-		}
-		if rt.dproc != nil {
-			rt.dproc.Close()
 		}
 		rt.mu.Unlock()
 	}

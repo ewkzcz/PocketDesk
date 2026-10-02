@@ -342,7 +342,7 @@
       var base = { seq: e.seq, at: e.createdAt };
       switch (e.type) {
         case 'msg.user':
-          add(null, Object.assign(base, { t: 'user', text: d.text || '', attachments: d.attachments || [], queued: !!d.queued, delegate: d.delegate || '', phone: e.session === 'assistant' }));
+          add(null, Object.assign(base, { t: 'user', text: d.text || '', attachments: d.attachments || [], queued: !!d.queued, phone: e.session === 'assistant' }));
           break;
         case 'msg.host':
           add(null, Object.assign(base, { t: 'host', text: d.text || '' }));
@@ -659,8 +659,7 @@
     switch (it.t) {
       case 'user':
         mine = !it.phone;
-        body = (it.delegate ? '<div class="pd-queued">@' + esc(AGENT[it.delegate] || it.delegate) + '</div>' : '') +
-          '<div class="pd-bubble plain">' + esc(it.text) + '</div>' +
+        body = '<div class="pd-bubble plain">' + esc(it.text) + '</div>' +
           (it.attachments.length ? '<div class="pd-attach">' + it.attachments.map(function (a) { return '<span>' + esc(a.split('/').pop()) + '</span>'; }).join('') + '</div>' : '') +
           (it.queued ? '<div class="pd-queued">排队中，Agent 空闲后发送</div>' : '');
         who = mine ? 'host' : 'phone';

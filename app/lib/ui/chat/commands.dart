@@ -1,12 +1,11 @@
 /**
- * 斜杠指令与 @ 委托：输入「/」时弹出的指令列表，以及把一条消息交给其他 Agent 的前缀解析。
+ * 斜杠指令：输入「/」时弹出的指令列表。
  */
 library;
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../agents.dart';
 import '../tokens.dart';
 
 /** SlashCommand：一条指令 */
@@ -33,13 +32,6 @@ const slashCommands = [
 List<SlashCommand> matchCommands(String text) {
   if (!text.startsWith('/') || text.contains(' ') || text.contains('\n')) return const [];
   return slashCommands.where((c) => c.name.startsWith(text.toLowerCase())).toList();
-}
-
-/** parseDelegate：解析「@codex 内容」，返回委托的 Agent 与剩余文字 */
-({String delegate, String text}) parseDelegate(String input) {
-  final m = RegExp(r'^@(claude|codex|pi|dsh)(?:\s+|$)', caseSensitive: false).firstMatch(input);
-  if (m == null) return (delegate: '', text: input);
-  return (delegate: m.group(1)!.toLowerCase(), text: input.substring(m.end).trim());
 }
 
 /**
@@ -102,6 +94,3 @@ class QuickChip extends StatelessWidget {
         ),
       );
 }
-
-/** delegateLabel：@ 委托的显示文字 */
-String delegateLabel(String kind) => '@$kind 交给 ${agentFor(kind).label}';

@@ -86,7 +86,6 @@ type Options struct {
 /** Process：一个运行中的 Agent 会话进程 */
 type Process interface {
 	Send(ctx context.Context, m Message) error
-	Steer(ctx context.Context, m Message) error
 	Interrupt() error
 	Events() <-chan Event
 	Done() <-chan struct{}
@@ -98,7 +97,6 @@ type Process interface {
 type Driver interface {
 	Kind() string
 	Start(ctx context.Context, opt Options) (Process, error)
-	SupportsSteer() bool
 }
 
 /** Registry：按类型查找驱动 */

@@ -154,7 +154,7 @@ func TestCodexInterruptEndsTurn(t *testing.T) {
 	}
 }
 
-func TestPiDriverSteer(t *testing.T) {
+func TestPiDriverEvents(t *testing.T) {
 	p, err := PiDriver{}.Start(context.Background(), fakeOpts(t, "pi"))
 	if err != nil {
 		t.Fatal(err)
@@ -167,11 +167,6 @@ func TestPiDriverSteer(t *testing.T) {
 	}
 	if _, ok := find(evs, EvFileWrite); !ok {
 		t.Fatal("写文件记录缺失")
-	}
-	p.Steer(context.Background(), Message{Text: "改方向"})
-	evs = collect(t, p)
-	if d, _ := find(evs, EvDone); d.Data["text"] != "hi steer" {
-		t.Fatalf("插话未送达 %+v", d.Data)
 	}
 }
 

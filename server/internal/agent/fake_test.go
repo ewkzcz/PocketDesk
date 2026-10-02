@@ -193,7 +193,7 @@ func fakePi() {
 		switch m["type"] {
 		case "get_state":
 			out(map[string]any{"type": "response", "command": "get_state", "success": true, "data": map[string]any{"sessionFile": "/tmp/pi.jsonl"}})
-		case "prompt", "steer":
+		case "prompt":
 			out(map[string]any{"type": "agent_start"})
 			if msg, _ := m["message"].(string); msg == "danger" {
 				fakePiApproval(sc)

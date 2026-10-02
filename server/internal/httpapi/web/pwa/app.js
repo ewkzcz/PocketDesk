@@ -153,13 +153,13 @@
     switch (e.type) {
       case 'state': m.state = d.state; break;
       case 'msg.user': add(null, { kind: 'user', text: d.text, queued: d.queued, file: d.file }); break;
+        break;
       case 'msg.delta':
         var it = find('m:' + d.id);
-        if (it) { it.text += d.text; } else { add('m:' + d.id, { kind: 'agent', text: d.text, agent: d.agent }); }
         break;
       case 'msg.done':
         var dn = find('m:' + d.id);
-        if (dn) { dn.text = d.text; } else { add('m:' + d.id, { kind: 'agent', text: d.text, agent: d.agent }); }
+        if (dn) { dn.text = d.text; } else { add('m:' + d.id, { kind: 'agent', text: d.text }); }
         break;
       case 'tool.start': add('t:' + d.id, { kind: 'tool', name: d.name, summary: d.summary || d.name }); break;
       case 'tool.end':
@@ -198,7 +198,7 @@
         var body = esc(it.text || '');
         return '<div class="pd-line mine"><div class="pd-bubble mine">' + body + '</div></div>' + (it.queued ? '<div class="pd-queued">排队中</div>' : '');
       case 'agent':
-        return '<div class="pd-line">' + avatar(it.agent || kind) + '<div class="pd-stack"><div class="pd-bubble agent">' + esc(it.text) + '</div></div></div>';
+        return '<div class="pd-line">' + avatar(kind) + '<div class="pd-stack"><div class="pd-bubble agent">' + esc(it.text) + '</div></div></div>';
       case 'tool':
         var ic = it.error ? 'alert-circle' : it.done ? 'check' : 'loader';
         return '<div class="pd-line"><div style="width:36px"></div><div class="pd-stack"><button class="pd-tool" data-toggle>' + icon('wrench', 16) + '<code>' + esc(it.summary) + '</code>' + icon(ic, 14) + '</button>' +

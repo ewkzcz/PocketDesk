@@ -20,9 +20,6 @@ type CodexDriver struct{}
 /** Kind：类型 */
 func (CodexDriver) Kind() string { return KindCodex }
 
-/** SupportsSteer：不支持插话 */
-func (CodexDriver) SupportsSteer() bool { return false }
-
 /**
  * Start：启动会话
  *
@@ -184,9 +181,6 @@ func (c *codexProc) forward(e Event) {
 	case c.events <- e:
 	}
 }
-
-/** Steer：不支持 */
-func (c *codexProc) Steer(context.Context, Message) error { return ErrUnsupported }
 
 /** Interrupt：向当前子进程发中断信号 */
 func (c *codexProc) Interrupt() error {

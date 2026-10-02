@@ -109,7 +109,6 @@ class UserBubble extends StatelessWidget {
       Bubble(
         mine: true,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-          if (item.delegate.isNotEmpty) Text('@${agentFor(item.delegate).label}', style: TextStyle(fontSize: PdFont.summary, color: c.bubbleMineText.withValues(alpha: 0.6))),
           if (text.isNotEmpty) Text(text, style: TextStyle(fontSize: PdFont.item, height: 1.5, color: c.bubbleMineText)),
           for (final a in item.attachments)
             Padding(
@@ -156,7 +155,6 @@ class AgentBubble extends StatelessWidget {
     return Bubble(
       mine: false,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-        if (item.agent.isNotEmpty) Padding(padding: const EdgeInsets.only(bottom: 2), child: Text('来自 ${agentFor(item.agent).label}', style: TextStyle(fontSize: PdFont.time, color: c.text3))),
         if (item.text.isEmpty && item.streaming)
           SizedBox(width: 24, height: 20, child: Center(child: SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: c.text3))))
         else

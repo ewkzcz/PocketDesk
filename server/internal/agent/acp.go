@@ -21,9 +21,6 @@ type ACPDriver struct {
 /** Kind：类型 */
 func (d ACPDriver) Kind() string { return d.Name }
 
-/** SupportsSteer：ACP 没有插话语义 */
-func (ACPDriver) SupportsSteer() bool { return false }
-
 /** acpProc：一个 ACP 会话 */
 type acpProc struct {
 	*rpcConn
@@ -371,9 +368,6 @@ func (a *acpProc) Send(_ context.Context, m Message) error {
 	}()
 	return nil
 }
-
-/** Steer：不支持 */
-func (a *acpProc) Steer(context.Context, Message) error { return ErrUnsupported }
 
 /** Interrupt：发送 session/cancel 通知 */
 func (a *acpProc) Interrupt() error {

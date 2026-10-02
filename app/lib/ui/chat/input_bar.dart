@@ -33,7 +33,6 @@ class ChatInputBar extends StatefulWidget {
     required this.panel,
     required this.onPanel,
     this.showSlash = true,
-    this.onSendLong,
     this.quote = '',
     this.onClearQuote,
     this.attachments = const [],
@@ -44,7 +43,6 @@ class ChatInputBar extends StatefulWidget {
   final TextEditingController controller;
   final FocusNode focus;
   final VoidCallback onSend;
-  final VoidCallback? onSendLong;
   final List<PanelItem> panel;
   final void Function(String key) onPanel;
   final bool showSlash;
@@ -239,13 +237,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
               if (_hasText && !_voice)
                 Padding(
                   padding: const EdgeInsets.only(left: 6, bottom: 2),
-                  child: GestureDetector(
-                    onLongPress: widget.onSendLong,
-                    child: FilledButton(
-                      onPressed: widget.onSend,
-                      style: FilledButton.styleFrom(minimumSize: const Size(56, 34), padding: const EdgeInsets.symmetric(horizontal: 12)),
-                      child: const Text('发送'),
-                    ),
+                  child: FilledButton(
+                    onPressed: widget.onSend,
+                    style: FilledButton.styleFrom(minimumSize: const Size(56, 34), padding: const EdgeInsets.symmetric(horizontal: 12)),
+                    child: const Text('发送'),
                   ),
                 )
               else

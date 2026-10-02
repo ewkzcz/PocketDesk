@@ -1,5 +1,5 @@
 /**
- * Pi 驱动：以 rpc 模式常驻运行，标准输入输出逐行 JSON，支持插话与追加；
+ * Pi 驱动：以 rpc 模式常驻运行，标准输入输出逐行 JSON；
  * 加载内置审批扩展，执行命令和写工作区外文件前经扩展界面请求向手机要确认。
  */
 package agent
@@ -43,9 +43,6 @@ type PiDriver struct{}
 
 /** Kind：类型 */
 func (PiDriver) Kind() string { return KindPi }
-
-/** SupportsSteer：支持插话 */
-func (PiDriver) SupportsSteer() bool { return true }
 
 /** PiArgs：组装启动参数，有会话文件时续聊 */
 func PiArgs(opt Options) []string {
@@ -145,11 +142,6 @@ type piProc struct{ *lineProc }
 /** Send：发送提示词 */
 func (p *piProc) Send(_ context.Context, m Message) error {
 	return p.writeJSON(map[string]any{"type": "prompt", "message": PromptWithAttachments(m)})
-}
-
-/** Steer：运行中插话 */
-func (p *piProc) Steer(_ context.Context, m Message) error {
-	return p.writeJSON(map[string]any{"type": "steer", "message": PromptWithAttachments(m)})
 }
 
 /** Interrupt：发送 abort 指令 */

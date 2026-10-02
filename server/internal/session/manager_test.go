@@ -1,5 +1,5 @@
 /**
- * 会话管理器 mock 测试：用内存假驱动覆盖状态机、排队、插话、打断、审批、崩溃恢复与改动清单。
+ * 会话管理器 mock 测试：用内存假驱动覆盖状态机、排队、打断、审批、崩溃恢复与改动清单。
  */
 package session
 
@@ -29,7 +29,6 @@ type mockProc struct {
 	done        chan struct{}
 	once        sync.Once
 	sent        []string
-	steered     []string
 	interrupted int
 	hang        chan struct{}
 	err         error
@@ -100,13 +99,6 @@ func (p *mockProc) Send(_ context.Context, m agent.Message) error {
 	return nil
 }
 
-func (p *mockProc) Steer(_ context.Context, m agent.Message) error {
-	p.mu.Lock()
-	p.steered = append(p.steered, m.Text)
-	p.mu.Unlock()
-	return nil
-}
-
 func (p *mockProc) Interrupt() error {
 	p.mu.Lock()
 	p.interrupted++
@@ -146,15 +138,13 @@ func (p *mockProc) Close() error {
 /** mockDriver：记录每次启动的参数 */
 type mockDriver struct {
 	kind   string
-	steer  bool
 	mu     sync.Mutex
 	starts []agent.Options
 	procs  []*mockProc
 	fail   bool
 }
 
-func (d *mockDriver) Kind() string        { return d.kind }
-func (d *mockDriver) SupportsSteer() bool { return d.steer }
+func (d *mockDriver) Kind() string { return d.kind }
 func (d *mockDriver) Start(_ context.Context, opt agent.Options) (agent.Process, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -172,13 +162,6 @@ func (p *mockProc) sentList() []string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return append([]string(nil), p.sent...)
-}
-
-/** steeredList：插话消息的副本 */
-func (p *mockProc) steeredList() []string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return append([]string(nil), p.steered...)
 }
 
 /** interruptCount：中断次数 */
@@ -227,7 +210,7 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	f := &fixture{st: st, hub: hub.New(), claude: &mockDriver{kind: "claude"}, pi: &mockDriver{kind: "pi", steer: true}, codex: &mockDriver{kind: "codex"}, root: t.TempDir(), cfg: config.Default()}
+	f := &fixture{st: st, hub: hub.New(), claude: &mockDriver{kind: "claude"}, pi: &mockDriver{kind: "pi"}, codex: &mockDriver{kind: "codex"}, root: t.TempDir(), cfg: config.Default()}
 	st.SaveWorkspace(context.Background(), store.Workspace{ID: "w1", Name: "w", RootPath: f.root})
 	os.MkdirAll(filepath.Join(f.root, "sub"), 0o755)
 	f.m = New(Deps{Store: st, Hub: f.hub, Registry: agent.NewRegistry(f.claude, f.pi, f.codex), Config: func() config.Config { return f.cfg }})
@@ -348,28 +331,6 @@ func TestQueueWhileRunning(t *testing.T) {
 	if sent := f.claude.last().sentList(); len(sent) != 2 || sent[1] != "second" {
 		t.Fatalf("排队消息应自动发送: %v", sent)
 	}
-}
-
-func TestSteerForPi(t *testing.T) {
-	f := newFixture(t)
-	ctx := context.Background()
-	s, _ := f.m.Create(ctx, "pi", "w1", ".", "")
-	f.m.Send(ctx, s.ID, Input{Text: "hang"})
-	f.waitState(t, s.ID, StateRunning)
-	f.m.Send(ctx, s.ID, Input{Text: "turn left", Mode: "steer"})
-	p := f.pi.last()
-	if st := p.steeredList(); len(st) != 1 || st[0] != "turn left" {
-		t.Fatal("插话应立即送达")
-	}
-	c, _ := f.m.Create(ctx, "claude", "w1", ".", "")
-	f.m.Send(ctx, c.ID, Input{Text: "hang"})
-	f.waitState(t, c.ID, StateRunning)
-	f.m.Send(ctx, c.ID, Input{Text: "x", Mode: "steer"})
-	if !hasEvent(f.events(t, c.ID), "msg.user", `"queued":true`) {
-		t.Fatal("不支持插话的 Agent 应排队")
-	}
-	f.claude.last().hang <- struct{}{}
-	p.hang <- struct{}{}
 }
 
 func TestInterruptClearsQueueAndDeniesApprovals(t *testing.T) {
@@ -507,32 +468,6 @@ func TestStartFailureAndRetry(t *testing.T) {
 	}
 	if err := f.m.Send(ctx, s.ID, Input{}); err == nil {
 		t.Fatal("空消息应拒绝")
-	}
-}
-
-func TestDelegateToOtherAgent(t *testing.T) {
-	f := newFixture(t)
-	ctx := context.Background()
-	s, _ := f.m.Create(ctx, "claude", "w1", ".", "")
-	f.m.Send(ctx, s.ID, Input{Text: "review", Delegate: "codex"})
-	f.waitState(t, s.ID, StateIdle)
-	time.Sleep(20 * time.Millisecond)
-	if st := f.codex.startList(); len(st) != 1 || st[0].ResumeID != "" {
-		t.Fatal("应单独启动被委托的 Agent")
-	}
-	if !hasEvent(f.events(t, s.ID), "msg.done", `"agent":"codex"`) {
-		t.Fatal("委托结果应标记来源")
-	}
-	if got, _ := f.st.Session(ctx, s.ID); got.AgentSessionID != "" {
-		t.Fatal("委托 Agent 的会话 ID 不应覆盖当前会话")
-	}
-	select {
-	case <-f.codex.last().Done():
-	default:
-		t.Fatal("委托完成后应关闭进程")
-	}
-	if err := f.m.Send(ctx, s.ID, Input{Text: "x", Delegate: "nope"}); !errors.Is(err, ErrUnknownKind) {
-		t.Fatal("未知委托类型应拒绝")
 	}
 }
 

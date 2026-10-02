@@ -369,9 +369,6 @@ func (c *codexApp) Send(ctx context.Context, m Message) error {
 	return nil
 }
 
-/** Steer：按驱动约定不插话，执行中的消息排队到本轮结束 */
-func (c *codexApp) Steer(context.Context, Message) error { return ErrUnsupported }
-
 /** Interrupt：turn/interrupt */
 func (c *codexApp) Interrupt() error {
 	c.mu.Lock()

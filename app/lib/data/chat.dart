@@ -18,22 +18,20 @@ sealed class ChatItem {
 
 /** UserItem：我发出的消息 */
 class UserItem extends ChatItem {
-  UserItem(super.seq, super.at, {required this.text, this.attachments = const [], this.queued = false, this.delegate = '', this.fileName = ''});
+  UserItem(super.seq, super.at, {required this.text, this.attachments = const [], this.queued = false, this.fileName = ''});
 
   final String text;
   final List<String> attachments;
   bool queued;
-  final String delegate;
   final String fileName;
 }
 
 /** AgentItem：Agent 的回复文本 */
 class AgentItem extends ChatItem {
-  AgentItem(super.seq, super.at, {required this.id, required this.text, this.agent = '', this.streaming = true});
+  AgentItem(super.seq, super.at, {required this.id, required this.text, this.streaming = true});
 
   final String id;
   String text;
-  final String agent;
   bool streaming;
 }
 
@@ -48,14 +46,13 @@ class ThinkingItem extends ChatItem {
 
 /** ToolItem：工具调用卡片 */
 class ToolItem extends ChatItem {
-  ToolItem(super.seq, super.at, {required this.id, required this.name, required this.kind, required this.summary, this.input = const {}, this.agent = ''});
+  ToolItem(super.seq, super.at, {required this.id, required this.name, required this.kind, required this.summary, this.input = const {}});
 
   final String id;
   final String name;
   final String kind;
   final String summary;
   final Map<String, dynamic> input;
-  final String agent;
   String output = '';
   bool isError = false;
   bool done = false;
@@ -218,7 +215,6 @@ class ChatLog {
             text: str('text'),
             attachments: Json.list(d['attachments']).map((x) => x.toString()).toList(),
             queued: Json.boolean(d['queued']),
-            delegate: str('delegate'),
             fileName: Json.str(f['name'])));
       case 'msg.host':
         add(null, AgentItem(e.seq, e.createdAt, id: 'host-${e.seq}', text: str('text'), streaming: false));
@@ -228,7 +224,7 @@ class ChatLog {
         if (cur is AgentItem) {
           cur.text += str('text');
         } else {
-          add(key, AgentItem(e.seq, e.createdAt, id: str('id'), text: str('text'), agent: str('agent')));
+          add(key, AgentItem(e.seq, e.createdAt, id: str('id'), text: str('text')));
         }
       case 'msg.done':
         final key = 'm:${str('id')}';
@@ -237,7 +233,7 @@ class ChatLog {
           cur.text = str('text');
           cur.streaming = false;
         } else {
-          add(key, AgentItem(e.seq, e.createdAt, id: str('id'), text: str('text'), agent: str('agent'), streaming: false));
+          add(key, AgentItem(e.seq, e.createdAt, id: str('id'), text: str('text'), streaming: false));
         }
       case 'thinking':
         final key = 't:${str('id')}';
@@ -256,7 +252,7 @@ class ChatLog {
         if (Json.boolean(d['done'])) t.done = true;
       case 'tool.start':
         add('tool:${str('id')}', ToolItem(e.seq, e.createdAt,
-            id: str('id'), name: str('name'), kind: str('kind'), summary: str('summary').isEmpty ? str('name') : str('summary'), input: Json.map(d['input']), agent: str('agent')));
+            id: str('id'), name: str('name'), kind: str('kind'), summary: str('summary').isEmpty ? str('name') : str('summary'), input: Json.map(d['input'])));
       case 'tool.end':
         final cur = _byKey['tool:${str('id')}'];
         if (cur is ToolItem) {

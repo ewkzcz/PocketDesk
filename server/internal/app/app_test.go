@@ -37,8 +37,7 @@ import (
 /** echoDriver：内存假 Agent，按提示词回应或请求审批 */
 type echoDriver struct{}
 
-func (echoDriver) Kind() string        { return agent.KindClaude }
-func (echoDriver) SupportsSteer() bool { return false }
+func (echoDriver) Kind() string { return agent.KindClaude }
 func (echoDriver) Start(_ context.Context, opt agent.Options) (agent.Process, error) {
 	return &echoProc{opt: opt, events: make(chan agent.Event, 64), done: make(chan struct{})}, nil
 }
@@ -76,11 +75,10 @@ func (p *echoProc) Send(_ context.Context, m agent.Message) error {
 	}()
 	return nil
 }
-func (p *echoProc) Steer(context.Context, agent.Message) error { return agent.ErrUnsupported }
-func (p *echoProc) Interrupt() error                           { return nil }
-func (p *echoProc) Events() <-chan agent.Event                 { return p.events }
-func (p *echoProc) Done() <-chan struct{}                      { return p.done }
-func (p *echoProc) Err() error                                 { return nil }
+func (p *echoProc) Interrupt() error           { return nil }
+func (p *echoProc) Events() <-chan agent.Event { return p.events }
+func (p *echoProc) Done() <-chan struct{}      { return p.done }
+func (p *echoProc) Err() error                 { return nil }
 func (p *echoProc) Close() error {
 	p.once.Do(func() {
 		close(p.done)

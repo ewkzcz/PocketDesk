@@ -1,5 +1,5 @@
 /**
- * 聊天页：与 Agent 或文件传输助手对话。消息在底部、上滑加载更早记录、不在底部时显示新消息浮标；支持斜杠指令、@ 委托、附件、语音、快捷短语、审批、长按菜单与多选。
+ * 聊天页：与 Agent 或文件传输助手对话。消息在底部、上滑加载更早记录、不在底部时显示新消息浮标；支持斜杠指令、附件、语音、快捷短语、审批、长按菜单与多选。
  */
 library;
 
@@ -21,7 +21,6 @@ import '../../data/models.dart';
 import '../../net/api.dart';
 import '../../transfer/naming.dart' as naming;
 import '../../transfer/task.dart';
-import '../agents.dart';
 import '../chat/commands.dart';
 import '../chat/input_bar.dart';
 import '../chat/items.dart';
@@ -219,9 +218,9 @@ class _ChatPageState extends State<ChatPage> {
    * 处理流程：
    * 1、斜杠指令直接执行
    * 2、等待附件上传完成，取得附件路径
-   * 3、解析 @ 委托与引用，发送给电脑；失败时恢复输入与附件，重发同一内容沿用同一编号
+   * 3、拼上引用，发送给电脑；失败时恢复输入与附件，重发同一内容沿用同一编号
    */
-  Future<void> _send({String mode = ''}) async {
+  Future<void> _send() async {
     final s = _session;
     if (s == null || _sending) return;
     var text = _input.text.trim();
@@ -248,8 +247,6 @@ class _ChatPageState extends State<ChatPage> {
         attachments.add('.pocketdesk/inbox/${done.dateFolder}/${done.result}');
       }
       // 3、发送
-      final d = s.isAgent ? parseDelegate(text) : (delegate: '', text: text);
-      text = d.text;
       if (_quote.isNotEmpty) text = '${_quote.split('\n').map((l) => '> $l').join('\n')}\n\n$text';
       final saved = _input.text;
       _input.clear();
@@ -260,7 +257,7 @@ class _ChatPageState extends State<ChatPage> {
         _quote = '';
       });
       // 同一内容重试时沿用同一编号：上次其实已送达（只是响应丢了）时电脑端不会重复执行
-      final key = '$mode|${d.delegate}|$text|${attachments.join('|')}';
+      final key = '$text|${attachments.join('|')}';
       if (key != _retryKey) {
         _retryKey = key;
         _retryId = _clientId();
@@ -269,7 +266,7 @@ class _ChatPageState extends State<ChatPage> {
         if (s.isAssistant) {
           await _api.assistantText(text, clientId: _retryId);
         } else {
-          await _api.sendMessage(_id, text, attachments: attachments, mode: mode, delegate: d.delegate, clientId: _retryId);
+          await _api.sendMessage(_id, text, attachments: attachments, clientId: _retryId);
         }
         _retryKey = '';
         _toBottom();
@@ -284,18 +281,6 @@ class _ChatPageState extends State<ChatPage> {
     } finally {
       if (mounted) setState(() => _sending = false);
     }
-  }
-
-  /** _sendLong：长按发送；支持插话的 Agent 在执行中可以立即送达 */
-  Future<void> _sendLong() async {
-    final s = _session;
-    if (s == null || !s.busy || s.kind != 'pi') return;
-    final i = await actionSheet(context, const [
-      SheetAction('插话（立即送达，改变方向）', icon: LucideIcons.zap300),
-      SheetAction('排队到本轮结束', icon: LucideIcons.listEnd300),
-    ]);
-    if (i == 0) await _send(mode: 'steer');
-    if (i == 1) await _send();
   }
 
   /**
@@ -882,7 +867,6 @@ class _ChatPageState extends State<ChatPage> {
     }
     final entries = _entries(log);
     final cmds = s.isAgent ? matchCommands(_input.text) : const <SlashCommand>[];
-    final others = (scope.conn.status?.agents.where((a) => a.installed && a.kind != s.kind).map((a) => a.kind).toList() ?? agentKinds.where((k) => k != s.kind).toList());
     return PopScope(
       canPop: !_selecting,
       onPopInvokedWithResult: (did, _) {
@@ -984,17 +968,12 @@ class _ChatPageState extends State<ChatPage> {
                   QuickChip(label: '/diff 查看改动', onTap: () => _runCommand('/diff', '')),
                   const SizedBox(width: 8),
                   QuickChip(label: '/model 切换模型', onTap: () => _runCommand('/model', '')),
-                  for (final k in others.take(2)) ...[
-                    const SizedBox(width: 8),
-                    QuickChip(label: delegateLabel(k), onTap: () => _insert('@$k ')),
-                  ],
                 ]),
               ),
             ChatInputBar(
               controller: _input,
               focus: _focus,
               onSend: _send,
-              onSendLong: s.kind == 'pi' ? _sendLong : null,
               panel: _panelItems(s),
               onPanel: _panel,
               showSlash: s.isAgent,

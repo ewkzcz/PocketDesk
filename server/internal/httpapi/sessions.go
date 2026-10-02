@@ -160,7 +160,7 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, err)
 		return
 	}
-	s.audit(r, "message.send", map[string]any{"session": id, "text": in.Text, "attachments": in.Attachments, "mode": in.Mode, "delegate": in.Delegate})
+	s.audit(r, "message.send", map[string]any{"session": id, "text": in.Text, "attachments": in.Attachments})
 	writeJSON(w, 202, map[string]bool{"ok": true})
 }
 
