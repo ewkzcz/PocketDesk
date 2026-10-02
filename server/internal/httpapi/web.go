@@ -26,7 +26,7 @@ func subFS(dir string) http.FileSystem {
 	return http.FS(f)
 }
 
-/** staticHandler：根路径返回 index.html，icons.js 与头像取公共目录，其余按文件名返回 */
+/** staticHandler：根路径返回 index.html，icons.js、mermaid.min.js 与头像取公共目录，其余按文件名返回 */
 func staticHandler(dir, prefix string) http.Handler {
 	files := http.StripPrefix(prefix, http.FileServer(subFS(dir)))
 	common := http.StripPrefix(prefix, http.FileServer(subFS("common")))
@@ -37,7 +37,7 @@ func staticHandler(dir, prefix string) http.Handler {
 		if r.URL.Path == "/" {
 			r.URL.Path = prefix
 		}
-		if r.URL.Path == prefix+"icons.js" || strings.HasPrefix(r.URL.Path, prefix+"avatars/") {
+		if r.URL.Path == prefix+"icons.js" || r.URL.Path == prefix+"mermaid.min.js" || strings.HasPrefix(r.URL.Path, prefix+"avatars/") {
 			common.ServeHTTP(w, r)
 			return
 		}

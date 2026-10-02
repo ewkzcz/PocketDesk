@@ -4,10 +4,13 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -60,6 +63,7 @@ func (s *Server) AdminHandler() http.Handler {
 	mux.HandleFunc("POST /admin/api/approve", s.adminApprove)
 	mux.HandleFunc("GET /admin/api/audit", s.adminAudit)
 	mux.HandleFunc("POST /admin/api/open", s.adminOpen)
+	mux.HandleFunc("POST /admin/api/save-image", s.adminSaveImage)
 	mux.HandleFunc("POST /admin/api/pick-folder", s.adminPickFolder)
 	mux.HandleFunc("GET /admin/api/remote", s.adminRemote)
 	mux.HandleFunc("POST /admin/api/remote/download", s.adminTailscaleDownload)
@@ -492,6 +496,62 @@ func (s *Server) adminOpen(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+
+/**
+ * adminSaveImage：把网页里画好的图片（图表、代码图）存到电脑的「下载」文件夹并定位到它
+ *
+ * 处理流程：
+ * 1、只收 PNG，文件名去掉目录部分并统一 .png 结尾
+ * 2、重名时加序号，写入「下载」文件夹
+ * 3、在文件管理器中显示
+ */
+func (s *Server) adminSaveImage(w http.ResponseWriter, r *http.Request) {
+	// 1、图片
+	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 32<<20))
+	if err != nil || !bytes.HasPrefix(b, []byte("\x89PNG\r\n\x1a\n")) {
+		writeErr(w, r, errf(400, "bad_image", "图片格式不对"))
+		return
+	}
+	name := strings.TrimSuffix(filepath.Base(strings.ReplaceAll(r.URL.Query().Get("name"), `\`, "/")), ".png")
+	if name == "" || name == "." || name == "/" {
+		name = "image"
+	}
+	// 2、写入
+	home, err := os.UserHomeDir()
+	if err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	dir := filepath.Join(home, "Downloads")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	dest := filepath.Join(dir, name+".png")
+	for i := 2; ; i++ {
+		f, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if err == nil {
+			_, err = f.Write(b)
+			if cerr := f.Close(); err == nil {
+				err = cerr
+			}
+			if err != nil {
+				writeErr(w, r, err)
+				return
+			}
+			break
+		}
+		if !errors.Is(err, os.ErrExist) || i > 999 {
+			writeErr(w, r, err)
+			return
+		}
+		dest = filepath.Join(dir, fmt.Sprintf("%s (%d).png", name, i))
+	}
+	// 3、显示
+	s.open(dest, true)
+	writeJSON(w, 200, map[string]string{"path": dest})
 }
 
 /** openFolder：调用系统文件管理器 */

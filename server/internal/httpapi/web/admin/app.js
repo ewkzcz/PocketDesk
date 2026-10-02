@@ -153,6 +153,162 @@
     return s.replace(/\u0000(\d+)\u0000/g, function (_, i) { return '<code>' + codes[+i] + '</code>'; });
   }
 
+  var mermaidCache = {}, mermaidLoad = null, mermaidTimer = 0, mermaidZoom = {};
+
+  /** mermaidStyle：图表的缩放样式，1 倍时按窗口宽度自适应，其他倍数按图表原始宽度缩放 */
+  function mermaidStyle(code, svg) {
+    var z = mermaidZoom[code] || 1, w = /viewBox="[\d.\-]+ [\d.\-]+ ([\d.]+)/.exec(svg || '');
+    return z === 1 || !w ? '' : ' data-z="1" style="--w:' + w[1] + 'px;--z:' + z + '"';
+  }
+
+  /** mermaidStep：放大、缩小或还原，倍数保存在图表代码上，聊天刷新后仍保持 */
+  function mermaidStep(box, how) {
+    var el = box.querySelector('.pd-mermaid'), code = el.dataset.code, svg = el.innerHTML;
+    var z = how === 'reset' ? 1 : Math.min(6, Math.max(0.25, (mermaidZoom[code] || 1) * (how === 'in' ? 1.25 : 0.8)));
+    mermaidZoom[code] = Math.round(z * 100) / 100;
+    var w = /viewBox="[\d.\-]+ [\d.\-]+ ([\d.]+)/.exec(svg);
+    if (mermaidZoom[code] === 1 || !w) { el.removeAttribute('data-z'); el.style.removeProperty('--w'); el.style.removeProperty('--z'); }
+    else { el.dataset.z = '1'; el.style.setProperty('--w', w[1] + 'px'); el.style.setProperty('--z', mermaidZoom[code]); }
+    var pct = box.querySelector('[data-act="mm-zoom"][data-d="reset"]');
+    if (pct) { pct.textContent = Math.round(mermaidZoom[code] * 100) + '%'; }
+  }
+
+  /** mermaidDark：当前是否深色主题 */
+  function mermaidDark() {
+    var t = document.documentElement.dataset.theme;
+    return t ? t === 'dark' : !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+  }
+
+  /** mermaidBlock：图表块；画好的直接给出，没画好的先显示代码，稍后统一绘制 */
+  function mermaidBlock(code) {
+    var svg = mermaidCache[(mermaidDark() ? 'd' : 'l') + code];
+    var z = mermaidZoom[code] || 1;
+    var bar = '<div class="pd-code-bar"><span>图表</span><span><button class="pd-icon-btn" data-act="mm-zoom" data-d="out" title="缩小" aria-label="缩小">' + icon('zoom-out', 14) + '</button>' +
+      '<button class="pd-link" data-act="mm-zoom" data-d="reset" title="还原" aria-label="还原缩放">' + Math.round(z * 100) + '%</button>' +
+      '<button class="pd-icon-btn" data-act="mm-zoom" data-d="in" title="放大" aria-label="放大">' + icon('zoom-in', 14) + '</button>' +
+      '<button class="pd-icon-btn" data-act="save-img" data-kind="mermaid" title="下载图片" aria-label="下载图片">' + icon('download', 14) + '</button></span></div>';
+    if (svg) { return '<div class="pd-code pd-mermaid-box">' + bar + '<div class="pd-mermaid" data-code="' + esc(code) + '"' + mermaidStyle(code, svg) + '>' + svg + '</div></div>'; }
+    clearTimeout(mermaidTimer);
+    mermaidTimer = setTimeout(mermaidScan, 400);
+    return '<div class="pd-code pd-mermaid-box">' + bar + '<div class="pd-mermaid pd-mermaid-todo" data-code="' + esc(code) + '"><pre>' + esc(code) + '</pre></div></div>';
+  }
+
+  /** mermaidPng：把图表画成 PNG（导出时改用不含网页元素的文字标签，避免画布被浏览器锁定） */
+  function mermaidPng(code) {
+    var dark = mermaidDark();
+    mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'default', securityLevel: 'strict', htmlLabels: false, flowchart: { htmlLabels: false } });
+    return mermaid.render('mx' + Date.now(), code).then(function (r) {
+      var el = new DOMParser().parseFromString(r.svg, 'image/svg+xml').documentElement;
+      var vb = (el.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number);
+      var w = vb[2] || parseFloat(el.getAttribute('width')) || 800, h = vb[3] || parseFloat(el.getAttribute('height')) || 600;
+      el.setAttribute('width', w);
+      el.setAttribute('height', h);
+      el.removeAttribute('style');
+      return new Promise(function (ok, no) {
+        var img = new Image();
+        img.onload = function () {
+          var k = Math.min(3, 4096 / Math.max(w, h)), c = document.createElement('canvas');
+          c.width = Math.ceil(w * k);
+          c.height = Math.ceil(h * k);
+          var g = c.getContext('2d');
+          g.fillStyle = dark ? '#1c1c1e' : '#ffffff';
+          g.fillRect(0, 0, c.width, c.height);
+          g.drawImage(img, 0, 0, c.width, c.height);
+          c.toBlob(function (b) { b ? ok(b) : no(new Error('生成图片失败')); }, 'image/png');
+        };
+        img.onerror = function () { no(new Error('生成图片失败')); };
+        img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(el));
+      });
+    }).then(function (b) {
+      document.querySelectorAll('[id^="dmx"]').forEach(function (x) { x.remove(); });
+      return b;
+    });
+  }
+
+  /** codePng：把代码画成 PNG */
+  function codePng(text) {
+    var dark = mermaidDark(), k = 2, font = '13px ui-monospace, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace';
+    var lines = text.replace(/\t/g, '    ').split('\n');
+    if (lines.length > 800) { lines = lines.slice(0, 800).concat(['…']); }
+    var m = document.createElement('canvas').getContext('2d');
+    m.font = font;
+    var w = Math.min(2400, Math.ceil(Math.max.apply(null, lines.map(function (l) { return m.measureText(l).width; }))) + 32), h = lines.length * 20 + 32;
+    var c = document.createElement('canvas');
+    c.width = w * k;
+    c.height = h * k;
+    var g = c.getContext('2d');
+    g.scale(k, k);
+    g.fillStyle = dark ? '#1f1f1f' : '#f2f2f2';
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = dark ? '#d4d4d4' : '#24292f';
+    g.font = font;
+    g.textBaseline = 'top';
+    lines.forEach(function (l, i) { g.fillText(l, 16, 16 + i * 20 + 3); });
+    return new Promise(function (ok, no) { c.toBlob(function (b) { b ? ok(b) : no(new Error('生成图片失败')); }, 'image/png'); });
+  }
+
+  /** saveImage：生成图片并存到电脑的「下载」文件夹 */
+  function saveImage(btn) {
+    var box = btn.closest('.pd-code');
+    var make;
+    if (btn.dataset.kind === 'mermaid') {
+      var code = box.querySelector('.pd-mermaid').dataset.code;
+      make = function () {
+        return (mermaidLoad || (mermaidLoad = new Promise(function (ok, no) {
+          var sc = document.createElement('script');
+          sc.src = '/admin/mermaid.min.js';
+          sc.onload = ok;
+          sc.onerror = function () { mermaidLoad = null; no(new Error('图表组件加载失败')); };
+          document.head.appendChild(sc);
+        }))).then(function () { return mermaidPng(code); });
+      };
+    } else {
+      make = function () { return codePng(box.querySelector('code').textContent); };
+    }
+    toast('正在生成图片…');
+    make().then(function (blob) {
+      var name = (btn.dataset.kind === 'mermaid' ? '图表' : '代码') + '-' + new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
+      return fetch('/admin/api/save-image?name=' + encodeURIComponent(name), { method: 'POST', body: blob, credentials: 'same-origin' }).then(function (res) {
+        if (res.ok) { toast('已保存到「下载」文件夹'); return; }
+        return res.json().catch(function () { return null; }).then(function (d) { throw new Error((d && d.message) || '保存失败'); });
+      });
+    }).catch(function (er) { toast(er.message); });
+  }
+
+  /** mermaidScan：按需加载绘图库，把待画的图表画出来；语法有误的保留原代码 */
+  function mermaidScan() {
+    var todo = document.querySelectorAll('.pd-mermaid-todo');
+    if (!todo.length) { return; }
+    mermaidLoad = mermaidLoad || new Promise(function (ok, no) {
+      var sc = document.createElement('script');
+      sc.src = '/admin/mermaid.min.js';
+      sc.onload = ok;
+      sc.onerror = function () { mermaidLoad = null; no(new Error('图表组件加载失败')); };
+      document.head.appendChild(sc);
+    });
+    mermaidLoad.then(function () {
+      var dark = mermaidDark();
+      mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'default', securityLevel: 'strict' });
+      return Array.prototype.reduce.call(todo, function (chain, el, i) {
+        return chain.then(function () {
+          var code = el.dataset.code;
+          return mermaid.render('mm' + Date.now() + '_' + i, code).then(function (r) {
+            mermaidCache[(dark ? 'd' : 'l') + code] = r.svg;
+            if (el.isConnected) {
+              el.classList.remove('pd-mermaid-todo');
+              el.innerHTML = r.svg;
+              var st = mermaidStyle(code, r.svg), zw = /--w:([^;]+);--z:([^"]+)"/.exec(st);
+              if (zw) { el.dataset.z = '1'; el.style.setProperty('--w', zw[1]); el.style.setProperty('--z', zw[2]); }
+            }
+          }, function () {
+            document.querySelectorAll('[id^="dmm"]').forEach(function (x) { x.remove(); });
+            el.classList.remove('pd-mermaid-todo');
+          });
+        });
+      }, Promise.resolve());
+    }).catch(function () {});
+  }
+
   /** md：把 Agent 回复的 Markdown 转为 HTML（标题、列表、引用、表格、代码块） */
   function md(src) {
     var lines = String(src || '').replace(/\r\n?/g, '\n').split('\n');
@@ -167,7 +323,8 @@
         i++;
         while (i < lines.length && !/^\s*```/.test(lines[i])) { code.push(lines[i]); i++; }
         i++;
-        out.push('<div class="pd-code"><div class="pd-code-bar"><span>' + esc(fence[1] || '代码') + '</span><button class="pd-icon-btn" data-act="copy-code" title="复制代码" aria-label="复制代码">' + icon('copy', 14) + '</button></div><pre><code>' + esc(code.join('\n')) + '</code></pre></div>');
+        if (/^mermaid$/i.test(fence[1])) { out.push(mermaidBlock(code.join('\n'))); continue; }
+        out.push('<div class="pd-code"><div class="pd-code-bar"><span>' + esc(fence[1] || '代码') + '</span><span><button class="pd-icon-btn" data-act="save-img" data-kind="code" title="保存为图片" aria-label="保存为图片">' + icon('image', 14) + '</button><button class="pd-icon-btn" data-act="copy-code" title="复制代码" aria-label="复制代码">' + icon('copy', 14) + '</button></span></div><pre><code>' + esc(code.join('\n')) + '</code></pre></div>');
         continue;
       }
       var h = /^(#{1,6})\s+(.*)$/.exec(l);
@@ -1392,6 +1549,12 @@
       case 'decide':
         api('POST', P + '/api/approvals/' + encodeURIComponent(id), { action: t.dataset.action }).catch(function (er) { toast(er.message); });
         break;
+      case 'save-img':
+        saveImage(t);
+        break;
+      case 'mm-zoom':
+        mermaidStep(t.closest('.pd-code'), t.dataset.d);
+        break;
       case 'copy-code':
         copyText(t.closest('.pd-code').querySelector('code').textContent);
         break;
@@ -1690,6 +1853,12 @@
       send();
     }
   });
+  document.addEventListener('wheel', function (e) {
+    var box = e.target.closest && e.target.closest('.pd-mermaid-box');
+    if (!box || !(e.ctrlKey || e.metaKey) || !box.querySelector('.pd-mermaid[data-code]:not(.pd-mermaid-todo)')) { return; }
+    e.preventDefault();
+    mermaidStep(box, e.deltaY < 0 ? 'in' : 'out');
+  }, { passive: false });
   document.addEventListener('input', function (e) {
     if (e.target.id === 'input') { syncSend(); saveDraft(route().sid, e.target.value); }
     if (e.target.id === 'search') { query = e.target.value; renderList(); }
