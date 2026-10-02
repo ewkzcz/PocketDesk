@@ -214,6 +214,30 @@ func TestACPDriverApproval(t *testing.T) {
 	if strings.Join(dones, "|") != "先看看|完成" {
 		t.Fatalf("文本分段收尾 %v", dones)
 	}
+	// 工具前后的思考各成一段；编号带进程标识，重启后不会与以前的消息重复
+	thinks := map[string]bool{}
+	var firstDone string
+	for _, e := range evs {
+		if e.Type == EvThinking && e.Data["delta"] == true {
+			thinks[e.Data["id"].(string)] = true
+		}
+		if e.Type == EvDone && firstDone == "" {
+			firstDone = e.Data["id"].(string)
+		}
+	}
+	if len(thinks) != 2 {
+		t.Fatalf("思考应按工具调用分段 %v", thinks)
+	}
+	time.Sleep(2 * time.Millisecond)
+	p2, err := ACPDriver{Name: KindDSH}.Start(context.Background(), opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p2.Close()
+	p2.Send(context.Background(), Message{Text: "clean"})
+	if d, _ := find(collect(t, p2), EvDone); d.Data["id"] == firstDone {
+		t.Fatalf("重启后的消息编号不应重复 %v", firstDone)
+	}
 }
 
 func TestACPResumeSuppressesReplay(t *testing.T) {

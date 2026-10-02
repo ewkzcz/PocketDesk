@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -28,11 +29,16 @@ type acpProc struct {
 	mu        sync.Mutex
 	sessionID string
 	loading   bool
-	msgSeq    int
-	buf       strings.Builder
-	turnCtx   context.Context
-	cancel    context.CancelFunc
-	tools     map[string]acpTool
+	// run：本次进程的编号；msgSeq、thinkSeq：回复与思考的段落序号。
+	// 编号带上 run，进程重启后序号从 0 开始也不会和同一会话里以前的消息重复
+	run      string
+	msgSeq   int
+	thinkSeq int
+	thinking bool
+	buf      strings.Builder
+	turnCtx  context.Context
+	cancel   context.CancelFunc
+	tools    map[string]acpTool
 }
 
 /** acpTool：已开始的工具调用，审批请求只带编号时据此补全内容 */
@@ -55,7 +61,7 @@ func (d ACPDriver) Start(ctx context.Context, opt Options) (Process, error) {
 	if len(opt.Command) == 0 {
 		return nil, errors.New("未配置启动命令")
 	}
-	a := &acpProc{rpcConn: newRPCConn(), opt: opt, tools: map[string]acpTool{}}
+	a := &acpProc{rpcConn: newRPCConn(), opt: opt, tools: map[string]acpTool{}, run: strconv.FormatInt(time.Now().UnixNano()/1e6%(36*36*36*36*36*36), 36)}
 	// 1、启动
 	env := append(EnvPath(), opt.Env...)
 	if opt.AutoApprove {
@@ -276,12 +282,13 @@ func (a *acpProc) update(raw json.RawMessage) []Event {
 		text := chunkText(u.Content)
 		a.mu.Lock()
 		a.buf.WriteString(text)
-		id := fmt.Sprintf("acp-%d", a.msgSeq)
+		id := a.msgID()
 		a.mu.Unlock()
 		return []Event{ev(EvDelta, "id", id, "text", text)}
 	case "agent_thought_chunk":
 		a.mu.Lock()
-		id := fmt.Sprintf("acp-%d-t", a.msgSeq)
+		a.thinking = true
+		id := a.thinkID()
 		a.mu.Unlock()
 		return []Event{ev(EvThinking, "id", id, "text", chunkText(u.Content), "delta", true)}
 	case "tool_call":
@@ -325,17 +332,29 @@ func (a *acpProc) update(raw json.RawMessage) []Event {
 	return nil
 }
 
-/** flushEvents：把已累积的回复文本收尾为 msg.done */
+/** msgID、thinkID：当前回复段与思考段的编号（调用方持有 a.mu） */
+func (a *acpProc) msgID() string   { return fmt.Sprintf("acp-%s-%d", a.run, a.msgSeq) }
+func (a *acpProc) thinkID() string { return fmt.Sprintf("acp-%s-t%d", a.run, a.thinkSeq) }
+
+/**
+ * flushEvents：把已累积的回复文本收尾为 msg.done，并结束当前思考段
+ * 工具调用开始前也会调用，使工具前后的回复与思考各成一段，按发生顺序显示
+ */
 func (a *acpProc) flushEvents() []Event {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.buf.Len() == 0 {
-		return nil
+	var out []Event
+	if a.thinking {
+		out = append(out, ev(EvThinking, "id", a.thinkID(), "done", true))
+		a.thinking = false
+		a.thinkSeq++
 	}
-	e := ev(EvDone, "id", fmt.Sprintf("acp-%d", a.msgSeq), "text", a.buf.String())
-	a.buf.Reset()
-	a.msgSeq++
-	return []Event{e, ev(EvThinking, "id", fmt.Sprintf("acp-%d-t", a.msgSeq-1), "done", true)}
+	if a.buf.Len() > 0 {
+		out = append(out, ev(EvDone, "id", a.msgID(), "text", a.buf.String()))
+		a.buf.Reset()
+		a.msgSeq++
+	}
+	return out
 }
 
 /** flush：收尾并发出 */

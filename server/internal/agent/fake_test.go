@@ -277,6 +277,7 @@ func fakeACP() {
 			out(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{}})
 		case "session/prompt":
 			promptID = id
+			out(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"update": map[string]any{"sessionUpdate": "agent_thought_chunk", "content": map[string]any{"type": "text", "text": "想一想"}}}})
 			out(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"update": map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": "先看看"}}}})
 			out(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"update": map[string]any{"sessionUpdate": "tool_call", "toolCallId": "tc1", "title": "bash", "kind": "other", "status": "in_progress", "rawInput": map[string]any{"command": "rm -rf tmp"}}}})
 			// 与真实 DSH 一致：审批请求只带工具调用编号
@@ -290,6 +291,7 @@ func fakeACP() {
 			if res, ok := m["result"].(map[string]any); ok {
 				opt := res["outcome"].(map[string]any)["optionId"]
 				out(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"update": map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": "tc1", "status": "completed", "content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": fmt.Sprint(opt)}}}}}})
+				out(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"update": map[string]any{"sessionUpdate": "agent_thought_chunk", "content": map[string]any{"type": "text", "text": "再想"}}}})
 				out(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"update": map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": "完成"}}}})
 				out(map[string]any{"jsonrpc": "2.0", "id": promptID, "result": map[string]any{"stopReason": "end_turn"}})
 			}
