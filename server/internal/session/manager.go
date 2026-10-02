@@ -11,6 +11,7 @@ import (
 	"sort"
 	"github.com/ewkzcz/pocketdesk/server/internal/idem"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -548,7 +549,7 @@ func (m *Manager) finishTurn(ctx context.Context, rt *runtime, p agent.Process) 
 	}
 	// 3、通知
 	if !wasInterrupted {
-		m.notify(ctx, rt.sess.Kind, "会话已完成")
+		m.notify(ctx, rt.sess, "会话已完成", "")
 	}
 	// 4、排队
 	if len(rt.queue) > 0 && !wasInterrupted {
@@ -726,6 +727,8 @@ type Patch struct {
 	Pinned *bool   `json:"pinned"`
 	Model  *string `json:"model"`
 	Cwd    *string `json:"cwd"`
+	// Muted：关闭或打开提醒
+	Muted *bool `json:"muted"`
 }
 
 /**
@@ -741,7 +744,7 @@ func (m *Manager) Update(ctx context.Context, id string, p Patch) (store.Session
 		return cur, err
 	}
 	// 1、目录
-	sp := store.SessionPatch{Title: p.Title, Pinned: p.Pinned, Model: p.Model}
+	sp := store.SessionPatch{Title: p.Title, Pinned: p.Pinned, Model: p.Model, Muted: p.Muted}
 	if p.Cwd != nil {
 		rel, err := m.checkCwd(ctx, cur.WorkspaceID, *p.Cwd)
 		if err != nil {
@@ -916,20 +919,37 @@ func (m *Manager) emit(ctx context.Context, id, typ string, data map[string]any)
 	return nil
 }
 
-/** notify：没有在线连接时发推送，内容不含正文 */
-func (m *Manager) notify(ctx context.Context, kind, what string) {
-	if m.d.Hub != nil && m.d.Hub.Count() > 0 {
+/**
+ * notify：手机不在线时经 ntfy 或 Bark 推送，内容不含正文；关闭提醒的会话不推送
+ *
+ * 手机在线（含后台保持连接）时由手机 App 自己弹通知，这里不再重复推送。
+ * 点击通知打开 pocketdesk:// 地址，手机 App 直接进入该会话，有待审批时定位到审批卡片。
+ */
+func (m *Manager) notify(ctx context.Context, s store.Session, what, approval string) {
+	if s.Muted || m.d.Hub != nil && m.d.Hub.PhoneOnline() {
 		return
 	}
 	n := m.d.Notifier()
-	title := agent.Short(kind) + " " + what
+	msg := notify.Msg{Title: agent.Short(s.Kind) + " " + what, Body: "点击查看", Click: OpenLink(s.ID, approval), Urgent: approval != ""}
+	if approval != "" {
+		msg.Body = "点击查看并处理"
+	}
 	go func() {
 		c, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 		defer cancel()
-		if err := n.Notify(c, title, "PocketDesk"); err != nil {
+		if err := n.Notify(c, msg); err != nil {
 			slog.Warn("推送失败", "err", err)
 		}
 	}()
+}
+
+/** OpenLink：手机 App 打开某会话（及其中某条审批）的地址 */
+func OpenLink(session, approval string) string {
+	u := "pocketdesk://open?session=" + url.QueryEscape(session)
+	if approval != "" {
+		u += "&approval=" + url.QueryEscape(approval)
+	}
+	return u
 }
 
 /** previewFor：会话列表摘要 */

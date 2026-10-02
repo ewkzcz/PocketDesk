@@ -781,12 +781,14 @@
       if (s.state === 'running') { sub.push('执行中'); } else if (s.state === 'awaiting') { sub.push('等待你确认'); }
       if (s.model) { sub.push(s.model); }
       if (s.autoApprove) { sub.push('免审批'); }
+      if (s.muted) { sub.push('已关闭提醒'); }
     } else if (s.kind === 'assistant') {
       var phones = host ? host.devices.filter(function (d) { return d.online && !d.revoked; }) : [];
       sub.push(phones.length ? '手机在线' : '手机不在线，消息会在手机上线后送达');
     }
     el.innerHTML = '<div class="pd-head-main"><div class="pd-head-title">' + esc(title(s)) + '</div>' + (sub.length ? '<div class="pd-head-sub">' + esc(sub.join(' · ')) + '</div>' : '') + '</div>' +
-      '<div class="pd-head-acts"><button class="pd-icon-btn" data-act="chat-more" title="更多" aria-label="更多">' + icon('menu', 18) + '</button></div>';
+      '<div class="pd-head-acts">' + (isAgent(s) ? '<button class="pd-icon-btn" data-act="head-mute" title="' + (s.muted ? '打开提醒' : '关闭提醒') + '" aria-label="' + (s.muted ? '打开提醒' : '关闭提醒') + '">' + icon(s.muted ? 'bell-off' : 'bell', 18) + '</button>' : '') +
+      '<button class="pd-icon-btn" data-act="chat-more" title="更多" aria-label="更多">' + icon('menu', 18) + '</button></div>';
   }
 
   /** renderMsgs：重绘消息；原本在底部或首次打开时滚到底部 */
@@ -1003,6 +1005,17 @@
     var it = lg && buildItems(lg.events).filter(function (x) { return x.seq === seq; })[0];
     if (!it) { return ''; }
     return it.text || it.output || it.name || '';
+  }
+
+  /** patchSession：修改会话并刷新界面 */
+  function patchSession(s, body, done) {
+    return api('PATCH', P + '/api/sessions/' + encodeURIComponent(s.id), body).then(function (s2) {
+      Object.assign(s, s2);
+      renderHead();
+      renderList();
+      if (done) { toast(done); }
+      return s2;
+    }).catch(function (er) { toast(er.message); });
   }
 
   /** diffModal：查看本轮某个文件的改动 */
@@ -1364,7 +1377,9 @@
       '<div class="pd-h2">后台通知</div><div class="pd-card"><div class="pd-form-grid">' +
       '<div class="pd-field"><label for="nkind">推送方式</label><select class="pd-input" id="nkind"><option value="">不推送</option><option value="ntfy"' + (n.kind === 'ntfy' ? ' selected' : '') + '>ntfy</option><option value="bark"' + (n.kind === 'bark' ? ' selected' : '') + '>Bark</option></select></div>' +
       '<div class="pd-field"><label for="nurl">服务地址</label><input class="pd-input" id="nurl" placeholder="https://ntfy.sh" value="' + esc(n.url) + '"></div>' +
-      '<div class="pd-field"><label for="ntopic">主题或设备密钥</label><input class="pd-input" id="ntopic" value="' + esc(n.topic) + '"></div></div></div>' +
+      '<div class="pd-field"><label for="ntopic">主题或设备密钥</label><input class="pd-input" id="ntopic" value="' + esc(n.topic) + '"></div></div>' +
+      '<div class="pd-notify-tip"><div class="pd-setting-desc">手机上安装 ntfy 并订阅同一个主题。手机 App 不在线时，待审批和任务完成会推送到 ntfy，点通知直接打开对应聊天；可在聊天右上角关闭某个会话的提醒。</div>' +
+      '<div class="pd-actions"><button class="pd-btn" data-act="notify-random">' + icon('refresh-cw', 16) + '生成随机主题</button><button class="pd-btn" data-act="notify-test">' + icon('send', 16) + '发送测试通知</button></div></div></div>' +
       '<div class="pd-savebar"><button class="pd-btn pd-btn-primary" data-act="save-transfer">保存</button></div>', ''];
   }
 
@@ -1603,10 +1618,26 @@
       case 'file-reveal':
         api('POST', '/admin/api/assistant/open', { seq: +t.dataset.seq, reveal: act === 'file-reveal' }).catch(function (er) { toast(er.message); });
         break;
+      case 'head-mute':
+        var su = session(sid);
+        if (su) { patchSession(su, { muted: !su.muted }, su.muted ? '已打开提醒' : '已关闭提醒'); }
+        break;
       case 'diff-ref': diffModal(sid, t.dataset.ref, t.dataset.path); break;
+      case 'notify-random':
+        var nt = document.getElementById('ntopic'), nk = document.getElementById('nkind');
+        if (nk && !nk.value) { nk.value = 'ntfy'; }
+        if (nt) { nt.value = 'pocketdesk-' + Array.prototype.map.call(crypto.getRandomValues(new Uint8Array(9)), function (b) { return (b % 36).toString(36); }).join(''); }
+        break;
+      case 'notify-test':
+        api('POST', '/admin/api/notify/test', { kind: document.getElementById('nkind').value, url: document.getElementById('nurl').value.trim(), topic: document.getElementById('ntopic').value.trim() })
+          .then(function () { toast('已发出，请看手机是否收到'); }).catch(function (er) { toast(er.message); });
+        break;
       case 'chat-more':
         var rect = t.getBoundingClientRect(), s = session(sid);
-        popMenu(rect.right - 170, rect.bottom + 4, [['copy-all', '复制全部对话', false, 'copy'], ['pin', s && s.pinned ? '取消置顶' : '置顶聊天', false, 'pin'], '-', ['delete', '删除聊天', true, 'trash']]).then(function (k) { chatMenu(k, sid); });
+        var more = [['copy-all', '复制全部对话', false, 'copy'], ['pin', s && s.pinned ? '取消置顶' : '置顶聊天', false, 'pin']];
+        if (s && isAgent(s)) { more.push(['mute', s.muted ? '打开提醒' : '关闭提醒', false, s.muted ? 'bell' : 'bell-off']); }
+        more.push('-', ['delete', '删除聊天', true, 'trash']);
+        popMenu(rect.right - 170, rect.bottom + 4, more).then(function (k) { chatMenu(k, sid); });
         break;
       case 'new':
         var rc = t.getBoundingClientRect();
@@ -1822,6 +1853,7 @@
     var s = session(sid);
     if (k === 'copy-all') { copyText(chatText(sid)); }
     if (k === 'delete') { deleteSession(sid); }
+    if (k === 'mute' && s) { patchSession(s, { muted: !s.muted }, s.muted ? '已打开提醒' : '已关闭提醒'); }
     if (k === 'pin' && s) {
       api('PATCH', P + '/api/sessions/' + encodeURIComponent(sid), { pinned: !s.pinned }).then(function (s2) { s.pinned = s2.pinned; renderList(); }).catch(function (er) { toast(er.message); });
     }

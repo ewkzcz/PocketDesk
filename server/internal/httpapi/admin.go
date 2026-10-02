@@ -26,6 +26,8 @@ import (
 	"github.com/ewkzcz/pocketdesk/server/internal/config"
 	"github.com/ewkzcz/pocketdesk/server/internal/netutil"
 	"github.com/ewkzcz/pocketdesk/server/internal/security"
+	"github.com/ewkzcz/pocketdesk/server/internal/hub"
+	"github.com/ewkzcz/pocketdesk/server/internal/notify"
 	"github.com/ewkzcz/pocketdesk/server/internal/store"
 	"github.com/ewkzcz/pocketdesk/server/internal/workspace"
 )
@@ -70,6 +72,7 @@ func (s *Server) AdminHandler() http.Handler {
 	mux.HandleFunc("POST /admin/api/remote/download", s.adminTailscaleDownload)
 	mux.HandleFunc("GET /admin/api/remote/clash-script", s.adminClashScript)
 	mux.HandleFunc("POST /admin/api/transfers/pause", s.adminPause)
+	mux.HandleFunc("POST /admin/api/notify/test", s.adminNotifyTest)
 	mux.HandleFunc("POST /admin/api/quit", s.adminQuit)
 	// 桌面端与手机端共用会话、聊天、审批、工作区等接口
 	s.deviceRoutes(mux, "/admin/p", s.asDesktop)
@@ -77,7 +80,7 @@ func (s *Server) AdminHandler() http.Handler {
 }
 
 /** desktopDevice：桌面端调用共用接口时的身份 */
-var desktopDevice = store.Device{ID: "desktop", Name: "电脑", Platform: "desktop"}
+var desktopDevice = store.Device{ID: hub.DesktopDevice, Name: "电脑", Platform: "desktop"}
 
 /** asDesktop：以「电脑」身份调用共用接口；实时通道只接受同源页面 */
 func (s *Server) asDesktop(next http.HandlerFunc) http.Handler {
@@ -669,4 +672,25 @@ func ApproveViaAdmin(ctx context.Context, adminURL, key, sessionID, tool string,
 		return nil, errors.New(msg)
 	}
 	return out, nil
+}
+
+/** adminNotifyTest：按填写的推送设置（可未保存）发一条测试通知，点击后打开手机 App */
+func (s *Server) adminNotifyTest(w http.ResponseWriter, r *http.Request) {
+	var in notify.Config
+	if err := readJSON(r, &in); err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	n := notify.New(in, nil)
+	if _, ok := n.(notify.Nop); ok {
+		writeErr(w, r, errf(400, "bad_config", "请先选择推送方式并填写主题"))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	if err := n.Notify(ctx, notify.Msg{Title: "PocketDesk 测试通知", Body: "收到这条说明推送已接通，点击打开 PocketDesk", Click: "pocketdesk://open", Urgent: true}); err != nil {
+		writeErr(w, r, errf(502, "notify_failed", "发送失败："+err.Error()))
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
 }

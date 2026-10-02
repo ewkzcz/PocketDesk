@@ -28,6 +28,8 @@ type Session struct {
 	UpdatedAt      int64  `json:"updatedAt"`
 	// AutoApprove：免审批会话（快捷启动 ccs、cx 等），所有操作自动放行
 	AutoApprove bool `json:"autoApprove"`
+	// Muted：关闭提醒，待审批与完成时不再推送通知
+	Muted bool `json:"muted"`
 }
 
 /** Event：会话内按序号递增的事件 */
@@ -39,16 +41,16 @@ type Event struct {
 	CreatedAt int64           `json:"createdAt"`
 }
 
-const sessionCols = `id,kind,title,workspace_id,cwd,model,agent_session_id,state,pinned,last_seq,preview,created_at,updated_at,auto_approve`
+const sessionCols = `id,kind,title,workspace_id,cwd,model,agent_session_id,state,pinned,last_seq,preview,created_at,updated_at,auto_approve,muted`
 
 /** CreateSession：新建会话 */
 func (s *Store) CreateSession(ctx context.Context, x Session) (Session, error) {
 	now := s.nowMs()
 	x.CreatedAt, x.UpdatedAt = now, now
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO sessions(`+sessionCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO sessions(`+sessionCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		x.ID, x.Kind, x.Title, x.WorkspaceID, x.Cwd, x.Model, x.AgentSessionID, x.State,
-		boolInt(x.Pinned), x.LastSeq, x.Preview, x.CreatedAt, x.UpdatedAt, boolInt(x.AutoApprove))
+		boolInt(x.Pinned), x.LastSeq, x.Preview, x.CreatedAt, x.UpdatedAt, boolInt(x.AutoApprove), boolInt(x.Muted))
 	return x, err
 }
 
@@ -84,6 +86,7 @@ type SessionPatch struct {
 	State          *string
 	Pinned         *bool
 	Preview        *string
+	Muted          *bool
 }
 
 /**
@@ -124,11 +127,14 @@ func (s *Store) UpdateSession(ctx context.Context, id string, p SessionPatch) (S
 		if p.Preview != nil {
 			cur.Preview = *p.Preview
 		}
+		if p.Muted != nil {
+			cur.Muted = *p.Muted
+		}
 		cur.UpdatedAt = s.nowMs()
 		// 3、写回
 		_, err = t.ExecContext(ctx,
-			`UPDATE sessions SET title=?,cwd=?,model=?,agent_session_id=?,state=?,pinned=?,preview=?,updated_at=? WHERE id=?`,
-			cur.Title, cur.Cwd, cur.Model, cur.AgentSessionID, cur.State, boolInt(cur.Pinned), cur.Preview, cur.UpdatedAt, id)
+			`UPDATE sessions SET title=?,cwd=?,model=?,agent_session_id=?,state=?,pinned=?,preview=?,muted=?,updated_at=? WHERE id=?`,
+			cur.Title, cur.Cwd, cur.Model, cur.AgentSessionID, cur.State, boolInt(cur.Pinned), cur.Preview, boolInt(cur.Muted), cur.UpdatedAt, id)
 		out = cur
 		return err
 	})
@@ -258,14 +264,15 @@ func (s *Store) EventsBefore(ctx context.Context, sessionID string, before int64
 /** scanSession：读取一行会话记录 */
 func scanSession(r scanner) (Session, error) {
 	var x Session
-	var pinned, auto int
+	var pinned, auto, muted int
 	err := r.Scan(&x.ID, &x.Kind, &x.Title, &x.WorkspaceID, &x.Cwd, &x.Model, &x.AgentSessionID,
-		&x.State, &pinned, &x.LastSeq, &x.Preview, &x.CreatedAt, &x.UpdatedAt, &auto)
+		&x.State, &pinned, &x.LastSeq, &x.Preview, &x.CreatedAt, &x.UpdatedAt, &auto, &muted)
 	if errors.Is(err, sql.ErrNoRows) {
 		return x, ErrNotFound
 	}
 	x.Pinned = pinned == 1
 	x.AutoApprove = auto == 1
+	x.Muted = muted == 1
 	return x, err
 }
 

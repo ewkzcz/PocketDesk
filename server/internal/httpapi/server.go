@@ -155,6 +155,7 @@ func (s *Server) host(w http.ResponseWriter, r *http.Request) {
 		"port":        cfg.Port,
 		"deviceId":    deviceOf(r).ID,
 		"remote":      remoteStatus(),
+		"push":        cfg.Notify,
 	})
 }
 

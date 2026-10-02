@@ -19,6 +19,7 @@ import (
 	"github.com/ewkzcz/pocketdesk/server/internal/agent"
 	"github.com/ewkzcz/pocketdesk/server/internal/config"
 	"github.com/ewkzcz/pocketdesk/server/internal/hub"
+	"github.com/ewkzcz/pocketdesk/server/internal/notify"
 	"github.com/ewkzcz/pocketdesk/server/internal/store"
 )
 
@@ -660,6 +661,56 @@ func TestAutoApproveSessionSkipsApprovals(t *testing.T) {
 		if e.Type == "msg.done" && !strings.Contains(string(e.Data), "allowed") {
 			t.Fatalf("应自动放行：%s", e.Data)
 		}
+	}
+}
+
+/** fakeNotifier：记录推送 */
+type fakeNotifier struct {
+	mu   sync.Mutex
+	msgs []notify.Msg
+}
+
+func (n *fakeNotifier) Notify(_ context.Context, m notify.Msg) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.msgs = append(n.msgs, m)
+	return nil
+}
+
+func (n *fakeNotifier) count() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return len(n.msgs)
+}
+
+/** 只有电脑桌面端在线时照常推送并带上打开会话的地址；手机在线或关闭提醒时不推送 */
+func TestNotifyRules(t *testing.T) {
+	f := newFixture(t)
+	n := &fakeNotifier{}
+	f.m.d.Notifier = func() notify.Notifier { return n }
+	ctx := context.Background()
+	s, _ := f.m.Create(ctx, "claude", "w1", ".", "")
+	desk := f.hub.Subscribe(hub.DesktopDevice, 8)
+	f.m.Send(ctx, s.ID, Input{Text: "hi"})
+	f.waitState(t, s.ID, StateIdle)
+	for i := 0; i < 100 && n.count() == 0; i++ {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if n.count() != 1 || n.msgs[0].Click != "pocketdesk://open?session="+s.ID || n.msgs[0].Title != "CC 会话已完成" {
+		t.Fatalf("桌面端在线时应照常推送 %+v", n.msgs)
+	}
+	f.hub.Unsubscribe(desk)
+	phone := f.hub.Subscribe("phone-1", 64)
+	f.m.Send(ctx, s.ID, Input{Text: "again"})
+	f.waitState(t, s.ID, StateIdle)
+	f.hub.Unsubscribe(phone)
+	muted := true
+	f.m.Update(ctx, s.ID, Patch{Muted: &muted})
+	f.m.Send(ctx, s.ID, Input{Text: "third"})
+	f.waitState(t, s.ID, StateIdle)
+	time.Sleep(30 * time.Millisecond)
+	if n.count() != 1 {
+		t.Fatalf("手机在线或关闭提醒时不应推送 %+v", n.msgs)
 	}
 }
 

@@ -94,6 +94,21 @@ func (h *Hub) Count() int {
 	return len(h.subs)
 }
 
+/** PhoneOnline：是否有手机在线（电脑桌面端自己的连接不算） */
+func (h *Hub) PhoneOnline() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for s := range h.subs {
+		if s.Device != DesktopDevice {
+			return true
+		}
+	}
+	return false
+}
+
+/** DesktopDevice：电脑桌面端连接使用的设备 ID */
+const DesktopDevice = "desktop"
+
 /** Devices：在线设备 ID 集合 */
 func (h *Hub) Devices() map[string]bool {
 	h.mu.Lock()

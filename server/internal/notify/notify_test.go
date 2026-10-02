@@ -16,26 +16,26 @@ func TestNtfyAndBark(t *testing.T) {
 	var got []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
-		got = append(got, r.Method+" "+r.URL.EscapedPath()+" "+r.Header.Get("Title")+" "+string(b))
+		got = append(got, r.Method+" "+r.URL.EscapedPath()+" "+r.Header.Get("Title")+" "+string(b)+"|"+r.Header.Get("Click")+"|"+r.Header.Get("Priority")+"|"+r.URL.RawQuery)
 		if strings.Contains(r.URL.Path, "fail") {
 			w.WriteHeader(500)
 		}
 	}))
 	defer srv.Close()
 	ctx := context.Background()
-	if err := New(Config{Kind: "ntfy", URL: srv.URL, Topic: "pd"}, nil).Notify(ctx, "CC 会话需要审批", "请在手机上处理"); err != nil {
+	if err := New(Config{Kind: "ntfy", URL: srv.URL, Topic: "pd"}, nil).Notify(ctx, Msg{Title: "CC 会话需要审批", Body: "请在手机上处理", Click: "pocketdesk://open?session=s1", Urgent: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := New(Config{Kind: "bark", URL: srv.URL, Topic: "key"}, nil).Notify(ctx, "CX", "done"); err != nil {
+	if err := New(Config{Kind: "bark", URL: srv.URL, Topic: "key"}, nil).Notify(ctx, Msg{Title: "CX", Body: "done", Click: "pocketdesk://open?session=s2"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := New(Config{Kind: "ntfy", URL: srv.URL, Topic: "fail"}, nil).Notify(ctx, "a", "b"); err == nil {
+	if err := New(Config{Kind: "ntfy", URL: srv.URL, Topic: "fail"}, nil).Notify(ctx, Msg{Title: "a", Body: "b"}); err == nil {
 		t.Fatal("服务端错误应返回错误")
 	}
-	if !strings.HasPrefix(got[0], "POST /pd =?UTF-8?B?") || !strings.HasSuffix(got[0], "请在手机上处理") {
+	if !strings.HasPrefix(got[0], "POST /pd =?UTF-8?B?") || !strings.HasSuffix(got[0], "请在手机上处理|pocketdesk://open?session=s1|high|") {
 		t.Fatalf("ntfy 请求 %s", got[0])
 	}
-	if got[1] != "GET /key/CX/done  " {
+	if got[1] != "GET /key/CX/done  |||group=PocketDesk&url=pocketdesk%3A%2F%2Fopen%3Fsession%3Ds2" {
 		t.Fatalf("bark 请求 %q", got[1])
 	}
 	if _, ok := New(Config{}, nil).(Nop); !ok {
@@ -44,7 +44,7 @@ func TestNtfyAndBark(t *testing.T) {
 	if _, ok := New(Config{Kind: "ntfy"}, nil).(Nop); !ok {
 		t.Fatal("缺少主题应为空推送")
 	}
-	if New(Config{}, nil).Notify(ctx, "", "") != nil {
+	if New(Config{}, nil).Notify(ctx, Msg{}) != nil {
 		t.Fatal("空推送不应报错")
 	}
 }

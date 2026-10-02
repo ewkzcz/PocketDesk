@@ -93,9 +93,9 @@ func (m *Manager) requestApproval(ctx context.Context, sid string, req agent.App
 	if rt.state == StateRunning {
 		m.setState(ctx, rt, StateAwaiting)
 	}
-	kind := rt.sess.Kind
+	sess := rt.sess
 	rt.mu.Unlock()
-	m.notify(ctx, kind, "会话需要审批")
+	m.notify(ctx, sess, "会话需要审批", a.ID)
 	// 3、等待
 	timer := time.NewTimer(m.approvalTimeout)
 	defer timer.Stop()
