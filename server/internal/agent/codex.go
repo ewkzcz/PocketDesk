@@ -58,6 +58,9 @@ func (CodexDriver) Start(ctx context.Context, opt Options) (Process, error) {
 func CodexArgs(opt Options, threadID string) []string {
 	// 1、基础
 	args := append([]string{}, opt.Command...)
+	for _, kv := range opt.Config {
+		args = append(args, "-c", kv)
+	}
 	args = append(args, "exec", "--json", "--skip-git-repo-check")
 	if opt.AutoApprove {
 		args = append(args, "--dangerously-bypass-approvals-and-sandbox")

@@ -397,6 +397,7 @@
   var hiddenSess = load('pd.hiddenSessions', {});   // 只在电脑端删除的会话，手机端不受影响
   var query = '';
   var pending = [];              // 当前会话待发送的附件 { name, path }
+  var providerNames = {};        // 供应商 ID → 名称（标题栏显示）
   var shownRequests = {};
   var pairInfo = null, pairTimer = null, wsSig = '';
 
@@ -779,6 +780,7 @@
     var sub = [];
     if (isAgent(s)) {
       if (s.state === 'running') { sub.push('执行中'); } else if (s.state === 'awaiting') { sub.push('等待你确认'); }
+      if (s.provider && providerNames[s.provider]) { sub.push(providerNames[s.provider]); }
       if (s.model) { sub.push(s.model); }
       if (s.autoApprove) { sub.push('免审批'); }
       if (s.muted) { sub.push('已关闭提醒'); }
@@ -787,7 +789,8 @@
       sub.push(phones.length ? '手机在线' : '手机不在线，消息会在手机上线后送达');
     }
     el.innerHTML = '<div class="pd-head-main"><div class="pd-head-title">' + esc(title(s)) + '</div>' + (sub.length ? '<div class="pd-head-sub">' + esc(sub.join(' · ')) + '</div>' : '') + '</div>' +
-      '<div class="pd-head-acts">' + (isAgent(s) ? '<button class="pd-icon-btn" data-act="head-mute" title="' + (s.muted ? '打开提醒' : '关闭提醒') + '" aria-label="' + (s.muted ? '打开提醒' : '关闭提醒') + '">' + icon(s.muted ? 'bell-off' : 'bell', 18) + '</button>' : '') +
+      '<div class="pd-head-acts">' + (isAgent(s) ? '<button class="pd-icon-btn" data-act="head-model" title="模型与供应商" aria-label="模型与供应商">' + icon('cpu', 18) + '</button>' +
+      '<button class="pd-icon-btn" data-act="head-mute" title="' + (s.muted ? '打开提醒' : '关闭提醒') + '" aria-label="' + (s.muted ? '打开提醒' : '关闭提醒') + '">' + icon(s.muted ? 'bell-off' : 'bell', 18) + '</button>' : '') +
       '<button class="pd-icon-btn" data-act="chat-more" title="更多" aria-label="更多">' + icon('menu', 18) + '</button></div>';
   }
 
@@ -1015,6 +1018,33 @@
       renderList();
       if (done) { toast(done); }
       return s2;
+    }).catch(function (er) { toast(er.message); });
+  }
+
+  /** chooseModel：切换模型（列表来自 Agent 或所选供应商） */
+  function chooseModel(s) {
+    api('GET', P + '/api/agents/' + s.kind + '/models' + (s.provider ? '?provider=' + encodeURIComponent(s.provider) : '')).then(function (list) {
+      list = list || [];
+      modal('切换模型', (list.length ? '<div class="pd-pick-list">' + list.map(function (m) {
+        return '<button class="pd-pick-row' + (m === s.model ? ' active' : '') + '" data-act="model-pick" data-model="' + esc(m) + '">' + icon(m === s.model ? 'check' : 'cpu', 16) + '<span class="pd-mono">' + esc(m) + '</span></button>';
+      }).join('') + '</div>' : '<div class="pd-muted">没有查到可选模型，可以直接填写</div>') +
+        '<div class="pd-field" style="margin-top:10px"><label for="model-custom">其他模型</label><input class="pd-input pd-mono" id="model-custom" placeholder="填写模型名称" value=""></div>',
+        (s.model ? '<button class="pd-btn" data-act="model-pick" data-model="">恢复默认</button>' : '') + '<button class="pd-btn" data-act="modal-close">取消</button><button class="pd-btn pd-btn-primary" data-act="model-custom">使用</button>');
+    }).catch(function (er) { toast(er.message); });
+  }
+
+  /** chooseProvider：切换模型供应商（CC Switch 中的供应商，只影响这个会话） */
+  function chooseProvider(s) {
+    if (s.kind !== 'claude' && s.kind !== 'codex') { toast('只有 Claude Code 与 Codex 可以切换供应商'); return; }
+    api('GET', P + '/api/agents/' + s.kind + '/providers').then(function (r) {
+      if (!r.available) { toast('电脑上没有找到 CC Switch'); return; }
+      var cur = (r.list || []).filter(function (p) { return p.current; })[0];
+      var rows = [{ id: '', name: '跟随电脑当前设置', host: cur ? '当前：' + cur.name : '' }].concat(r.list || []);
+      modal('模型供应商', '<div class="pd-muted" style="font-size:12px;margin-bottom:8px">只对这个会话生效，不影响电脑上的其他会话</div><div class="pd-pick-list">' + rows.map(function (p) {
+        var on = (s.provider || '') === p.id;
+        return '<button class="pd-pick-row' + (on ? ' active' : '') + '" data-act="provider-pick" data-id="' + esc(p.id) + '">' + icon(on ? 'check' : 'server', 16) +
+          '<span style="flex:1;min-width:0"><div>' + esc(p.name) + (p.current ? ' <span class="pd-muted" style="font-size:12px">电脑当前</span>' : '') + '</div>' + (p.host ? '<div class="pd-path">' + esc(p.host) + '</div>' : '') + '</span></button>';
+      }).join('') + '</div>', '<button class="pd-btn" data-act="modal-close">关闭</button>');
     }).catch(function (er) { toast(er.message); });
   }
 
@@ -1618,9 +1648,33 @@
       case 'file-reveal':
         api('POST', '/admin/api/assistant/open', { seq: +t.dataset.seq, reveal: act === 'file-reveal' }).catch(function (er) { toast(er.message); });
         break;
+      case 'head-model':
+        var rm = t.getBoundingClientRect(), sm = session(sid);
+        var mopts = [['model', '切换模型', false, 'cpu']];
+        if (sm && (sm.kind === 'claude' || sm.kind === 'codex')) { mopts.push(['provider', '模型供应商', false, 'server']); }
+        popMenu(rm.right - 170, rm.bottom + 4, mopts).then(function (k) {
+          if (k === 'model') { chooseModel(sm); } else if (k === 'provider') { chooseProvider(sm); }
+        });
+        break;
       case 'head-mute':
         var su = session(sid);
         if (su) { patchSession(su, { muted: !su.muted }, su.muted ? '已打开提醒' : '已关闭提醒'); }
+        break;
+      case 'model-pick':
+        closeModal();
+        patchSession(session(sid), { model: t.dataset.model }, t.dataset.model ? '已切换到 ' + t.dataset.model : '已恢复默认模型');
+        break;
+      case 'model-custom':
+        var mc = document.getElementById('model-custom').value.trim();
+        if (!mc) { toast('请填写模型名称'); break; }
+        closeModal();
+        patchSession(session(sid), { model: mc }, '已切换到 ' + mc);
+        break;
+      case 'provider-pick':
+        closeModal();
+        var pv = t.querySelector('div');
+        if (id) { providerNames[id] = pv ? pv.firstChild.textContent.trim() : ''; }
+        patchSession(session(sid), { provider: id || '' }, id ? '已切换供应商' : '已改为跟随电脑当前设置');
         break;
       case 'diff-ref': diffModal(sid, t.dataset.ref, t.dataset.path); break;
       case 'notify-random':
@@ -2009,6 +2063,13 @@
   lastPage = r0.page;
   render();
   if (r0.page === 'pair') { startPair(); }
+  // 供应商名称用于标题栏显示
+  ['claude', 'codex'].forEach(function (k) {
+    api('GET', P + '/api/agents/' + k + '/providers').then(function (r) {
+      (r.list || []).forEach(function (p) { providerNames[p.id] = p.name; });
+      if (route().page === 'chat') { renderHead(); }
+    }).catch(function () {});
+  });
   loadHost().then(function () {
     loadSessions().then(function () {
       if (route().page === 'chat' && !route().sid) {

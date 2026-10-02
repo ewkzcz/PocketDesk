@@ -83,6 +83,12 @@ type Options struct {
 	ApproveCmd []string
 	// AutoApprove：免审批，所有操作直接放行（Claude Code 跳过权限确认，Codex 不审批不进沙箱）
 	AutoApprove bool
+	// Settings：Claude Code 的附加设置（JSON，如切换供应商），写入临时文件后以 --settings 传入
+	Settings string
+	// Config：Codex 的 -c 覆盖项（如切换供应商）
+	Config []string
+	// settingsPath：Settings 写入的临时文件
+	settingsPath string
 }
 
 /** Process：一个运行中的 Agent 会话进程 */

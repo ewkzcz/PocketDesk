@@ -83,6 +83,9 @@ func startCodexApp(ctx context.Context, opt Options) (*codexApp, error) {
 	c := &codexApp{rpcConn: newRPCConn(), opt: opt, items: map[string]codexAppItem{}, streamed: map[string]bool{}, output: map[string]*strings.Builder{}}
 	// 1、启动
 	argv := append(append([]string{}, opt.Command...), "app-server")
+	for _, kv := range opt.Config {
+		argv = append(argv, "-c", kv)
+	}
 	p, err := startLineProc(argv, opt.Cwd, append(EnvPath(), opt.Env...), func(lp *lineProc, line []byte) {
 		c.dispatch(line)
 	})

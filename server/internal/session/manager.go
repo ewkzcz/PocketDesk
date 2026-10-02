@@ -62,8 +62,25 @@ type Deps struct {
 	Config     func() config.Config
 	Notifier   func() notify.Notifier
 	ApproveCmd func(sessionID string) []string
+	// Providers：模型供应商（CC Switch），为空时不支持切换供应商
+	Providers Providers
 	// Home：Agent 会话记录所在的用户主目录，测试时替换
 	Home func() string
+}
+
+/** Providers：按供应商生成会话启动参数 */
+type Providers interface {
+	Launch(ctx context.Context, kind, id string) (ProviderLaunch, error)
+}
+
+/** ProviderLaunch：会话改用某供应商时的启动参数与展示名 */
+type ProviderLaunch struct {
+	Name     string
+	Settings string
+	Config   []string
+	Env      []string
+	// Model：供应商的默认模型，会话没选模型时使用
+	Model string
 }
 
 /** Manager：会话管理器 */
@@ -367,6 +384,19 @@ func (m *Manager) startProc(ctx context.Context, rt *runtime, kind, cwd, resume,
 	}
 	cfg := m.d.Config()
 	opt := agent.Options{Cwd: cwd, Model: model, ResumeID: resume, Command: cfg.Agents[kind], Approver: &sessionApprover{m: m, sid: rt.id, auto: rt.sess.AutoApprove}, AutoApprove: rt.sess.AutoApprove}
+	if pid := rt.sess.Provider; pid != "" {
+		if m.d.Providers == nil {
+			return nil, errors.New("电脑上没有可用的模型供应商")
+		}
+		l, err := m.d.Providers.Launch(ctx, kind, pid)
+		if err != nil {
+			return nil, fmt.Errorf("模型供应商不可用：%w", err)
+		}
+		opt.Settings, opt.Config, opt.Env = l.Settings, l.Config, l.Env
+		if opt.Model == "" {
+			opt.Model = l.Model
+		}
+	}
 	if kind == agent.KindClaude && m.d.ApproveCmd != nil && !rt.sess.AutoApprove {
 		opt.ApproveCmd = m.d.ApproveCmd(rt.id)
 	}
@@ -729,6 +759,8 @@ type Patch struct {
 	Cwd    *string `json:"cwd"`
 	// Muted：关闭或打开提醒
 	Muted *bool `json:"muted"`
+	// Provider：切换模型供应商，空字符串为跟随电脑当前设置
+	Provider *string `json:"provider"`
 }
 
 /**
@@ -736,7 +768,7 @@ type Patch struct {
  *
  * 处理流程：
  * 1、切换目录时校验在工作区内
- * 2、写库；模型或目录变化且空闲时关闭进程，下一轮按新参数启动
+ * 2、写库；模型、供应商或目录变化且空闲时关闭进程，下一轮按新参数启动
  */
 func (m *Manager) Update(ctx context.Context, id string, p Patch) (store.Session, error) {
 	cur, err := m.d.Store.Session(ctx, id)
@@ -744,7 +776,25 @@ func (m *Manager) Update(ctx context.Context, id string, p Patch) (store.Session
 		return cur, err
 	}
 	// 1、目录
-	sp := store.SessionPatch{Title: p.Title, Pinned: p.Pinned, Model: p.Model, Muted: p.Muted}
+	sp := store.SessionPatch{Title: p.Title, Pinned: p.Pinned, Model: p.Model, Muted: p.Muted, Provider: p.Provider}
+	var providerName string
+	if p.Provider != nil && *p.Provider != cur.Provider {
+		// 换供应商后原来的模型多半不可用，未同时指定模型时改用供应商默认模型
+		if p.Model == nil {
+			empty := ""
+			sp.Model, p.Model = &empty, &empty
+		}
+		if *p.Provider != "" {
+			if m.d.Providers == nil {
+				return cur, errors.New("电脑上没有可用的模型供应商")
+			}
+			l, err := m.d.Providers.Launch(ctx, cur.Kind, *p.Provider)
+			if err != nil {
+				return cur, fmt.Errorf("模型供应商不可用：%w", err)
+			}
+			providerName = l.Name
+		}
+	}
 	if p.Cwd != nil {
 		rel, err := m.checkCwd(ctx, cur.WorkspaceID, *p.Cwd)
 		if err != nil {
@@ -762,7 +812,8 @@ func (m *Manager) Update(ctx context.Context, id string, p Patch) (store.Session
 	}
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	if (p.Model != nil || p.Cwd != nil) && (rt.state == StateRunning || rt.state == StateAwaiting) {
+	restart := p.Model != nil || p.Cwd != nil || p.Provider != nil
+	if restart && (rt.state == StateRunning || rt.state == StateAwaiting) {
 		return cur, ErrBusy
 	}
 	s, err := m.d.Store.UpdateSession(ctx, id, sp)
@@ -770,10 +821,15 @@ func (m *Manager) Update(ctx context.Context, id string, p Patch) (store.Session
 		return s, err
 	}
 	rt.sess = s
-	if (p.Model != nil || p.Cwd != nil) && rt.proc != nil {
+	if restart && rt.proc != nil {
 		old := rt.proc
 		rt.proc = nil
 		old.Close()
+	}
+	if p.Provider != nil && providerName != "" {
+		m.emit(ctx, id, "system", map[string]any{"text": "已改用模型供应商 " + providerName})
+	} else if p.Provider != nil {
+		m.emit(ctx, id, "system", map[string]any{"text": "模型供应商已改为跟随电脑当前设置"})
 	}
 	if p.Model != nil {
 		m.emit(ctx, id, "session.model", map[string]any{"model": s.Model})

@@ -3,6 +3,7 @@ module github.com/ewkzcz/pocketdesk/server
 go 1.26.0
 
 require (
+	github.com/BurntSushi/toml v1.5.0
 	github.com/UserExistsError/conpty v0.1.4
 	github.com/creack/pty v1.1.24
 	github.com/gorilla/websocket v1.5.3

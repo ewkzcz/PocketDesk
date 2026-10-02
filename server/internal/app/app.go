@@ -23,6 +23,7 @@ import (
 	"github.com/ewkzcz/pocketdesk/server/internal/hub"
 	"github.com/ewkzcz/pocketdesk/server/internal/logx"
 	"github.com/ewkzcz/pocketdesk/server/internal/netutil"
+	"github.com/ewkzcz/pocketdesk/server/internal/ccswitch"
 	"github.com/ewkzcz/pocketdesk/server/internal/notify"
 	"github.com/ewkzcz/pocketdesk/server/internal/outbox"
 	"github.com/ewkzcz/pocketdesk/server/internal/pairing"
@@ -141,6 +142,7 @@ func New(opt Options) (*App, error) {
 		ApproveCmd: func(sid string) []string {
 			return []string{opt.Executable, "mcp-approve", "--data", opt.DataDir, "--session", sid}
 		},
+		Providers: ccProviders{},
 	})
 	a.Terms = terminal.New(terminal.Deps{
 		Store: st, Enabled: func() bool { return cfg.Get().Features.Terminal },
@@ -187,6 +189,7 @@ func (a *App) TLSConfig() *tls.Config {
 func (a *App) Start(ctx context.Context) error {
 	ctx, a.cancel = context.WithCancel(ctx)
 	// 1、恢复
+	agent.CleanTemp()
 	a.Sessions.Recover(ctx)
 	a.Terms.MarkStale(ctx)
 	if err := a.API.EnsureAssistant(ctx); err != nil {
@@ -313,3 +316,19 @@ func (debugWriter) Write(p []byte) (int, error) {
 
 /** quietLog：http.Server 使用的日志 */
 func quietLog() *log.Logger { return log.New(debugWriter{}, "", 0) }
+
+/** ccProviders：会话的模型供应商取自 CC Switch */
+type ccProviders struct{}
+
+/** Launch：按供应商 ID 生成启动参数 */
+func (ccProviders) Launch(ctx context.Context, kind, id string) (session.ProviderLaunch, error) {
+	p, err := ccswitch.Get(ctx, kind, id)
+	if err != nil {
+		return session.ProviderLaunch{}, err
+	}
+	l, err := ccswitch.LaunchFor(kind, p)
+	if err != nil {
+		return session.ProviderLaunch{}, err
+	}
+	return session.ProviderLaunch{Name: p.Name, Settings: l.Settings, Config: l.Config, Env: l.Env, Model: l.Model}, nil
+}

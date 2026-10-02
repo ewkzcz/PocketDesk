@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -29,7 +31,7 @@ func (ClaudeDriver) Kind() string { return KindClaude }
  *
  * 处理流程：
  * 1、固定使用 stream-json 输入输出与增量消息
- * 2、按需追加模型与续聊参数
+ * 2、按需追加模型、续聊与附加设置参数
  * 3、免审批时跳过全部权限确认；否则配置了审批命令时挂上 MCP 审批工具
  */
 func ClaudeArgs(opt Options) []string {
@@ -43,6 +45,9 @@ func ClaudeArgs(opt Options) []string {
 	if opt.ResumeID != "" {
 		args = append(args, "--resume", opt.ResumeID)
 	}
+	if opt.settingsPath != "" {
+		args = append(args, "--settings", opt.settingsPath)
+	}
 	// 3、审批
 	if opt.AutoApprove {
 		return append(args, "--dangerously-skip-permissions")
@@ -55,10 +60,28 @@ func ClaudeArgs(opt Options) []string {
 	return args
 }
 
-/** Start：启动常驻进程 */
+/** Start：启动常驻进程；附加设置含密钥，写入仅本人可读的临时文件，进程结束后删除 */
 func (d ClaudeDriver) Start(_ context.Context, opt Options) (Process, error) {
 	if len(opt.Command) == 0 {
 		opt.Command = []string{"claude"}
+	}
+	cleanup := func() {}
+	if opt.Settings != "" {
+		if err := os.MkdirAll(settingsDir(), 0o700); err != nil {
+			return nil, err
+		}
+		f, err := os.CreateTemp(settingsDir(), "settings-*.json")
+		if err != nil {
+			return nil, err
+		}
+		_, err = f.WriteString(opt.Settings)
+		f.Close()
+		if err != nil {
+			os.Remove(f.Name())
+			return nil, err
+		}
+		opt.settingsPath = f.Name()
+		cleanup = func() { os.Remove(f.Name()) }
 	}
 	c := &claudeProc{parser: newClaudeParser()}
 	p, err := startLineProc(ClaudeArgs(opt), opt.Cwd, append(EnvPath(), opt.Env...), func(lp *lineProc, line []byte) {
@@ -70,11 +93,22 @@ func (d ClaudeDriver) Start(_ context.Context, opt Options) (Process, error) {
 		}
 	})
 	if err != nil {
+		cleanup()
 		return nil, err
 	}
+	go func() {
+		<-p.Done()
+		cleanup()
+	}()
 	c.lineProc = p
 	return c, nil
 }
+
+/** settingsDir：附加设置临时文件所在目录 */
+func settingsDir() string { return filepath.Join(os.TempDir(), "pocketdesk-settings") }
+
+/** CleanTemp：服务启动时清掉上次异常退出遗留的附加设置文件（此时没有 Agent 在运行） */
+func CleanTemp() { os.RemoveAll(settingsDir()) }
 
 /** claudeProc：Claude 进程 */
 type claudeProc struct {

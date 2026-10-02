@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/ewkzcz/pocketdesk/server/internal/agent"
+	"github.com/ewkzcz/pocketdesk/server/internal/ccswitch"
 	"github.com/ewkzcz/pocketdesk/server/internal/session"
 	"github.com/ewkzcz/pocketdesk/server/internal/store"
 	"github.com/ewkzcz/pocketdesk/server/internal/terminal"
@@ -215,9 +216,48 @@ func (s *Server) decide(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
-/** models：某 Agent 可选模型 */
+/** claudeAliases：Claude Code 自带的模型别名，没有配置模型列表时使用 */
+var claudeAliases = []string{"opus", "sonnet", "haiku", "fable"}
+
+/**
+ * models：某 Agent 可选模型
+ *
+ * 处理流程：
+ * 1、配置或 Agent 实时查询的列表；Claude Code 没有列表时用自带的别名
+ * 2、把所选供应商（未选时为 CC Switch 当前供应商）配置里的模型排在前面
+ */
 func (s *Server) models(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, s.Sessions.Models(r.Context(), r.PathValue("kind")))
+	kind := r.PathValue("kind")
+	// 1、列表
+	list := s.Sessions.Models(r.Context(), kind)
+	if len(list) == 0 && kind == agent.KindClaude {
+		list = claudeAliases
+	}
+	// 2、供应商
+	pid := r.URL.Query().Get("provider")
+	if pid == "" && ccswitch.Available() && (kind == agent.KindClaude || kind == agent.KindCodex) {
+		if all, err := ccswitch.List(r.Context(), kind); err == nil {
+			for _, p := range all {
+				if p.Current {
+					pid = p.ID
+				}
+			}
+		}
+	}
+	if pid != "" {
+		if p, err := ccswitch.Get(r.Context(), kind, pid); err == nil {
+			seen := map[string]bool{}
+			out := []string{}
+			for _, m := range append(append([]string{}, p.Models...), list...) {
+				if !seen[m] {
+					seen[m] = true
+					out = append(out, m)
+				}
+			}
+			list = out
+		}
+	}
+	writeJSON(w, 200, list)
 }
 
 /**

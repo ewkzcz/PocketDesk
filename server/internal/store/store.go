@@ -129,6 +129,7 @@ var columns = []struct{ table, name, def string }{
 	{"sessions", "auto_approve", "INTEGER NOT NULL DEFAULT 0"},
 	{"devices", "install_id", "TEXT NOT NULL DEFAULT ''"},
 	{"sessions", "muted", "INTEGER NOT NULL DEFAULT 0"},
+	{"sessions", "provider", "TEXT NOT NULL DEFAULT ''"},
 }
 
 /**
