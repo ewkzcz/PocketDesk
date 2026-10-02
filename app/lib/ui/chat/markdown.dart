@@ -34,7 +34,7 @@ class MdText extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 6),
       textStyle: mono,
       decoration: BoxDecoration(color: c.tool, borderRadius: BorderRadius.circular(PdSize.smallRadius)),
-      wrapper: (child, code, language) => language == 'mermaid' ? MermaidView(code: code) : _CodeBlock(code: code, child: child),
+      wrapper: (child, code, language) => language.trim().toLowerCase() == 'mermaid' ? MermaidView(code: code) : _CodeBlock(code: code, child: child),
     );
     return base.copy(configs: [
       PConfig(textStyle: text),
