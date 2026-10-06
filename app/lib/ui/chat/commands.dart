@@ -27,6 +27,8 @@ const slashCommands = [
   SlashCommand('/cd', '切换工作目录', LucideIcons.folderInput300),
   SlashCommand('/diff', '查看本会话累计改动', LucideIcons.gitCompare300),
   SlashCommand('/compact', '压缩上下文', LucideIcons.minimize2300),
+  SlashCommand('/status', '查看当前会话状态', LucideIcons.info300),
+  SlashCommand('/usage', '查看本会话用量', LucideIcons.chartColumn300),
   SlashCommand('/resume', '接着电脑上已有的会话聊', LucideIcons.history300),
 ];
 

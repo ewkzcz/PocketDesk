@@ -21,6 +21,7 @@ import '../../data/models.dart';
 import '../../net/api.dart';
 import '../../transfer/naming.dart' as naming;
 import '../../transfer/task.dart';
+import '../agents.dart';
 import '../chat/commands.dart';
 import '../chat/input_bar.dart';
 import '../chat/items.dart';
@@ -364,10 +365,60 @@ class _ChatPageState extends State<ChatPage> {
           if (mounted) await Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => ChatPage(sessionId: n.id)));
         case '/resume':
           await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ExternalSessionsPage(kind: s.kind)));
+        case '/status':
+          await _showInfo('会话状态', [
+            ('Agent', agentFor(s.kind).label),
+            ('模型', s.model.isEmpty ? '默认' : s.model),
+            ('供应商', s.provider.isEmpty ? '跟随电脑设置' : s.provider),
+            ('工作目录', s.cwd.isEmpty ? '工作区根目录' : s.cwd),
+            ('状态', _stateLabel(s.state)),
+            ('审批', s.autoApprove ? '免审批' : '需要确认'),
+            ('提醒', s.muted ? '已关闭' : '已开启'),
+          ]);
+        case '/usage':
+          final u = _log?.usage;
+          await _showInfo('本会话用量', [
+            ('轮数', '${u?.turns ?? 0}'),
+            ('输入', '${u?.inputTokens ?? 0} tokens'),
+            ('输出', '${u?.outputTokens ?? 0} tokens'),
+            if ((u?.costUsd ?? 0) > 0) ('费用', '\$${u!.costUsd.toStringAsFixed(4)}'),
+          ]);
       }
     } on ApiException catch (e) {
       if (mounted) toast(context, e.message);
     }
+  }
+
+  /** _stateLabel：会话状态的中文名 */
+  String _stateLabel(String state) => switch (state) {
+        SessionState.running => '执行中',
+        SessionState.awaiting => '等待审批',
+        SessionState.interrupted => '已打断',
+        SessionState.error => '出错',
+        SessionState.exited => '已结束',
+        _ => '空闲',
+      };
+
+  /** _showInfo：弹出一组「名称：内容」 */
+  Future<void> _showInfo(String title, List<(String, String)> rows) {
+    final c = context.pd;
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          for (final r in rows)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                SizedBox(width: 72, child: Text(r.$1, style: TextStyle(color: c.text2))),
+                Expanded(child: SelectableText(r.$2)),
+              ]),
+            ),
+        ]),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), style: TextButton.styleFrom(foregroundColor: c.accent), child: const Text('好'))],
+      ),
+    );
   }
 
   /** _pickSkills：选择随下一条消息使用的 skill */
