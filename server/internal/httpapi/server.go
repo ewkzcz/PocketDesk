@@ -123,6 +123,7 @@ func (s *Server) deviceRoutes(mux *http.ServeMux, prefix string, a func(http.Han
 	h("GET /api/agents/{kind}/models", s.models)
 	h("GET /api/agents/{kind}/history", s.history)
 	h("POST /api/logs", s.exportLogs)
+	h("POST /api/screenshot", s.screenshot)
 	s.agentRoutes(h)
 	// 实时通道
 	h("GET /ws", s.eventSocket)
