@@ -2,7 +2,7 @@
 //
 // 效果：
 //   · Claude 桌面端、Claude Code、Codex 桌面端、Codex CLI、ChatGPT 桌面端发出的全部请求 → 住宅出口
-//   · 谷歌相关请求，以及 Claude / ChatGPT 网页 → 住宅出口
+//   · 谷歌相关请求，以及 Claude / ChatGPT 网页（域名里带 claude、anthropic 的也算，新域名自动覆盖）→ 住宅出口
 //   · HomeGuard 的出口核验与体检探测 → 住宅出口，检测结果反映的就是 Claude 实际走的线路
 //   · 其他所有请求 → 基础节点
 //   · 住宅出口 = 先连基础节点，再从住宅代理出去，网站看到的是住宅 IP
@@ -45,6 +45,9 @@ function main(config) {
 
   const BASE = '基础节点';
   const RES_GROUP = '住宅出口';
+
+  // 域名里含这些词就走住宅出口，覆盖上面没列出的新域名
+  const RESIDENTIAL_KEYWORDS = ['claude', 'anthropic'];
 
   // HomeGuard 核验出口、体检（出口、时区、WebRTC）用的网址：跟 Claude 走同一条线路，检测结果才有意义
   // （这些探测由 curl 发出，没法按程序区分，只能按网址）
@@ -106,6 +109,8 @@ function main(config) {
     RESIDENTIAL_APPS.map((r) => 'PROCESS-PATH-REGEX,' + r + ',' + RES_GROUP),
     RESIDENTIAL_DOMAINS.concat(CHECK_DOMAINS).map((d) => 'DOMAIN-SUFFIX,' + d + ',' + RES_GROUP),
     CHECK_HOSTS.map((d) => 'DOMAIN,' + d + ',' + RES_GROUP),
+    // 域名里带这些词的一律走住宅出口：官方换了新域名也不用改脚本
+    RESIDENTIAL_KEYWORDS.map((k) => 'DOMAIN-KEYWORD,' + k + ',' + RES_GROUP),
     ['GEOSITE,google,' + RES_GROUP, 'MATCH,' + BASE]
   );
   // 按程序分流需要识别每个连接来自哪个程序
