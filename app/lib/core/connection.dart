@@ -81,6 +81,11 @@ class HostConnection extends ChangeNotifier with SafeNotifier {
   /** manualAddress：手动选定的连接地址，为空时按局域网优先、延迟最低自动选择 */
   String manualAddress = '';
   Timer? _reprobe;
+  Timer? _lanUpgrade;
+
+  /** 走 Tailscale 时试探局域网的间隔，测试时缩短 */
+  @visibleForTesting
+  Duration lanUpgradeEvery = const Duration(seconds: 30);
   final _eventsOut = StreamController<PdEvent>.broadcast();
   StreamSubscription<PdEvent>? _eventSub;
 
@@ -126,9 +131,14 @@ class HostConnection extends ChangeNotifier with SafeNotifier {
    * 2、手动选定了地址时只探测它；否则局域网地址优先，同类地址中选延迟最低的
    */
   Future<Probe?> probeAll() async {
-    // 1、探测
     final manual = host.addresses.contains(manualAddress) ? manualAddress : '';
-    final results = await Future.wait((manual.isEmpty ? host.addresses : [manual]).map((addr) async {
+    return _probe(manual.isEmpty ? host.addresses : [manual], manual: manual);
+  }
+
+  /** _probe：探测给定地址，局域网优先、同类中延迟最低；manual 为手动选定的地址（用于提示） */
+  Future<Probe?> _probe(List<String> addrs, {String manual = ''}) async {
+    // 1、探测
+    final results = await Future.wait(addrs.map((addr) async {
       final a = newApi(addr);
       final sw = Stopwatch()..start();
       try {
@@ -219,6 +229,33 @@ class HostConnection extends ChangeNotifier with SafeNotifier {
       _api = newApi(p.address);
       _openEvents();
     }
+    _syncLanUpgrade();
+  }
+
+  /**
+   * _syncLanUpgrade：走 Tailscale 时每 30 秒试一次局域网，通了就切过去
+   *
+   * 电脑连着手机热点等情况下，手机的网络没有变化，不会触发重新探测；一直走 Tailscale 中转会很慢。
+   */
+  void _syncLanUpgrade() {
+    if (manualAddress.isNotEmpty || !isTailscale(address)) {
+      _lanUpgrade?.cancel();
+      _lanUpgrade = null;
+      return;
+    }
+    _lanUpgrade ??= Timer.periodic(lanUpgradeEvery, (_) => _tryLan());
+  }
+
+  /** _tryLan：只探测局域网地址，有可用的就切换 */
+  Future<void> _tryLan() async {
+    if (disposed || probing || !isTailscale(address)) return;
+    final lan = host.addresses.where((a) => !isTailscale(a)).toList();
+    if (lan.isEmpty) return;
+    final p = await _probe(lan);
+    if (p == null || disposed || !isTailscale(address)) return;
+    _use(p);
+    _events?.reconnectNow();
+    notifyListeners();
   }
 
   /** _openEvents：建立事件通道，把事件转发到统一的事件流 */
@@ -307,6 +344,7 @@ class HostConnection extends ChangeNotifier with SafeNotifier {
   @override
   void dispose() {
     _reprobe?.cancel();
+    _lanUpgrade?.cancel();
     _stateSub?.cancel();
     _eventSub?.cancel();
     _events?.close();
