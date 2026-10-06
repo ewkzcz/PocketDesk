@@ -12,8 +12,8 @@
   var AGENT = { claude: 'Claude Code', codex: 'Codex', pi: 'Pi', dsh: 'DSH' };
   var SETTINGS = [
     ['overview', '概览', 'layout-grid'],
-    ['workspaces', '工作区', 'folder'],
-    ['devices', '已配对设备', 'smartphone'],
+    ['workspaces', '权限', 'key-round'],
+    ['devices', '配对', 'smartphone'],
     ['transfer', '传输', 'arrow-up-down'],
     ['security', '安全', 'shield'],
     ['appearance', '外观', 'palette'],
@@ -136,6 +136,7 @@
   /* ---------- 外观 ---------- */
   function applyTheme() {
     var t = load('pd.theme', 'system');
+    if (window.PDX && PDX.applyStyle) { PDX.applyStyle(); }
     if (t === 'system') { document.documentElement.removeAttribute('data-theme'); } else { document.documentElement.setAttribute('data-theme', t); }
   }
   applyTheme();
@@ -379,6 +380,9 @@
   /* ---------- 头像 ---------- */
   function avatarHtml(kind, small) {
     var cls = 'pd-avatar' + (small ? ' pd-avatar-s' : '');
+    // 头像设置（含「我」）优先；没有时再画默认图标
+    var custom = (AGENT[kind] || kind === 'host') ? PDX.avatarHtml(kind, small) : '';
+    if (custom) { return custom; }
     if (AGENT[kind]) { return '<div class="' + cls + '"><img alt="" src="/admin/avatars/' + kind + '.svg"></div>'; }
     if (kind === 'assistant') { return '<div class="' + cls + '" style="background:var(--pd-tile-green)">' + icon('send', small ? 18 : 20) + '</div>'; }
     if (kind === 'terminal') { return '<div class="' + cls + '" style="background:var(--pd-tile-ink)">' + icon('terminal', small ? 18 : 20) + '</div>'; }
@@ -409,6 +413,10 @@
     var m = /^settings\/?(\w*)/.exec(h);
     if (m) { return { page: 'settings', section: m[1] || 'overview' }; }
     if (h === 'phone' || h === 'files') { return { page: 'phone' }; }
+    m = /^tools\/?(\w*)/.exec(h);
+    if (m) { return { page: 'tools', sub: m[1] || 'clip' }; }
+    m = /^contacts\/?(.*)$/.exec(h);
+    if (m) { return { page: 'contacts', id: decodeURIComponent(m[1] || '') }; }
     m = /^chat\/(.+)$/.exec(h);
     return { page: 'chat', sid: m ? decodeURIComponent(m[1]) : '' };
   }
@@ -420,6 +428,8 @@
   function title(s) {
     if (!s) { return ''; }
     if (s.kind === 'assistant') { return '文件传输助手'; }
+    // 通讯录模板会话的标题新建时就写好了（如「翻译 · Claude Code」）
+    if (s.preset && (s.title || '').trim()) { return s.title.trim(); }
     var label = AGENT[s.kind] || (s.kind === 'terminal' ? '终端' : s.kind);
     var t = (s.title || '').trim();
     if (!t || t === label) { return s.kind === 'terminal' ? '终端' : label + ' · 新会话'; }
@@ -592,6 +602,8 @@
       if (e.type === 'session.created' || e.type === 'session.updated') {
         clearTimeout(refreshTimer);
         refreshTimer = setTimeout(loadSessions, 300);
+      } else if (e.type === 'library.changed') {
+        PDX.onLibraryChanged(e.data);
       } else if (e.type === 'session.preview' && e.data) {
         var s0 = session(e.data.session);
         if (s0) { s0.preview = e.data.preview; renderList(); }
@@ -619,6 +631,33 @@
   var listFrame = 0, chatFrame = 0;
   function scheduleList() { if (!listFrame) { listFrame = requestAnimationFrame(function () { listFrame = 0; renderList(); renderRail(); }); } }
   function scheduleChat() { if (!chatFrame) { chatFrame = requestAnimationFrame(function () { chatFrame = 0; renderMsgs(false); }); } }
+
+  /** lastUserText：会话里最近一条我发出的文字（换 Agent 处理时带过去） */
+  function lastUserText(sid) {
+    var lg = logs[sid];
+    if (!lg || !lg.loaded) { return ''; }
+    var items = buildItems(lg.events.length ? lg.events : [{ session: sid }]);
+    for (var i = items.length - 1; i >= 0; i--) { if (items[i].t === 'user' && !items[i].phone && items[i].text) { return items[i].text; } }
+    return '';
+  }
+
+  /** redrawMain：重绘当前内容区；搜索框里正在输入时保住焦点与光标 */
+  function redrawMain(keepFocus) {
+    var id = keepFocus && document.activeElement ? document.activeElement.id : '', pos = id ? document.activeElement.selectionStart : 0;
+    renderMain();
+    if (id) { var el = document.getElementById(id); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (er) { /* 不是文字框 */ } } }
+  }
+
+  PDX.init({
+    api: api, toast: toast, esc: esc, icon: icon, modal: modal, closeModal: closeModal, confirmBox: confirmBox, copyText: copyText, load: load, save: save,
+    popMenu: popMenu, fmtSize: fmtSize, listTime: listTime, oneLine: oneLine, tile: tileHtml, title: title, modalRoot: modalRoot,
+    host: function () { return host; }, sessions: function () { return sessions; }, session: session, route: route, lastUserText: lastUserText,
+    go: function (h) { location.hash = h; },
+    redrawMain: redrawMain, redrawList: function () { renderList(); },
+    redrawAll: function () { renderRail(); renderList(); renderMain(); },
+    onCreated: function (s) { sessions.push(s); unhideSession(s.id); location.hash = 'chat/' + encodeURIComponent(s.id); },
+    removeSession: function (id) { sessions = sessions.filter(function (x) { return x.id !== id; }); location.hash = 'chat'; }
+  });
 
   /* ---------- 整体布局 ---------- */
 
@@ -651,9 +690,10 @@
       return '<button class="pd-rail-btn' + (active ? ' active' : '') + '" data-go="' + go + '" title="' + label + '" aria-label="' + label + '">' + icon(ic, 24) +
         (badge ? '<span class="pd-badge">' + (badge > 99 ? '99+' : badge) + '</span>' : '') + '</button>';
     };
-    el.innerHTML = '<div class="pd-me" title="' + esc(host ? host.host.name : '') + '">' + icon('monitor', 20) + '</div>' +
+    el.innerHTML = '<button class="pd-me" data-act="av-open" data-key="me" data-title="设置我的头像" title="点击更换我的头像" aria-label="我的头像">' + (PDX.avatarHtml('host') || icon('monitor', 20)) + '</button>' +
       btn('chat', 'message-circle', '消息', r.page === 'chat', n) +
-      btn('files', 'folder', '文件', r.page === 'phone', 0) +
+      btn('contacts', 'users-round', '通讯录', r.page === 'contacts', 0) +
+      btn('tools', 'toolbox', '工具箱', r.page === 'tools' || r.page === 'phone', 0) +
       '<div class="pd-rail-gap"></div>' +
       '<button class="pd-rail-btn" data-act="pair" title="配对新手机" aria-label="配对新手机">' + icon('smartphone', 22) + '</button>' +
       btn('settings', 'menu', '设置', r.page === 'settings', 0);
@@ -712,11 +752,15 @@
       var bar = document.getElementById('selbar');
       if (bar) {
         var n = Object.keys(selected).length;
-        bar.innerHTML = '<button class="pd-btn" data-act="sel-all">' + (n && n === visibleSessions().length ? '取消全选' : '全选') + '</button><span class="pd-muted" style="flex:1;text-align:center">已选 ' + n + ' 项</span>' +
+        bar.innerHTML = '<button class="pd-btn" data-act="sel-all">' + (n && n === visibleSessions().length ? '取消全选' : '全选') + '</button><span class="pd-muted pd-selcount">' + (n ? '已选 ' + n + ' 项' : '') + '</span>' +
           '<button class="pd-btn pd-btn-danger" data-act="sel-delete"' + (n ? '' : ' disabled') + '>删除</button><button class="pd-btn" data-act="sel-cancel">完成</button>';
       }
     } else if (r.page === 'phone') {
-      el.innerHTML = '<div class="pd-list-top"><div class="pd-list-title">文件</div></div><div class="pd-list-body">' + fsRows() + '</div>';
+      el.innerHTML = '<div class="pd-list-top"><button class="pd-icon-btn" data-go="tools" title="返回工具箱" aria-label="返回工具箱">' + icon('chevron-left', 18) + '</button><div class="pd-list-title">工作区</div></div><div class="pd-list-body">' + fsRows() + '</div>';
+    } else if (r.page === 'contacts' || r.page === 'tools') {
+      var keep = document.activeElement && document.activeElement.id === 'contact-search';
+      el.innerHTML = PDX.listHtml(r);
+      if (keep) { var cs = document.getElementById('contact-search'); if (cs) { cs.focus(); cs.setSelectionRange(cs.value.length, cs.value.length); } }
     } else {
       el.innerHTML = '<div class="pd-list-top"><div class="pd-list-title">设置</div></div><div class="pd-list-body">' + SETTINGS.map(function (s) {
         return '<button class="pd-row' + (r.section === s[0] ? ' active' : '') + '" style="height:48px" data-go="settings/' + s[0] + '">' +
@@ -748,7 +792,7 @@
       var mark = n ? '<span class="pd-badge">' + (n > 99 ? '99+' : n) + '</span>' : waiting ? '<span class="pd-dot"></span>' : '';
       var pick = selMode ? '<span class="pd-check' + (selected[s.id] ? ' on' : '') + '">' + (selected[s.id] ? icon('check', 12) : '') + '</span>' : '';
       return '<button class="pd-row' + (!selMode && s.id === active ? ' active' : '') + (s.pinned && s.id !== active ? ' pinned' : '') + '" ' + (selMode ? 'data-act="sel-toggle" data-id="' : 'data-go="chat/' + encodeURIComponent(s.id) + '" data-sid="') + esc(s.id) + '">' + pick +
-        '<div class="pd-row-avatar">' + avatarHtml(s.kind) + mark + '</div>' +
+        '<div class="pd-row-avatar">' + (PDX.sessionAvatar(s) || avatarHtml(s.kind)) + mark + '</div>' +
         '<div class="pd-row-main"><div class="pd-row-line"><span class="pd-row-title">' + esc(title(s)) + '</span>' + (s.autoApprove ? '<span class="pd-tag-auto">免审批</span>' : '') +
         '<span class="pd-row-time">' + listTime(s.updatedAt) + '</span></div><div class="pd-row-sub">' + (sub || '&nbsp;') + '</div></div></button>';
     }).join('');
@@ -758,8 +802,10 @@
     var el = document.getElementById('main');
     if (!el) { return; }
     var r = route();
+    if (r.page !== 'chat') { PDX.detachTerminal(); }
     if (r.page === 'chat') { renderChat(); }
     else if (r.page === 'phone') { el.innerHTML = fsMain(); }
+    else if (r.page === 'contacts' || r.page === 'tools') { PDX.ensure(r); el.innerHTML = PDX.mainHtml(r); }
     else { el.innerHTML = settingsMain(r.section); if (r.section === 'security') { loadAudit(); } }
   }
 
@@ -768,6 +814,12 @@
   function renderChat() {
     var el = document.getElementById('main');
     var r = route(), s = session(r.sid);
+    PDX.detachTerminal();
+    if (s && s.kind === 'terminal') {
+      el.innerHTML = PDX.terminalHtml(s);
+      PDX.attachTerminal(s);
+      return;
+    }
     if (!s) {
       el.innerHTML = '<div class="pd-empty-main">' + icon('message-circle', 88) + '</div>';
       return;
@@ -776,6 +828,7 @@
       '<div class="pd-composer pd-drop"><div class="pd-tools">' +
       '<button class="pd-icon-btn" data-act="attach" title="发送文件" aria-label="发送文件">' + icon('folder', 20) + '</button>' +
       '<button class="pd-icon-btn" data-act="attach-image" title="发送图片" aria-label="发送图片">' + icon('image', 20) + '</button>' +
+      '<button class="pd-icon-btn" data-act="prompt-pick" title="提示词" aria-label="提示词">' + icon('book-marked', 20) + '</button>' +
       (isAgent(s) ? '<button class="pd-icon-btn" data-act="interrupt" title="打断" aria-label="打断"' + (s.state === 'running' || s.state === 'awaiting' ? '' : ' disabled') + '>' + icon('square', 18) + '</button>' : '') +
       '</div><div class="pd-cmds" id="cmds" hidden></div><div class="pd-pending" id="chosen"></div><div class="pd-pending" id="pending"></div><textarea id="input" placeholder="' + (isAgent(s) ? '输入 / 查看指令' : '') + '"></textarea>' +
       '<div class="pd-composer-foot"><span class="pd-hint">Enter 发送，Shift + Enter 换行；可直接粘贴或拖入图片、文件</span>' +
@@ -812,6 +865,7 @@
       '<div class="pd-head-acts">' + (isAgent(s) ? '<button class="pd-icon-btn" data-act="head-model" title="模型与供应商" aria-label="模型与供应商">' + icon('cpu', 18) + '</button>' +
       ((s.kind === 'claude' || s.kind === 'codex') ? '<button class="pd-icon-btn" data-act="head-skills" title="Skills" aria-label="Skills">' + icon('sparkles', 18) + '</button>' : '') +
       '<button class="pd-icon-btn" data-act="head-mute" title="' + (s.muted ? '打开提醒' : '关闭提醒') + '" aria-label="' + (s.muted ? '打开提醒' : '关闭提醒') + '">' + icon(s.muted ? 'bell-off' : 'bell', 18) + '</button>' : '') +
+      PDX.presetHeadHtml(s) +
       '<button class="pd-icon-btn" data-act="chat-more" title="更多" aria-label="更多">' + icon('menu', 18) + '</button></div>';
   }
 
@@ -1274,9 +1328,32 @@
     var m = document.createElement('div');
     m.className = 'pd-menu';
     m.id = 'menu';
+    function one(it) {
+      return '<button data-menu="' + it[0] + '"' + (it[2] ? ' class="danger"' : '') + '>' + (it[3] ? icon(it[3], 16) : '') + esc(it[1]) + '</button>';
+    }
     m.innerHTML = items.map(function (it) {
-      return it === '-' ? '<hr>' : '<button data-menu="' + it[0] + '"' + (it[2] ? ' class="danger"' : '') + '>' + (it[3] ? icon(it[3], 16) : '') + esc(it[1]) + '</button>';
+      if (typeof it === 'string' && it.charAt(0) === '#') { return '<div class="pd-menu-sec">' + esc(it.slice(1)) + '</div>'; }
+      if (it === '-') { return '<hr>'; }
+      // 带二级菜单：第五项是子菜单的条目，鼠标移上去才展开
+      if (it[4]) {
+        return '<div class="pd-subwrap"><button type="button" class="pd-subbtn">' + (it[3] ? icon(it[3], 16) : '') + '<span style="flex:1">' + esc(it[1]) + '</span>' + icon('chevron-right', 14) + '</button>' +
+          '<div class="pd-menu pd-submenu">' + it[4].map(one).join('') + '</div></div>';
+      }
+      return one(it);
     }).join('');
+    m.addEventListener('mouseover', function (e) {
+      var wrap = e.target.closest('.pd-subwrap');
+      if (!wrap) { return; }
+      var sub = wrap.querySelector('.pd-submenu');
+      var wr = wrap.getBoundingClientRect();
+      sub.style.maxHeight = (window.innerHeight - 16) + 'px';
+      sub.style.display = 'block';
+      var sw = sub.offsetWidth, sh = sub.offsetHeight;
+      sub.style.display = '';
+      var top = Math.max(8, Math.min(wr.top - 4, window.innerHeight - sh - 8));
+      sub.style.top = (top - wr.top) + 'px';
+      sub.classList.toggle('left', wr.right + sw > window.innerWidth - 8);
+    });
     document.body.appendChild(m);
     var w = m.offsetWidth, h = m.offsetHeight;
     m.style.left = Math.min(x, window.innerWidth - w - 8) + 'px';
@@ -1320,6 +1397,9 @@
     return out;
   }
 
+  /** canEditFs：当前位置是否允许重命名、删除 */
+  function canEditFs() { return fsReady() && !ph.readOnly; }
+
   function fsMain() {
     var ready = fsReady();
     var canEdit = ready && !ph.readOnly;
@@ -1330,7 +1410,7 @@
       '<button class="pd-icon-btn" data-act="fs-refresh" title="刷新" aria-label="刷新">' + icon('refresh-cw', 16) + '</button>' +
       (!isWsSrc() && ph.dev ? '<button class="pd-icon-btn" data-act="phone-kick" title="移除这台手机" aria-label="移除这台手机">' + icon('trash', 16) + '</button>' : '') + '</div></header>';
     var body;
-    if (!ph.kind && ph.phones) { body = '<div class="pd-empty">没有可管理的位置，先在设置里添加工作区，或在手机上打开 PocketDesk</div>'; }
+    if (!ph.kind && ph.phones) { body = '<div class="pd-empty">没有可管理的位置，先在「设置 → 权限」里添加工作区，或在手机上打开 PocketDesk</div>'; }
     else if (!ph.kind) { body = '<div class="pd-empty">正在读取…</div>'; }
     else if (ph.error) { body = '<div class="pd-warn">' + icon('alert-triangle', 16) + '<div>' + esc(ph.error) + '</div></div>'; }
     else {
@@ -1341,19 +1421,12 @@
       var rows = ph.entries.map(function (e) {
         var p = (ph.path ? ph.path + '/' : '') + e.name;
         var tile = e.isDir ? tileHtml('folder', 'var(--pd-tile-blue)') : isImage(e.name) ? tileHtml('image', 'var(--pd-tile-teal)') : tileHtml('file', 'var(--pd-tile-indigo)');
-        var acts = '';
-        if (isWsSrc()) { acts += '<button class="pd-link" data-act="fs-reveal" data-path="' + esc(p) + '">显示</button>'; }
-        else if (!e.isDir) { acts += '<button class="pd-link" data-act="phone-fetch" data-path="' + esc(p) + '">存到电脑</button>'; }
-        if (canEdit) {
-          acts += '<button class="pd-link" data-act="fs-rename" data-path="' + esc(p) + '" data-name="' + esc(e.name) + '">重命名</button>' +
-            '<button class="pd-link pd-link-danger" data-act="fs-delete" data-path="' + esc(p) + '" data-name="' + esc(e.name) + '">删除</button>';
-        }
-        return '<tr><td><button class="pd-name pd-name-btn" data-act="fs-open" data-path="' + esc(p) + '" data-dir="' + (e.isDir ? 1 : 0) + '">' + tile + '<span>' + esc(e.name) + '</span></button></td>' +
+        return '<tr class="pd-fsrow" data-path="' + esc(p) + '" data-name="' + esc(e.name) + '" data-dir="' + (e.isDir ? 1 : 0) + '"><td><button class="pd-name pd-name-btn" data-act="fs-open" data-path="' + esc(p) + '" data-dir="' + (e.isDir ? 1 : 0) + '">' + tile + '<span>' + esc(e.name) + '</span></button></td>' +
           '<td class="pd-muted pd-nowrap pd-hide-s">' + (e.isDir ? '' : fmtSize(e.size)) + '</td><td class="pd-muted pd-nowrap pd-hide-s">' + (e.modTime ? fmtTime(e.modTime).slice(0, 16) : '') + '</td>' +
-          '<td><div class="pd-actions">' + acts + '</div></td></tr>';
+          '</tr>';
       }).join('');
       body = '<div class="pd-crumbs">' + crumbs + (ph.loading ? '<em class="pd-muted" style="margin-left:8px;font-style:normal">加载中…</em>' : '') + '</div>' +
-        '<div class="pd-card' + (canEdit ? ' pd-drop' : '') + '">' + (rows ? '<table class="pd-table"><tr><th>名称</th><th class="pd-hide-s" style="width:90px">大小</th><th class="pd-hide-s" style="width:140px">修改时间</th><th style="width:230px">操作</th></tr>' + rows + '</table>' :
+        '<div class="pd-card' + (canEdit ? ' pd-drop' : '') + '">' + (rows ? '<table class="pd-table"><tr><th>名称</th><th class="pd-hide-s" style="width:90px">大小</th><th class="pd-hide-s" style="width:140px">修改时间</th></tr>' + rows + '</table>' :
           '<div class="pd-empty">' + (canEdit ? '这个文件夹是空的，把文件拖进来即可上传' : '这个文件夹是空的') + '</div>') + '</div>';
     }
     return head + '<div class="pd-page"><div class="pd-page-inner" style="max-width:none">' + body + '</div></div><input type="file" id="fs-file" class="pd-file-input" multiple tabindex="-1" aria-hidden="true">';
@@ -1631,13 +1704,7 @@
       '<div class="pd-h2">操作记录</div><div class="pd-card" id="audit"><div class="pd-empty">正在加载…</div></div>', ''];
   }
 
-  function appearanceView() {
-    var t = load('pd.theme', 'system');
-    return ['<div class="pd-card"><div class="pd-setting">' + tileHtml('palette', 'var(--pd-tile-indigo)') + '<div class="pd-setting-text"><div>外观</div><div class="pd-setting-desc">浅色、深色或跟随系统</div></div>' +
-      '<div class="pd-seg">' + [['system', '跟随系统'], ['light', '浅色'], ['dark', '深色']].map(function (x) {
-        return '<button class="' + (t === x[0] ? 'active' : '') + '" data-act="theme" data-theme="' + x[0] + '">' + x[1] + '</button>';
-      }).join('') + '</div></div></div>', ''];
-  }
+  function appearanceView() { return PDX.appearanceHtml(); }
 
   function aboutView() {
     return ['<div class="pd-card"><dl class="pd-kv"><dt>版本</dt><dd>' + esc(host.host.version) + '</dd><dt>数据目录</dt><dd class="pd-mono" style="font-size:12px">' + esc(host.dataDir) + '</dd></dl></div>' +
@@ -1716,34 +1783,19 @@
     modal(t, '<div>' + text + '</div>', '<button class="pd-btn" data-act="modal-close">取消</button><button class="pd-btn pd-btn-danger" id="confirm-ok">' + okLabel + '</button>');
     document.getElementById('confirm-ok').onclick = function () { closeModal(); onOk(); };
   }
-  function imagePreview(t, src, actions, seq) {
-    modalRoot.innerHTML = '<div class="pd-scrim" data-act="modal-close"><div class="pd-preview" role="dialog" aria-modal="true" aria-label="' + esc(t) + '">' +
-      '<img alt="' + esc(t) + '"' + (seq ? ' data-seq="' + seq + '"' : '') + ' src="' + src + '"><div class="pd-preview-bar"><span>' + esc(t) + '</span><div class="pd-actions">' + actions +
-      '<button class="pd-icon-btn" data-act="modal-close" aria-label="关闭">' + icon('x', 18) + '</button></div></div></div></div>';
-  }
+  function imagePreview(t, src, actions, seq) { PDX.viewer(t, src, actions, seq); }
   function workspaceForm(w) {
     w = w || { id: '', name: '', rootPath: '', readOnly: false };
     modal(w.id ? '编辑工作区' : '添加工作区',
       '<div class="pd-field"><label for="wname">名称</label><input class="pd-input" id="wname" value="' + esc(w.name) + '"></div>' +
       '<div class="pd-form-row"><div class="pd-field"><label for="wpath">文件夹路径</label><input class="pd-input pd-mono" id="wpath" value="' + esc(w.rootPath) + '" placeholder="点右侧按钮选择文件夹"></div>' +
       '<button class="pd-btn" data-act="pick-folder" data-target="wpath" data-name="wname" data-prompt="选择工作区文件夹">' + icon('folder-open', 16) + '选择…</button></div>' +
-      '<label class="pd-check"><input type="checkbox" id="wro"' + (w.readOnly ? ' checked' : '') + '>只读（手机上不能修改）</label>',
+      '<label class="pd-check-line"><input type="checkbox" id="wro"' + (w.readOnly ? ' checked' : '') + '>只读（手机上不能修改）</label>',
       '<button class="pd-btn" data-act="modal-close">取消</button><button class="pd-btn pd-btn-primary" data-act="ws-save" data-id="' + esc(w.id) + '">保存</button>');
   }
 
-  /** newSession：选择 Agent 与工作区后新建会话（与手机端相同的接口） */
-  function newSession(kind, auto) {
-    api('GET', P + '/api/ws').then(function (list) {
-      var ws = (list || []).filter(function (w) { return !w.system; });
-      if (!ws.length) { toast('请先在设置里添加工作区'); return; }
-      modal('新建 ' + AGENT[kind] + (auto ? ' 免审批' : '') + ' 会话',
-        '<div class="pd-muted" style="font-size:12px">选择工作区</div><div class="pd-pick-list">' + ws.map(function (w, i) {
-          return '<button class="pd-pick-row' + (i === 0 ? ' active' : '') + '" data-act="ws-pick" data-id="' + esc(w.id) + '">' + icon(w.isDefault ? 'folder-open' : 'folder', 16) +
-            '<span style="flex:1;min-width:0"><div>' + esc(w.name) + (w.isDefault ? ' <span class="pd-muted" style="font-size:12px">默认</span>' : '') + '</div><div class="pd-path">' + esc(w.rootPath) + '</div></span></button>';
-        }).join('') + '</div>',
-        '<button class="pd-btn" data-act="modal-close">取消</button><button class="pd-btn pd-btn-primary" data-act="create" data-kind="' + kind + '" data-auto="' + (auto ? 1 : 0) + '">新建</button>');
-    }).catch(function (e) { toast(e.message); });
-  }
+  /** newSession：新建会话对话框（选择工作目录，可选电脑上任意文件夹） */
+  function newSession(kind, auto) { PDX.newSession({ kind: kind, auto: auto }); }
 
   /* ---------- 电脑端状态与配对请求 ---------- */
   function loadHost() {
@@ -1783,6 +1835,7 @@
       if (r0) { r0(mi.dataset.menu); }
       return;
     }
+    if (e.target.closest('.pd-subbtn')) { return; }
     closeMenu();
     var t = e.target.closest('[data-go],[data-act]');
     if (!t) { return; }
@@ -1942,19 +1995,8 @@
         break;
       case 'new':
         var rc = t.getBoundingClientRect();
-        var installed = (host && host.agents || []).filter(function (a) { return a.installed; }).map(function (a) { return a.kind; });
-        if (!installed.length) { installed = Object.keys(AGENT); }
-        var items = installed.map(function (k) { return ['new:' + k, '新建 ' + AGENT[k] + ' 会话', false, 'message-circle']; });
-        installed.filter(function (k) { return k === 'claude' || k === 'codex'; }).forEach(function (k) { items.push(['auto:' + k, AGENT[k] + ' 免审批', false, 'shield-alert']); });
-        items.unshift(['assistant', '新建文件传输助手', false, 'send'], ['resume', '接着电脑上的会话', false, 'history'], '-');
-        items.push('-', ['pair', '配对新手机', false, 'qr-code']);
-        popMenu(rc.left, rc.bottom + 4, items).then(function (k) {
-          if (!k) { return; }
-          if (k === 'pair') { startPair(); return; }
-          if (k === 'assistant') { openAssistant(); return; }
-          if (k === 'resume') { externalModal(); return; }
-          var p = k.split(':');
-          newSession(p[1], p[0] === 'auto');
+        PDX.newMenu(rc.left, rc.bottom + 4).then(function (k) {
+          if (k === 'pair') { startPair(); } else if (k === 'assistant') { openAssistant(); } else if (k === 'resume') { externalModal(); }
         });
         break;
       case 'agent':
@@ -2105,6 +2147,9 @@
             .then(function () { toast('已移除'); loadHost().then(renderMain); });
         });
         break;
+      default:
+        PDX.act(act, t, e);
+        break;
     }
   });
 
@@ -2166,10 +2211,27 @@
     var msg = e.target.closest('.pd-msg,.pd-sys');
     var row = e.target.closest('.pd-row[data-sid]');
     var phone = e.target.closest('.pd-row[data-phone]');
-    var pv = e.target.closest('.pd-preview img[data-seq]');
+    var fsr = e.target.closest('.pd-fsrow');
+    var pv = e.target.closest('.pd-viewer img[data-seq]');
     if (pv) {
       e.preventDefault();
       popMenu(e.clientX, e.clientY, [['copy-file', '复制图片', false, 'copy']]).then(function (k) { if (k) { copyFileMsg(+pv.dataset.seq); } });
+      return;
+    }
+    if (fsr) {
+      e.preventDefault();
+      var fsItems = [];
+      if (isWsSrc()) { fsItems.push(['fs-reveal', '在访达中显示', false, 'folder-open']); }
+      else if (fsr.dataset.dir !== '1') { fsItems.push(['phone-fetch', '存到电脑', false, 'download']); }
+      if (route().page === 'phone' && canEditFs()) { fsItems.push(['fs-rename', '重命名', false, 'pencil'], ['fs-delete', '删除', true, 'trash']); }
+      if (fsItems.length) {
+        popMenu(e.clientX, e.clientY, fsItems).then(function (k) {
+          if (!k) { return; }
+          var b = document.createElement('button');
+          b.hidden = true; b.dataset.act = k; b.dataset.path = fsr.dataset.path; b.dataset.name = fsr.dataset.name;
+          document.body.appendChild(b); b.click(); b.remove();
+        });
+      }
       return;
     }
     if (phone) {
@@ -2190,11 +2252,14 @@
       if (sel) { items.push(['copy-sel', '复制选中的文字', false, 'copy']); }
       var mi0 = itemOf(sid, seq);
       var isFile = !!mi0 && mi0.t === 'file';
-      items.push(isFile ? ['copy-file', isImage(mi0.name) ? '复制图片' : '复制文件', false, 'copy'] : ['copy', '复制', false, 'copy'], ['copy-all', '复制全部对话', false, 'copy'], '-', ['delete', '删除', true, 'trash']);
+      items.push(isFile ? ['copy-file', isImage(mi0.name) ? '复制图片' : '复制文件', false, 'copy'] : ['copy', '复制', false, 'copy']);
+      if (!isFile) { items.push(['fav', '收藏', false, 'star']); }
+      items.push(['copy-all', '复制全部对话', false, 'copy'], '-', ['delete', '删除', true, 'trash']);
       popMenu(e.clientX, e.clientY, items).then(function (k) {
         if (k === 'copy-sel') { copyText(sel); }
         if (k === 'copy-file') { copyFileMsg(seq); }
         if (k === 'copy') { copyText(itemText(sid, seq)); }
+        if (k === 'fav') { PDX.favoriteText(itemText(sid, seq), session(sid) ? title(session(sid)) : ''); }
         if (k === 'copy-all') { copyText(chatText(sid)); }
         if (k === 'delete') {
           (hidden[sid] = hidden[sid] || []).push(seq);
@@ -2239,12 +2304,14 @@
     mermaidStep(box, e.deltaY < 0 ? 'in' : 'out');
   }, { passive: false });
   document.addEventListener('input', function (e) {
+    if (PDX.onInput(e.target)) { return; }
     if (e.target.id === 'input') { syncSend(); saveDraft(route().sid, e.target.value); cmdIndex = 0; renderCmds(); }
     if (e.target.id === 'search') { query = e.target.value; renderList(); }
   });
 
   document.addEventListener('change', function (e) {
     var t = e.target;
+    if (PDX.onChange(t)) { return; }
     if (t.id === 'file-any' || t.id === 'file-img' || t.id === 'fs-file') {
       var files = Array.prototype.slice.call(t.files || []);
       t.value = '';
@@ -2292,6 +2359,7 @@
     if (modalRoot.innerHTML) { return ''; }
     if (r.page === 'chat' && session(r.sid) && session(r.sid).kind !== 'terminal') { return 'chat'; }
     if (r.page === 'phone' && fsReady() && !ph.readOnly) { return 'files'; }
+    if (PDX.dropTarget(r)) { return 'clip'; }
     return '';
   }
   document.addEventListener('paste', function (e) {
@@ -2300,7 +2368,7 @@
     var files = pastedFiles(e);
     if (!files.length) { return; }
     e.preventDefault();
-    if (tgt === 'chat') { sendFiles(files); } else { fsUpload(files); }
+    if (tgt === 'chat') { sendFiles(files); } else if (tgt === 'clip') { PDX.addFiles(files); } else { fsUpload(files); }
   });
   document.addEventListener('dragover', function (e) {
     if (!dropTarget()) { return; }
@@ -2314,7 +2382,7 @@
     if (!tgt) { return; }
     e.preventDefault();
     var files = Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.files) || []);
-    if (tgt === 'chat') { sendFiles(files); } else { fsUpload(files); }
+    if (tgt === 'chat') { sendFiles(files); } else if (tgt === 'clip') { PDX.addFiles(files); } else { fsUpload(files); }
   });
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && route().page === 'chat') { renderMsgs(false); } });
 
