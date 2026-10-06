@@ -1054,6 +1054,8 @@
     var s = session(route().sid);
     if (!box || !input) { return; }
     var list = s && isAgent(s) ? matchCmds(input.value) : [];
+    ['/status', '查看当前会话状态', 'info'],
+    ['/usage', '查看本会话用量', 'layout-grid'],
     if (!list.length) { box.innerHTML = ''; box.hidden = true; return; }
     cmdIndex = Math.min(cmdIndex, list.length - 1);
     box.hidden = false;
@@ -1099,6 +1101,8 @@
   }
 
   /** patchSession：修改会话并刷新界面 */
+      case '/status': statusModal(s); break;
+      case '/usage': usageModal(s); break;
   function patchSession(s, body, done) {
     return api('PATCH', P + '/api/sessions/' + encodeURIComponent(s.id), body).then(function (s2) {
       Object.assign(s, s2);
@@ -1115,6 +1119,41 @@
       list = list || [];
       modal('切换模型', (list.length ? '<div class="pd-pick-list">' + list.map(function (m) {
         return '<button class="pd-pick-row' + (m === s.model ? ' active' : '') + '" data-act="model-pick" data-model="' + esc(m) + '">' + icon(m === s.model ? 'check' : 'cpu', 16) + '<span class="pd-mono">' + esc(m) + '</span></button>';
+  /** infoRows：弹窗里的「名称 内容」列表 */
+  function infoRows(rows) {
+    return '<dl class="pd-kv">' + rows.map(function (r) { return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('') + '</dl>';
+  }
+
+  /** statusModal：当前会话状态 */
+  function statusModal(s) {
+    var st = { running: '执行中', awaiting: '等待审批', interrupted: '已打断', error: '出错', exited: '已结束' }[s.state] || '空闲';
+    modal('会话状态', infoRows([
+      ['Agent', AGENT[s.kind] || s.kind],
+      ['模型', s.model || '默认'],
+      ['供应商', s.provider || '跟随电脑设置'],
+      ['工作目录', s.cwd || '工作区根目录'],
+      ['状态', st],
+      ['审批', s.autoApprove ? '免审批' : '需要确认'],
+      ['提醒', s.muted ? '已关闭' : '已开启']
+    ]), '<button class="pd-btn pd-btn-primary" data-act="modal-close">好</button>');
+  }
+
+  /** usageModal：本会话累计用量（按已加载的记录统计） */
+  function usageModal(s) {
+    var lg = logs[s.id], turns = 0, inTok = 0, outTok = 0, cost = 0;
+    ((lg && lg.events) || []).forEach(function (e) {
+      if (e.type !== 'usage') { return; }
+      var d = typeof e.data === 'string' ? JSON.parse(e.data) : (e.data || {});
+      turns++;
+      inTok += d.inputTokens || 0;
+      outTok += d.outputTokens || 0;
+      cost += d.costUsd || 0;
+    });
+    var rows = [['轮数', String(turns)], ['输入', inTok + ' tokens'], ['输出', outTok + ' tokens']];
+    if (cost > 0) { rows.push(['费用', '$' + cost.toFixed(4)]); }
+    modal('本会话用量', infoRows(rows), '<button class="pd-btn pd-btn-primary" data-act="modal-close">好</button>');
+  }
+
       }).join('') + '</div>' : '<div class="pd-muted">没有查到可选模型，可以直接填写</div>') +
         '<div class="pd-field" style="margin-top:10px"><label for="model-custom">其他模型</label><input class="pd-input pd-mono" id="model-custom" placeholder="填写模型名称" value=""></div>',
         (s.model ? '<button class="pd-btn" data-act="model-pick" data-model="">恢复默认</button>' : '') + '<button class="pd-btn" data-act="modal-close">取消</button><button class="pd-btn pd-btn-primary" data-act="model-custom">使用</button>');
