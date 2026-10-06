@@ -44,7 +44,7 @@ class _SessionsPageState extends State<SessionsPage> {
    *
    * 处理流程：
    * 1、列出电脑上已安装的 Agent（离线时列出全部）
-   * 2、终端开启时显示「新建终端」，最后是「扫一扫」
+   * 2、始终显示「新建终端」（未开启时点进去会提示去电脑端开启），最后是「扫一扫」
    */
   Future<void> _plusMenu() async {
     final scope = context.read<AppState>().scope;
@@ -65,8 +65,8 @@ class _SessionsPageState extends State<SessionsPage> {
       // 免审批：Claude Code 跳过全部权限确认，Codex 不审批也不进沙箱
       if (scope != null && (status?.features.agents ?? true))
         for (final k in installed.where((k) => k == 'claude' || k == 'codex')) ('${agentFor(k).label} 免审批', LucideIcons.zap300, () => newAgentSession(context, k, autoApprove: true)),
-      // 2、终端与扫码
-      if (scope != null && (status?.features.terminal ?? false)) ('新建终端', LucideIcons.terminal300, () => newTerminal(context)),
+      // 2、终端与扫码；终端没开启时点进去会提示去电脑端开启
+      if (scope != null) ('新建终端', LucideIcons.terminal300, () => newTerminal(context)),
       ('扫一扫', LucideIcons.scanLine300, () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const PairPage()))),
     ];
     final i = await showMenu<int>(
