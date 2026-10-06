@@ -4,7 +4,7 @@
 
 电脑上跑一个常驻服务，手机装一个 App，扫码配对后就能用。数据只在你自己的手机、电脑和网络之间走，不经过第三方服务器。
 
-<img src="assets/phone-sessions.webp" width="240" alt="会话列表"> <img src="assets/phone-approval.webp" width="240" alt="手机上审批"> <img src="assets/phone-turn-diff.webp" width="240" alt="本轮改动卡片">
+<img src="assets/phone-sessions.webp" width="240" alt="会话列表"> <img src="assets/phone-chat.webp" width="240" alt="聊天、改动与审批"> <img src="assets/phone-preset.webp" width="240" alt="预设助手">
 
 
 
@@ -18,31 +18,6 @@ AI 编程工具一直在电脑上运行，读写的也是电脑上的文件；�
 - **手机 App**：通过加密连接和电脑端服务通信。第一次扫码配对时记下电脑的证书指纹，之后每次连接都核对，对不上就拒绝。
 
 一轮对话的过程：
-
-```mermaid
-sequenceDiagram
-    participant Phone as 手机 App
-    participant Host as 电脑端服务
-    participant Agent as AI 编程工具
-
-    Phone->>Host: 发送提示词（可附带文件、skill）
-    Host->>Agent: 在会话的工作目录里启动或唤醒工具，转交提示词
-    Agent-->>Host: 回复文字与工具调用
-    Host-->>Phone: 实时推送回复与工具调用
-
-    alt 工具要改文件或执行命令
-        Agent->>Host: 请求审批
-        Host-->>Phone: 弹出审批卡片（App 在后台时发通知）
-        Phone->>Host: 允许 / 拒绝 / 本会话总是允许
-        Host-->>Agent: 转交审批结果
-    else 免审批会话
-        Note over Phone,Host: 不弹审批，工具直接执行
-    end
-
-    Agent-->>Host: 本轮结束
-    Host->>Host: 对比本轮前后的文件，统计改动并保存差异
-    Host-->>Phone: 推送改动卡片与完成提醒
-```
 
 ### 2、远程连接
 
@@ -58,87 +33,6 @@ sequenceDiagram
 | Mac 电脑 | [Tailscale for Mac](https://tailscale.com/download/mac) |
 
 两边装好后登录同一个账号，保持开启即可。App 的「我 → 异地连接」里能看到两边的状态，没装时也能从这里跳到下载页。
-
-**连接过程**：
-
-```mermaid
-sequenceDiagram
-    participant Phone as 手机 App
-    participant TSP as 手机上的 Tailscale
-    participant TSC as 电脑上的 Tailscale
-    participant Host as 电脑端服务
-
-    Note over Phone,Host: 在家扫码配对：二维码里带着电脑的局域网地址和 Tailscale 地址
-    Phone->>Host: 扫码配对，核对证书指纹
-    Host-->>Phone: 返回连接令牌，之后每次连上都同步电脑的最新地址
-
-    Note over Phone,Host: 出门后网络变化，手机自动重连
-    Phone->>Phone: 同时探测记下的全部地址，优先选局域网，其次选延迟低的
-
-    alt 局域网地址能连上
-        Phone->>Host: 直接经局域网建立加密连接
-        Note over TSP,TSC: 未经过 Tailscale
-    else 只有 Tailscale 地址能连上
-        Phone->>TSP: 连接电脑的 100.x.x.x 地址
-        TSP->>TSC: 经 WireGuard 加密隧道转发（直连或经中继）
-        TSC->>Host: 交给电脑端服务，照样核对证书指纹
-        Host-->>Phone: 连接建立，消息、文件、审批照常使用
-    else 都连不上
-        Phone-->>Phone: 显示离线，网络再次变化或点「重新连接」时重试
-    end
-```
-
-### 3、和 Clash Verge TUN 模式同时使用时的注意点
-
-如果电脑上用 Clash Verge 的 TUN 模式，让 AI 编程工具经住宅代理出去，**一定要关掉电脑上 Tailscale 的「Use Tailscale DNS settings」**。不关的话，DNS 查询和一部分流量会绕开 Clash，跑出住宅代理的范围，暴露你真实的网络位置。
-
-**为什么会泄露**：
-
-- 打开这个选项后，Tailscale 会把电脑的系统 DNS 改成它自己的解析地址 `100.100.100.100`。
-- `100.x.x.x` 是 Tailscale 组网内部的地址，为了让 PocketDesk 能连回电脑，分流脚本把这段地址排除在 Clash 的 TUN 之外。结果所有 DNS 查询都直接交给了 Tailscale，Clash 完全看不到。
-- Tailscale 再把不属于组网的域名转给你本地网络原来的 DNS（多半是运营商的）去解析。运营商能看到你在访问哪些 AI 服务；DNS 泄露检测网站也会显示你本地的 DNS 服务器，和住宅 IP 对不上。
-- 程序拿到的是真实 IP，而不是 Clash 分配的虚拟地址，Clash 只能靠识别连接内容来猜域名。认不出来的连接会按 IP 规则走，可能落到基础节点甚至直连，而不是住宅出口。
-
-```mermaid
-sequenceDiagram
-    participant App as AI 编程工具
-    participant TS as 电脑上的 Tailscale
-    participant Clash as Clash Verge（TUN）
-    participant ISP as 本地网络的 DNS
-    participant Node as 基础节点 / 住宅出口
-
-    App->>App: 准备访问 api.anthropic.com，先查域名
-
-    alt 打开了 Use Tailscale DNS settings
-        App->>TS: 向 100.100.100.100 查询（该地址不经过 Clash）
-        TS->>ISP: 转发明文查询
-        Note over Clash,Node: DNS 查询未经过 Clash，运营商看到了访问的域名
-        ISP-->>App: 返回真实 IP
-        App->>Clash: 用真实 IP 发起连接
-        Clash->>Clash: 没有域名可匹配，只能按 IP 规则或识别连接内容来猜
-        Clash->>Node: 认不出来的连接可能不走住宅出口
-    else 关闭了 Use Tailscale DNS settings
-        App->>Clash: 系统 DNS 查询被 TUN 接管
-        Clash-->>App: 返回虚拟地址，记下对应的域名
-        App->>Clash: 用虚拟地址发起连接
-        Clash->>Node: 按域名规则送往住宅出口，由出口解析域名
-        Note over TS,ISP: 本地 DNS 未产生查询
-    end
-```
-
-**怎么关**：
-
-| 位置 | 操作 |
-| --- | --- |
-| Mac 电脑 | 点菜单栏的 Tailscale 图标，在菜单里取消勾选「Use Tailscale DNS settings」；装了命令行工具的也可以执行 `tailscale set --accept-dns=false` |
-| 安卓手机 | 手机上一般不同时跑 Clash，可以不改；如果手机也要经代理出去，在 Tailscale 设置里同样关掉「Use Tailscale DNS」 |
-
-关掉后不影响 PocketDesk：手机连电脑用的是 `100.x.x.x` 地址，不依赖 Tailscale 的域名解析。分流脚本也单独把 `*.ts.net` 交给 Tailscale 解析，用 Tailscale 设备名访问照样可以。
-
-**其他注意**：
-
-- 用电脑端「异地连接」卡片提供一套「Clash 分流脚本」，它已经把 Tailscale 组网排除在 TUN 之外，并加了 DNS 与 IPv6 防泄露设置；Clash Verge 里的「DNS 覆写」保持关闭，否则会替换掉这些设置。
-- 改完后打开 IP 和 DNS 泄露检测网站确认：出口 IP 是住宅 IP，DNS 服务器里没有你本地运营商的。
 
 
 
@@ -164,7 +58,7 @@ sequenceDiagram
 ### 3、模型和供应商随会话切换
 
 - 每个会话可以单独换模型，列表里没有的也能手动填写。
-- 电脑上用 [CC Switch](https://github.com/farion1231/cc-switch) 管理供应商时，Claude Code 和 Codex 会话可以单独换供应商（比如换成 DeepSeek 或中转站）。只读取 CC Switch 保存的配置，对这一个会话生效，不改电脑上的全局设置。CC Switch 改过数据目录，或用 `CLAUDE_CONFIG_DIR`、`CODEX_HOME` 换过 Claude Code、Codex 的目录时，会跟着找到。
+- 电脑上用 [CC Switch](https://github.com/farion1231/cc-switch) 管理供应商时，Claude Code 和 Codex 会话可以单独换供应商（比如换成 DeepSeek 或中转站）。只读取 CC Switch 保存的配置，对这一个会话生效，不改电脑上的全局设置。
 - 可以查看、启用、停用 Claude Code 和 Codex 已装的 skill，勾选后随下一条消息使用。
 - 电脑上没聊完的 Claude Code、Codex 会话，在手机上选一个就能接着聊；电脑那边又聊了几句，手机打开时会自动补上。
 
@@ -189,7 +83,7 @@ sequenceDiagram
 ### 6、连接方式
 
 - **局域网**：手机和电脑在同一个 Wi-Fi 下，扫码配对后直接连。
-- **Tailscale**：不在一个网络时，两边都装上 Tailscale 并登录同一个账号，手机先试局域网，连不上自动改走 Tailscale，原理见「一、工作原理 → 2、远程连接」。
+- **Tailscale**：不在一个网络时，两边都装上 Tailscale 并登录同一个账号，手机先试局域网，连不上自动改走 Tailscale。
 - **手动地址**：也可以手动填写电脑的连接地址。
 
 配对时核对电脑证书的指纹，之后每次连接都校验，防止被冒充。App 可以开启指纹或面容解锁。
@@ -198,21 +92,23 @@ sequenceDiagram
 
 手机和电脑之间互传文本、图片和任意文件。大文件分段并行传，断网后接着传，App 重启后自动恢复未完成的任务。收到的文件按日期放进文件夹。
 
-### 8、手机上的四个标签
+### 8、核心页面说明
 
-| 标签 | 里面有什么 |
+| 标签 | 功能预览 |
 | --- | --- |
 | 消息 | 会话列表，右上角加号新建会话 |
 | 通讯录 | AI 好友（Claude Code、Codex、Pi、DSH）和预设助手 |
-| 发现 | 文件、传输、剪切板、收藏夹、提示词、截取电脑屏幕 |
+| 发现 | 文件、传输、剪切板、收藏夹、提示词、截取电脑屏幕并发送给手机 |
 | 我 | 电脑与连接、工作空间、安全、外观、日志 |
 
-### 9、通讯录里的预设助手
+### 9、通讯录和预设助手
 
-预设助手带着写好的系统提示词，可以交给任意一个 Agent 处理。内置翻译、OCR 识别、润色改写、总结提炼、代码审查、提示词优化六个，也可以自己新建。内置助手的提示词和参数也能修改，改过的显示「已修改」，随时可以恢复默认。
+预设助手带着写好的系统提示词，可以交给任意一个 Agent 处理。
 
-- **选 Agent**：开始对话前选交给谁处理，只列电脑上已安装的。对话中随时可以改参数，或换另一个 Agent 用同样的设置重新开一个会话，还能把刚才的输入带过去。
-- **参数**：翻译有目标语言、翻译风格、是否保留格式、术语表；OCR 有识别语言、输出格式、是否保留排版、同时翻译成什么语言。参数会填进提示词里，每一轮对话电脑端都把这段提示词放在你的输入前面一起交给 Agent。
+内置翻译、OCR 识别、润色改写、总结提炼、代码审查、提示词优化六个，也可以自己新建。
+
+- **选 Agent**：开始对话前选交给谁处理，只列电脑上已安装的。
+- **参数**：参数会填进提示词里，每一轮对话电脑端都把这段提示词放在你的输入前面一起交给 Agent。
 - **OCR 用法**：在对话里发图片或扫描件，Agent 会读取文件并只输出识别结果。
 
 ### 10、收藏夹、剪切板、提示词
@@ -223,49 +119,108 @@ sequenceDiagram
 - **剪切板**：手机和电脑之间中转文字、图片和文件（单个不超过 25 MB），保留最近 200 条，置顶的不清理。电脑端可以直接粘贴图片或拖入文件。
 - **提示词**：存常用提示词并分类；聊天时在「+」面板里点「提示词」就能放进输入框。
 
-### 11、界面风格、头像和看图
+### 11、界面风格、头像
 
-- **八套风格**：微信、Codex、QQ、Claude、冰川玻璃、极光、新粗野、纸刊，各有浅色和深色；在「我 → 外观」（电脑端「设置 → 外观」）里切换，每套风格不只换颜色，圆角、头像形状、气泡、卡片、底栏都跟着变。
-- **头像**：我自己和每个 AI 都能单独设置头像。内置 Claude、Codex、OpenAI、Gemini、DeepSeek、Pi 的官方标志（取自 [LobeHub Icons](https://github.com/lobehub/lobe-icons)，MIT 许可），也可以用相册里的图片。
-- **看图**：关闭、分享、下载在右上角；双指捏合、双击、底部的放大缩小按钮都能缩放（10% 到 800%），放大后拖动平移，没放大时左右滑动切换同目录的图片。电脑端看图窗口同样支持滚轮、双击和按钮缩放。
+- **主题风格**：微信、Codex、QQ、Claude、冰川玻璃、极光、新粗野、纸刊，各有浅色和深色；
+- **头像**：我自己和每个 AI 都能单独设置头像。
 
 
 
 ## 三、效果展示
 
-截图用的是演示数据，供应商名称和 IP 地址已脱敏。
+截图用的是演示数据，供应商名称、IP 地址和电脑名已脱敏或替换。所有截图使用 Claude 风格的深色主题。
 
-### 1、新建会话
+### 1、消息与会话
 
-右上角加号和微信一样弹出菜单：新建各工具的会话、免审批会话、终端，接着电脑上的会话，或扫码配对。
+右上角加号和微信一样弹出菜单：新建各工具的会话、免审批会话、终端，接着电脑上的会话、截取电脑屏幕，或扫码配对。
 
-<img src="assets/phone-new-menu.webp" width="240" alt="右上角加号菜单">
+<img src="assets/phone-sessions.webp" width="240" alt="会话列表"> <img src="assets/phone-new-menu.webp" width="240" alt="右上角加号菜单"> <img src="assets/phone-chat.webp" width="240" alt="聊天、本轮改动与审批">
 
-### 2、聊天和审批
+聊天输入栏的「+」面板放着相册、拍照、文件、提示词、模型与供应商、Skills 等入口；输入斜杠就列出可用的指令。
 
-<img src="assets/phone-mermaid.webp" width="240" alt="聊天里的 Mermaid 图表"> <img src="assets/phone-diff.webp" width="240" alt="逐行差异"> <img src="assets/phone-settings.webp" width="240" alt="会话设置">
+<img src="assets/phone-chat-panel.webp" width="240" alt="聊天输入面板"> <img src="assets/phone-chat-slash.webp" width="240" alt="斜杠指令"> <img src="assets/phone-diff.webp" width="240" alt="逐行差异">
 
-### 3、模型供应商
+每个会话可以单独设置名称、提醒、模型、供应商、Skills 和工作目录。
 
-<img src="assets/phone-provider.webp" width="240" alt="按会话切换供应商">
+<img src="assets/phone-settings.webp" width="240" alt="会话设置"> <img src="assets/phone-provider.webp" width="240" alt="按会话切换供应商"> <img src="assets/phone-skills.webp" width="240" alt="Skills">
 
-### 4、文件
+### 2、通讯录与预设助手
 
-<img src="assets/phone-files.webp" width="240" alt="工作区文件"> <img src="assets/phone-pc.webp" width="240" alt="此电脑"> <img src="assets/phone-me.webp" width="240" alt="我">
+通讯录里是电脑上已安装的 AI 好友和内置的预设助手。选好交给哪个 Agent、填好参数就能开始对话，提示词也可以修改和恢复默认。
 
-### 5、文档
+<img src="assets/phone-contacts.webp" width="240" alt="通讯录"> <img src="assets/phone-preset.webp" width="240" alt="翻译助手的参数与系统提示词"> <img src="assets/phone-preset-chat.webp" width="240" alt="预设助手对话">
 
-<img src="assets/phone-md.webp" width="240" alt="Markdown 阅读"> <img src="assets/phone-md-outline.webp" width="240" alt="Markdown 大纲"> <img src="assets/phone-pptx.webp" width="240" alt="PPT 预览"> <img src="assets/phone-docx.webp" width="240" alt="Word 预览">
+### 3、发现
 
-### 6、连接
+文件、传输、剪切板、收藏夹、提示词和截取电脑屏幕都收在「发现」里。
 
-<img src="assets/phone-remote.webp" width="240" alt="异地连接">
+<img src="assets/phone-discover.webp" width="240" alt="发现"> <img src="assets/phone-files.webp" width="240" alt="工作区文件"> <img src="assets/phone-file-menu.webp" width="240" alt="文件长按菜单">
+
+<img src="assets/phone-transfer.webp" width="240" alt="传输任务"> <img src="assets/phone-clip.webp" width="240" alt="剪切板"> <img src="assets/phone-fav.webp" width="240" alt="收藏夹">
+
+<img src="assets/phone-prompt.webp" width="240" alt="提示词"> 
+
+### 4、文档
+
+ <img src="assets/phone-docx.webp" width="240" alt="Word 预览"> <img src="assets/phone-xlsx.webp" width="240" alt="Excel 预览">
+
+<img src="assets/phone-md.webp" width="240" alt="Markdown 阅读"> <img src="assets/phone-md-outline.webp" width="240" alt="Markdown 大纲">
+
+### 5、连接与设置
+
+<img src="assets/phone-me.webp" width="240" alt="我"> <img src="assets/phone-computers.webp" width="240" alt="已配对的电脑"> <img src="assets/phone-remote.webp" width="240" alt="异地连接">
+
+<img src="assets/phone-security.webp" width="240" alt="安全设置"> <img src="assets/phone-transfer-settings.webp" width="240" alt="传输设置"> <img src="assets/phone-terminal.webp" width="240" alt="终端">
+
+<img src="assets/phone-mermaid.webp" width="240" alt="聊天里的 Mermaid 图表">
+
+### 6、外观与主题
+
+八套风格在「我 → 外观」里切换，下面是风格选择页。
+
+<img src="assets/phone-appearance.webp" width="240" alt="外观：界面风格">
 
 ### 7、电脑端
 
-<img src="assets/desktop-chat.webp" width="800" alt="电脑端聊天与斜杠指令">
+电脑端的聊天、Mermaid 图表和「+」新建菜单（预设助手收在二级菜单里）：
+
+<img src="assets/desktop-chat.webp" width="800" alt="电脑端聊天">
 
 <img src="assets/desktop-mermaid.webp" width="800" alt="电脑端 Mermaid 图表">
+
+<img src="assets/desktop-new-menu.webp" width="800" alt="电脑端新建菜单">
+
+通讯录、预设助手和工具箱（剪切板、收藏夹、提示词、工作区）：
+
+<img src="assets/desktop-preset.webp" width="800" alt="电脑端预设助手">
+
+<img src="assets/desktop-clip.webp" width="800" alt="电脑端剪切板">
+
+<img src="assets/desktop-fav.webp" width="800" alt="电脑端收藏夹">
+
+<img src="assets/desktop-prompt.webp" width="800" alt="电脑端提示词">
+
+<img src="assets/desktop-workspace.webp" width="800" alt="电脑端工作区文件">
+
+工作区里的文件和文件夹用右键菜单操作，终端在电脑上直接用：
+
+<img src="assets/desktop-file-menu.webp" width="800" alt="电脑端文件右键菜单">
+
+<img src="assets/desktop-terminal.webp" width="800" alt="电脑端终端">
+
+### 8、电脑端设置
+
+<img src="assets/desktop-settings-overview.webp" width="800" alt="设置：概览">
+
+<img src="assets/desktop-settings-permissions.webp" width="800" alt="设置：权限">
+
+<img src="assets/desktop-settings-pair.webp" width="800" alt="设置：配对">
+
+<img src="assets/desktop-settings-transfer.webp" width="800" alt="设置：传输">
+
+<img src="assets/desktop-settings-security.webp" width="800" alt="设置：安全">
+
+<img src="assets/desktop-settings-appearance.webp" width="800" alt="设置：外观与主题">
 
 
 
@@ -296,28 +251,30 @@ scripts/build-apk.sh
 
 1. 电脑上打开 PocketDesk，点「配对新手机」，屏幕上出现二维码。
 2. 手机打开 App，扫码，回到电脑上点「允许」。
-3. 在手机的消息页点右上角加号，新建 Claude Code、Codex、Pi 或 DSH 会话，选好工作目录就能开始聊。电脑端左侧列表的加号菜单和手机一样完整：文件传输助手、接着电脑上的会话、各个 Agent、免审批会话、终端（电脑端直接打开终端窗口）、预设助手、截取电脑屏幕、配对新手机；工作目录可以选已有工作区，也可以选电脑上任意文件夹。
 
-想在外面用，就在电脑上装 [Tailscale for Mac](https://tailscale.com/download/mac)、手机上装 [tailscale-android](https://github.com/tailscale/tailscale-android)，登录同一个账号，详见「一、工作原理 → 2、远程连接」。
-
-电脑端也可以用命令行：
-
-```text
-pocketdesk serve                 启动电脑端服务
-pocketdesk app                   打开桌面应用窗口
-pocketdesk pair                  在终端显示配对二维码
-pocketdesk send <文件...>        把文件发给手机
-pocketdesk install / uninstall   开机自动启动 / 取消
-```
+想在外面用，就在电脑上装 [Tailscale for Mac](https://tailscale.com/download/mac)、手机上装 [tailscale-android](https://github.com/tailscale/tailscale-android)，登录同一个账号即可。
 
 
 
-## 五、社区友链
+## 五、注意点
+
+如果电脑上用 Clash Verge 的 TUN 模式，让 AI 编程工具经住宅代理出去，**注意关掉电脑上 Tailscale 的「Use Tailscale DNS settings」**。不关的话，DNS 查询和一部分流量会绕开 Clash，跑出住宅代理的范围，暴露你真实的网络位置。
+
+**怎么关**：
+
+| 位置     | 操作                                                         |
+| -------- | ------------------------------------------------------------ |
+| Mac 电脑 | 点菜单栏的 Tailscale 图标，在菜单里取消勾选「Use Tailscale DNS settings」；装了命令行工具的也可以执行 `tailscale set --accept-dns=false` |
+| 安卓手机 | 手机上一般不同时跑 Clash，可以不改；如果手机也要经代理出去，在 Tailscale 设置里同样关掉「Use Tailscale DNS」 |
+
+
+
+## 六、社区友链
 
 [LINUX DO](https://linux.do/)：一个关注开发者、开源项目与 AI 工具交流的社区。感谢社区佬友对开源工具和 Agent 工作流的讨论与反馈。
 
 
 
-## 六、许可
+## 七、许可
 
 MIT 协议，见 [LICENSE](LICENSE)。
