@@ -3,26 +3,30 @@
  */
 library;
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'backdrop.dart';
+import 'styles.dart';
 import 'tokens.dart';
 
 /**
  * buildTheme：生成主题
  *
  * 处理流程：
- * 1、配色方案取自 PdColors
+ * 1、配色方案取自所选风格的浅色或深色配色
  * 2、去掉水波纹，按压使用浅灰底色，贴近原生列表手感
- * 3、统一各控件的颜色与形状
+ * 3、统一各控件的颜色与形状，圆角、标题字体、页面背景跟随风格
  */
-ThemeData buildTheme(Brightness b) {
-  final c = b == Brightness.dark ? PdColors.dark : PdColors.light;
+ThemeData buildTheme(Brightness b, [PdThemeSpec? spec]) {
+  final look = (spec ?? PdThemes.wechat).look(b);
+  final c = look.colors;
+  final st = look.style;
   // 1、配色
+  final onAccent = c.accent.computeLuminance() > 0.5 ? const Color(0xFF111111) : Colors.white;
   final scheme = ColorScheme.fromSeed(seedColor: c.accent, brightness: b).copyWith(
     primary: c.accent,
-    onPrimary: Colors.white,
+    onPrimary: onAccent,
     surface: c.card,
     onSurface: c.text,
     surfaceContainerHighest: c.input,
@@ -30,10 +34,13 @@ ThemeData buildTheme(Brightness b) {
     outline: c.divider,
     outlineVariant: c.divider,
   );
-  final overlay = b == Brightness.dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark;
+  final barDark = ThemeData.estimateBrightnessForColor(c.topBar) == Brightness.dark;
+  final overlay = barDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark;
   final base = Typography.material2021(platform: TargetPlatform.android).black.apply(bodyColor: c.text, displayColor: c.text);
   // 控件文字都从基础文字样式派生，保证字体一致
   TextStyle t(double size, Color color, [FontWeight? w]) => base.bodyMedium!.copyWith(fontSize: size, color: color, fontWeight: w, height: null);
+  // 标题类文字：衬线风格换字体，其余沿用默认字体
+  TextStyle head(double size, Color color) => t(size, color, st.titleWeight).copyWith(fontFamilyFallback: st.titleFont, fontFamily: st.titleFont?.first);
   final textTheme = base.copyWith(
     bodyLarge: t(PdFont.body, c.text),
     bodyMedium: t(PdFont.item, c.text),
@@ -43,38 +50,38 @@ ThemeData buildTheme(Brightness b) {
     useMaterial3: true,
     brightness: b,
     colorScheme: scheme,
-    scaffoldBackgroundColor: c.page,
+    scaffoldBackgroundColor: st.backdrop == PdBackdropKind.none ? c.page : Colors.transparent,
     canvasColor: c.page,
     dividerColor: c.divider,
     // 2、按压反馈
     splashFactory: NoSplash.splashFactory,
     highlightColor: c.pressed,
     hoverColor: Colors.transparent,
-    extensions: [c],
+    extensions: [c, st],
     // 3、控件
     appBarTheme: AppBarTheme(
-      backgroundColor: c.bar,
-      foregroundColor: c.text,
+      backgroundColor: c.topBar,
+      foregroundColor: c.onBar,
       elevation: 0,
       scrolledUnderElevation: 0,
-      centerTitle: true,
+      centerTitle: !st.titleLeft,
       toolbarHeight: PdSize.topBar,
       systemOverlayStyle: overlay,
-      titleTextStyle: t(PdFont.title, c.text, FontWeight.w600),
+      titleTextStyle: head(PdFont.title, c.onBar),
     ),
     textTheme: textTheme,
     dividerTheme: DividerThemeData(color: c.divider, thickness: PdSize.divider, space: PdSize.divider),
     dialogTheme: DialogThemeData(
       backgroundColor: c.card,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(PdSize.cardRadius)),
-      titleTextStyle: t(PdFont.title, c.text, FontWeight.w600),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(st.cardRadius), side: st.outline > 0 ? BorderSide(color: st.outlineColor ?? c.divider, width: st.outline) : BorderSide.none),
+      titleTextStyle: head(PdFont.title, c.text),
       contentTextStyle: t(PdFont.item, c.text2).copyWith(height: 1.5),
     ),
     bottomSheetTheme: BottomSheetThemeData(
       backgroundColor: c.card,
       surfaceTintColor: Colors.transparent,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(PdSize.cardRadius))),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(st.cardRadius)), side: st.outline > 0 ? BorderSide(color: st.outlineColor ?? c.divider, width: st.outline) : BorderSide.none),
       showDragHandle: false,
     ),
     popupMenuTheme: PopupMenuThemeData(
@@ -83,13 +90,13 @@ ThemeData buildTheme(Brightness b) {
       color: c.menu,
       surfaceTintColor: Colors.transparent,
       textStyle: t(PdFont.item, Colors.white),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(PdSize.smallRadius)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(st.smallRadius)),
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
       backgroundColor: c.toast,
       contentTextStyle: t(14, Colors.white),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(PdSize.smallRadius)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(st.smallRadius)),
     ),
     inputDecorationTheme: InputDecorationTheme(
       isDense: true,
@@ -97,7 +104,7 @@ ThemeData buildTheme(Brightness b) {
       fillColor: c.card,
       hintStyle: t(PdFont.item, c.text4),
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(PdSize.smallRadius), borderSide: BorderSide.none),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(st.smallRadius), borderSide: BorderSide.none),
     ),
     switchTheme: SwitchThemeData(
       thumbColor: const WidgetStatePropertyAll(Colors.white),
@@ -109,17 +116,17 @@ ThemeData buildTheme(Brightness b) {
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: c.accent,
-        foregroundColor: Colors.white,
+        foregroundColor: onAccent,
         minimumSize: const Size(0, PdSize.touch),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(PdSize.smallRadius)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(st.smallRadius), side: st.shadow == PdShadowKind.hard ? BorderSide(color: st.outlineColor ?? c.divider, width: st.outline) : BorderSide.none),
         textStyle: t(PdFont.item, Colors.white, FontWeight.w500),
       ),
     ),
     textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(foregroundColor: c.accent, textStyle: t(PdFont.item, c.accent))),
     outlinedButtonTheme: OutlinedButtonThemeData(style: OutlinedButton.styleFrom(textStyle: t(PdFont.item, c.text2))),
-    pageTransitionsTheme: const PageTransitionsTheme(builders: {
-      TargetPlatform.android: CupertinoPageTransitionsBuilder(),
-      TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+    pageTransitionsTheme: PageTransitionsTheme(builders: {
+      TargetPlatform.android: PdPageTransitions(st, c),
+      TargetPlatform.iOS: PdPageTransitions(st, c),
     }),
   );
 }

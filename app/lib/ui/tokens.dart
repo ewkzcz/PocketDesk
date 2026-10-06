@@ -39,6 +39,8 @@ class PdColors extends ThemeExtension<PdColors> {
     required this.field,
     required this.menu,
     required this.toast,
+    required this.onBar,
+    required this.topBar,
   });
 
   final Color accent;
@@ -82,6 +84,12 @@ class PdColors extends ThemeExtension<PdColors> {
   /** 轻提示底色 */
   final Color toast;
 
+  /** 顶栏上的文字与图标颜色（顶栏用强调色底时为白色） */
+  final Color onBar;
+
+  /** 页面顶栏底色（底栏、输入栏等其他条形区域用 bar） */
+  final Color topBar;
+
   /** 浅色：页面 #F2F2F7、卡片 #FFFFFF、我方气泡 #95EC69 */
   static const light = PdColors(
     accent: Color(0xFF07C160),
@@ -114,6 +122,8 @@ class PdColors extends ThemeExtension<PdColors> {
     field: Color(0xFFFFFFFF),
     menu: Color(0xFF4C4C4C),
     toast: Color(0xE6333333),
+    onBar: Color(0xFF000000),
+    topBar: Color(0xFFF7F7FA),
   );
 
   /** 深色：页面 #0E0E10、卡片 #1C1C1E、我方气泡 #34C368 */
@@ -148,6 +158,8 @@ class PdColors extends ThemeExtension<PdColors> {
     field: Color(0xFF2C2C2E),
     menu: Color(0xFF2C2C2E),
     toast: Color(0xFF2C2C2E),
+    onBar: Color(0xFFEDEDF0),
+    topBar: Color(0xFF1C1C1E),
   );
 
   @override
@@ -188,6 +200,8 @@ class PdColors extends ThemeExtension<PdColors> {
       field: l(field, other.field),
       menu: l(menu, other.menu),
       toast: l(toast, other.toast),
+      onBar: l(onBar, other.onBar),
+      topBar: l(topBar, other.topBar),
     );
   }
 }
@@ -228,15 +242,12 @@ abstract final class PdFont {
 
 /** PdAgent：Agent 头像与标识 */
 class PdAgent {
-  const PdAgent(this.label, this.short, this.color, {this.icon, this.portrait});
+  const PdAgent(this.label, this.short, this.color, {this.icon});
 
   final String label;
   final String short;
   final Color color;
   final IconData? icon;
-
-  /** 形象头像图片（有则优先显示） */
-  final String? portrait;
 }
 
 /** PdMotion：动效时长与曲线（临界阻尼，无回弹） */
@@ -260,6 +271,23 @@ abstract final class PdFileColors {
   static const Color word = Color(0xFF2B6CDF);
   static const Color excel = Color(0xFF1D9A5B);
   static const Color slides = Color(0xFFE2572B);
+}
+
+/** PdTint：入口图标的底色（浅色深色通用） */
+abstract final class PdTint {
+  static const Color files = Color(0xFF3B82F6);
+  static const Color transfer = Color(0xFF10B981);
+  static const Color clipboard = Color(0xFF8B5CF6);
+  static const Color favorites = Color(0xFFF59E0B);
+  static const Color prompts = Color(0xFFEC4899);
+  static const Color screen = Color(0xFF64748B);
+  static const Color workspace = Color(0xFF0EA5E9);
+  static const Color remote = Color(0xFF6366F1);
+  static const Color phone = Color(0xFF14B8A6);
+  static const Color security = Color(0xFFEF4444);
+  static const Color look = Color(0xFFF97316);
+  static const Color logs = Color(0xFF78716C);
+  static const Color about = Color(0xFF3B82F6);
 }
 
 /** PdAgentColors：各类会话头像底色（浅色深色通用） */
