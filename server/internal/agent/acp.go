@@ -99,7 +99,7 @@ func (d ACPDriver) Start(ctx context.Context, opt Options) (Process, error) {
 		a.mu.Lock()
 		a.loading = true
 		a.mu.Unlock()
-		err := a.call(hctx, "session/load", map[string]any{"sessionId": opt.ResumeID, "cwd": opt.Cwd, "mcpServers": []any{}}, &ns)
+		err := a.call(hctx, "session/load", map[string]any{"sessionId": opt.ResumeID, "cwd": opt.Cwd, "mcpServers": acpMCPServers(opt)}, &ns)
 		a.mu.Lock()
 		a.loading = false
 		a.mu.Unlock()
@@ -108,7 +108,7 @@ func (d ACPDriver) Start(ctx context.Context, opt Options) (Process, error) {
 		}
 	}
 	if ns.SessionID == "" {
-		if err := a.call(hctx, "session/new", map[string]any{"cwd": opt.Cwd, "mcpServers": []any{}}, &ns); err != nil {
+		if err := a.call(hctx, "session/new", map[string]any{"cwd": opt.Cwd, "mcpServers": acpMCPServers(opt)}, &ns); err != nil {
 			p.Close()
 			return nil, fmt.Errorf("创建会话失败: %w", err)
 		}
@@ -118,6 +118,14 @@ func (d ACPDriver) Start(ctx context.Context, opt Options) (Process, error) {
 	model := a.selectModel(hctx, d.Name, ns.ConfigOptions)
 	p.emit(ev(EvSessionID, "id", a.sessionID, "model", model))
 	return a, nil
+}
+
+/** acpMCPServers：会话挂上的 MCP 服务，只有 PocketDesk 工具 */
+func acpMCPServers(opt Options) []any {
+	if len(opt.ToolsCmd) == 0 {
+		return []any{}
+	}
+	return []any{map[string]any{"name": "pocketdesk", "command": opt.ToolsCmd[0], "args": opt.ToolsCmd[1:], "env": []any{}}}
 }
 
 /**

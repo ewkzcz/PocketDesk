@@ -139,9 +139,14 @@ func New(opt Options) (*App, error) {
 			n := cfg.Get().Notify
 			return notify.New(notify.Config{Kind: n.Kind, URL: n.URL, Topic: n.Topic}, nil)
 		},
-		ApproveCmd: func(sid string) []string {
-			return []string{opt.Executable, "mcp-approve", "--data", opt.DataDir, "--session", sid}
+		ToolsCmd: func(sid, cwd string, approve bool) []string {
+			cmd := []string{opt.Executable, "mcp", "--data", opt.DataDir, "--session", sid, "--cwd", cwd}
+			if approve {
+				cmd = append(cmd, "--approve")
+			}
+			return cmd
 		},
+		SendCmd:   []string{opt.Executable, "send", "--data", opt.DataDir},
 		Providers: ccProviders{},
 	})
 	a.Terms = terminal.New(terminal.Deps{

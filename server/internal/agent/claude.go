@@ -17,6 +17,9 @@ import (
 /** approveToolName：Claude 调用的审批工具全名 */
 const approveToolName = "mcp__pocketdesk__approve"
 
+/** sendToolName：Claude 调用的发到手机工具全名 */
+const sendToolName = "mcp__pocketdesk__" + SendToolName
+
 /** writeTools：会修改文件的工具，用于非 git 目录生成改动清单 */
 var writeTools = map[string]bool{"Write": true, "Edit": true, "MultiEdit": true, "NotebookEdit": true}
 
@@ -32,7 +35,8 @@ func (ClaudeDriver) Kind() string { return KindClaude }
  * 处理流程：
  * 1、固定使用 stream-json 输入输出与增量消息
  * 2、按需追加模型、续聊与附加设置参数
- * 3、免审批时跳过全部权限确认；否则配置了审批命令时挂上 MCP 审批工具
+ * 3、挂上 PocketDesk MCP 工具，发到手机工具直接放行
+ * 4、免审批时跳过全部权限确认；否则用 MCP 审批工具向手机请求确认
  */
 func ClaudeArgs(opt Options) []string {
 	// 1、基础参数
@@ -48,14 +52,18 @@ func ClaudeArgs(opt Options) []string {
 	if opt.settingsPath != "" {
 		args = append(args, "--settings", opt.settingsPath)
 	}
-	// 3、审批
+	// 3、MCP 工具
+	if len(opt.ToolsCmd) > 0 {
+		cfg := map[string]any{"mcpServers": map[string]any{"pocketdesk": map[string]any{"command": opt.ToolsCmd[0], "args": opt.ToolsCmd[1:]}}}
+		b, _ := json.Marshal(cfg)
+		args = append(args, "--mcp-config", string(b), "--allowedTools", sendToolName)
+	}
+	// 4、审批
 	if opt.AutoApprove {
 		return append(args, "--dangerously-skip-permissions")
 	}
-	if len(opt.ApproveCmd) > 0 {
-		cfg := map[string]any{"mcpServers": map[string]any{"pocketdesk": map[string]any{"command": opt.ApproveCmd[0], "args": opt.ApproveCmd[1:]}}}
-		b, _ := json.Marshal(cfg)
-		args = append(args, "--mcp-config", string(b), "--permission-prompt-tool", approveToolName)
+	if len(opt.ToolsCmd) > 0 {
+		args = append(args, "--permission-prompt-tool", approveToolName)
 	}
 	return args
 }

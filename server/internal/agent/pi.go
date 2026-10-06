@@ -19,23 +19,27 @@ import (
 //go:embed pi_approve.ts
 var piApproveExt []byte
 
+/** piSendExt：发到手机扩展源码 */
+//go:embed pi_send.ts
+var piSendExt []byte
+
 /** piApprovalTitle：审批扩展发起选择请求时的标题前缀，后接 JSON 内容 */
 const piApprovalTitle = "pocketdesk:approval "
 
-/** piExtensionPath：把审批扩展写到缓存目录，内容不变时不重写 */
-func piExtensionPath() (string, error) {
+/** piExtensionPath：把扩展写到缓存目录，内容不变时不重写 */
+func piExtensionPath(name string, src []byte) (string, error) {
 	dir, err := os.UserCacheDir()
 	if err != nil {
 		dir = os.TempDir()
 	}
-	p := filepath.Join(dir, "PocketDesk", "pi-approve.ts")
-	if old, err := os.ReadFile(p); err == nil && bytes.Equal(old, piApproveExt) {
+	p := filepath.Join(dir, "PocketDesk", name)
+	if old, err := os.ReadFile(p); err == nil && bytes.Equal(old, src) {
 		return p, nil
 	}
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return "", err
 	}
-	return p, os.WriteFile(p, piApproveExt, 0o644)
+	return p, os.WriteFile(p, src, 0o644)
 }
 
 /** PiDriver：Pi 接入 */
@@ -68,17 +72,27 @@ func (PiDriver) Start(_ context.Context, opt Options) (Process, error) {
 	if len(opt.Command) == 0 {
 		opt.Command = []string{"pi"}
 	}
-	// 1、启动；有审批方时加载审批扩展
+	// 1、启动；有审批方时加载审批扩展，有发送命令时加载发到手机扩展
 	args := PiArgs(opt)
+	env := append(EnvPath(), opt.Env...)
 	if opt.Approver != nil && !opt.AutoApprove {
-		ext, err := piExtensionPath()
+		ext, err := piExtensionPath("pi-approve.ts", piApproveExt)
 		if err != nil {
 			return nil, fmt.Errorf("准备审批扩展失败: %w", err)
 		}
 		args = append(args, "-e", ext)
 	}
+	if len(opt.SendCmd) > 0 {
+		ext, err := piExtensionPath("pi-send.ts", piSendExt)
+		if err != nil {
+			return nil, fmt.Errorf("准备发到手机扩展失败: %w", err)
+		}
+		cmd, _ := json.Marshal(opt.SendCmd)
+		args = append(args, "-e", ext)
+		env = append(env, "POCKETDESK_SEND_CMD="+string(cmd), "POCKETDESK_SEND_DESC="+SendToolDesc, "POCKETDESK_SEND_PATHS_DESC="+SendPathsDesc)
+	}
 	parser := &piParser{}
-	p, err := startLineProc(args, opt.Cwd, append(EnvPath(), opt.Env...), func(lp *lineProc, line []byte) {
+	p, err := startLineProc(args, opt.Cwd, env, func(lp *lineProc, line []byte) {
 		if bytes.Contains(line, []byte(`"extension_ui_request"`)) {
 			piUIRequest(lp, opt.Approver, line)
 			return

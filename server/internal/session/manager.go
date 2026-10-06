@@ -56,12 +56,15 @@ var (
 
 /** Deps：管理器依赖 */
 type Deps struct {
-	Store      *store.Store
-	Hub        *hub.Hub
-	Registry   *agent.Registry
-	Config     func() config.Config
-	Notifier   func() notify.Notifier
-	ApproveCmd func(sessionID string) []string
+	Store    *store.Store
+	Hub      *hub.Hub
+	Registry *agent.Registry
+	Config   func() config.Config
+	Notifier func() notify.Notifier
+	// ToolsCmd：PocketDesk MCP 工具的启动命令；approve 为真时含审批工具
+	ToolsCmd func(sessionID, cwd string, approve bool) []string
+	// SendCmd：把文件发到手机的命令前缀，后接绝对路径
+	SendCmd []string
 	// Providers：模型供应商（CC Switch），为空时不支持切换供应商
 	Providers Providers
 	// Home：Agent 会话记录所在的用户主目录，测试时替换
@@ -409,9 +412,10 @@ func (m *Manager) startProc(ctx context.Context, rt *runtime, kind, cwd, resume,
 			opt.Model = l.Model
 		}
 	}
-	if kind == agent.KindClaude && m.d.ApproveCmd != nil && !rt.sess.AutoApprove {
-		opt.ApproveCmd = m.d.ApproveCmd(rt.id)
+	if m.d.ToolsCmd != nil {
+		opt.ToolsCmd = m.d.ToolsCmd(rt.id, cwd, kind == agent.KindClaude && !rt.sess.AutoApprove)
 	}
+	opt.SendCmd = m.d.SendCmd
 	p, err := d.Start(ctx, opt)
 	if err != nil {
 		return nil, err

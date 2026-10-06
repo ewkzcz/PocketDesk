@@ -76,13 +76,16 @@ type Message struct {
 
 /** Options：启动一个 Agent 进程所需参数 */
 type Options struct {
-	Cwd        string
-	Model      string
-	ResumeID   string
-	Approver   Approver
-	Command    []string
-	Env        []string
-	ApproveCmd []string
+	Cwd      string
+	Model    string
+	ResumeID string
+	Approver Approver
+	Command  []string
+	Env      []string
+	// ToolsCmd：PocketDesk MCP 工具的启动命令（发到手机，审批会话另含审批工具），Claude、Codex、DSH 使用
+	ToolsCmd []string
+	// SendCmd：把文件发到手机的命令前缀，后接绝对路径；Pi 不支持 MCP，由扩展调用它
+	SendCmd []string
 	// AutoApprove：免审批，所有操作直接放行（Claude Code 跳过权限确认，Codex 不审批不进沙箱）
 	AutoApprove bool
 	// Settings：Claude Code 的附加设置（JSON，如切换供应商），写入临时文件后以 --settings 传入

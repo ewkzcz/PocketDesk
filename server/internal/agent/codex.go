@@ -46,11 +46,26 @@ func (CodexDriver) Start(ctx context.Context, opt Options) (Process, error) {
 	return &codexProc{opt: opt, threadID: opt.ResumeID, events: make(chan Event, 256), done: make(chan struct{})}, nil
 }
 
+/** codexConfig：-c 覆盖项，再挂上 PocketDesk MCP 工具，发到手机工具不再询问 */
+func codexConfig(opt Options) []string {
+	out := append([]string{}, opt.Config...)
+	if len(opt.ToolsCmd) == 0 {
+		return out
+	}
+	cmd, _ := json.Marshal(opt.ToolsCmd[0])
+	args, _ := json.Marshal(opt.ToolsCmd[1:])
+	return append(out,
+		"mcp_servers.pocketdesk.command="+string(cmd),
+		"mcp_servers.pocketdesk.args="+string(args),
+		"mcp_servers.pocketdesk.tools."+SendToolName+".approval_mode=\"approve\"",
+	)
+}
+
 /**
  * CodexArgs：组装一轮的参数
  *
  * 处理流程：
- * 1、exec --json，跳过 git 检查，沙箱为工作区可写
+ * 1、-c 覆盖项与 PocketDesk MCP 工具，exec --json，跳过 git 检查，沙箱为工作区可写
  * 2、按需追加模型
  * 3、有线程 ID 时走 resume 子命令
  * 4、提示词从标准输入读取
@@ -58,7 +73,7 @@ func (CodexDriver) Start(ctx context.Context, opt Options) (Process, error) {
 func CodexArgs(opt Options, threadID string) []string {
 	// 1、基础
 	args := append([]string{}, opt.Command...)
-	for _, kv := range opt.Config {
+	for _, kv := range codexConfig(opt) {
 		args = append(args, "-c", kv)
 	}
 	args = append(args, "exec", "--json", "--skip-git-repo-check")

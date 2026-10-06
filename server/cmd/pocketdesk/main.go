@@ -1,6 +1,6 @@
 /**
  * 电脑端入口：serve 常驻服务，app 打开桌面应用窗口，open 打开设置或配对窗口，pair 在终端显示配对二维码，send 把文件发给手机，
- * install / uninstall 管理开机自启，mcp-approve 为 Claude Code 提供审批工具。
+ * install / uninstall 管理开机自启，mcp 为 Agent 提供发到手机与审批工具。
  */
 package main
 
@@ -92,8 +92,8 @@ func main() {
 		if err == nil {
 			fmt.Println("已取消开机自动启动")
 		}
-	case "mcp-approve":
-		err = mcpApprove(args)
+	case "mcp":
+		err = mcpTools(args)
 	case "version", "--version", "-v":
 		fmt.Println("PocketDesk " + version)
 	case "help", "-h", "--help":
@@ -262,13 +262,17 @@ func pairCLI(dataDir string) error {
 	return nil
 }
 
-/** sendCLI：pocketdesk send a.pdf b.png --to 我的手机 */
+/** sendCLI：pocketdesk send a.pdf b.png --to 我的手机；--data 指定数据目录（由服务传给 Agent 时使用） */
 func sendCLI(dataDir string, args []string) error {
 	var paths []string
 	to := ""
 	for i := 0; i < len(args); i++ {
-		if args[i] == "--to" && i+1 < len(args) {
-			to = args[i+1]
+		if (args[i] == "--to" || args[i] == "--data") && i+1 < len(args) {
+			if args[i] == "--to" {
+				to = args[i+1]
+			} else {
+				dataDir = args[i+1]
+			}
 			i++
 			continue
 		}
@@ -278,38 +282,74 @@ func sendCLI(dataDir string, args []string) error {
 		}
 		paths = append(paths, abs)
 	}
+	names, err := sendFiles(dataDir, paths, to)
+	if err != nil {
+		return err
+	}
+	for _, n := range names {
+		fmt.Println("已加入发送队列：" + n)
+	}
+	return nil
+}
+
+/** sendFiles：把绝对路径的文件交给电脑端服务发往手机，返回加入队列的文件名 */
+func sendFiles(dataDir string, paths []string, to string) ([]string, error) {
 	if len(paths) == 0 {
-		return errors.New("请指定要发送的文件")
+		return nil, errors.New("请指定要发送的文件")
 	}
 	var sent []struct {
 		Name string `json:"name"`
 	}
 	if err := adminCall(dataDir, "POST", "/admin/api/send", map[string]any{"paths": paths, "to": to}, &sent); err != nil {
-		return err
+		return nil, err
 	}
-	for _, s := range sent {
-		fmt.Println("已加入发送队列：" + s.Name)
+	names := make([]string, len(sent))
+	for i, s := range sent {
+		names[i] = s.Name
 	}
-	return nil
+	return names, nil
 }
 
 /**
- * mcpApprove：Claude Code 的审批工具，读取本机密钥后把请求转给电脑端服务
+ * mcpTools：Agent 使用的 PocketDesk MCP 工具
+ *
+ * 处理流程：
+ * 1、读取数据目录、会话、工作目录参数
+ * 2、发到手机：相对路径按会话工作目录解析后交给电脑端服务
+ * 3、带 --approve 时同时提供 Claude Code 的审批工具，读取本机密钥后把请求转给电脑端服务
  */
-func mcpApprove(args []string) error {
-	fs := flag.NewFlagSet("mcp-approve", flag.ExitOnError)
+func mcpTools(args []string) error {
+	// 1、参数
+	fs := flag.NewFlagSet("mcp", flag.ExitOnError)
 	data := fs.String("data", "", "数据目录")
 	sid := fs.String("session", "", "会话 ID")
+	cwd := fs.String("cwd", "", "会话工作目录")
+	approve := fs.Bool("approve", false, "提供审批工具")
 	fs.Parse(args)
 	dataDir := *data
 	if dataDir == "" {
 		dataDir, _ = config.DefaultDataDir()
 	}
-	base, key, err := adminBase(dataDir)
-	if err != nil {
-		return err
+	// 2、发到手机
+	tools := agent.MCPTools{Send: func(_ context.Context, paths []string) ([]string, error) {
+		abs := make([]string, len(paths))
+		for i, p := range paths {
+			if !filepath.IsAbs(p) && *cwd != "" {
+				p = filepath.Join(*cwd, p)
+			}
+			abs[i] = filepath.Clean(p)
+		}
+		return sendFiles(dataDir, abs, "")
+	}}
+	// 3、审批
+	if *approve {
+		base, key, err := adminBase(dataDir)
+		if err != nil {
+			return err
+		}
+		tools.Approve = func(ctx context.Context, tool string, input map[string]any) (map[string]any, error) {
+			return httpapi.ApproveViaAdmin(ctx, base, key, *sid, tool, input)
+		}
 	}
-	return agent.ServeApprovalMCP(context.Background(), os.Stdin, os.Stdout, func(ctx context.Context, tool string, input map[string]any) (map[string]any, error) {
-		return httpapi.ApproveViaAdmin(ctx, base, key, *sid, tool, input)
-	})
+	return agent.ServeMCP(context.Background(), os.Stdin, os.Stdout, tools)
 }

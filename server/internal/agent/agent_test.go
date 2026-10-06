@@ -106,13 +106,36 @@ func TestClaudeInterrupt(t *testing.T) {
 }
 
 func TestClaudeArgsWithApproval(t *testing.T) {
-	args := ClaudeArgs(Options{Command: []string{"claude"}, ApproveCmd: []string{"/bin/pd", "mcp-approve", "--session", "s1"}})
+	args := ClaudeArgs(Options{Command: []string{"claude"}, ToolsCmd: []string{"/bin/pd", "mcp", "--session", "s1", "--approve"}})
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "--permission-prompt-tool mcp__pocketdesk__approve") || !strings.Contains(joined, `"command":"/bin/pd"`) {
 		t.Fatalf("审批参数缺失: %s", joined)
 	}
 	if strings.Contains(joined, "dangerously") {
 		t.Fatal("不得默认跳过确认")
+	}
+	if !strings.Contains(joined, "--allowedTools mcp__pocketdesk__send_to_phone") {
+		t.Fatalf("发到手机工具应直接放行: %s", joined)
+	}
+}
+
+func TestSendToolForAllAgents(t *testing.T) {
+	tools := []string{"/bin/pd", "mcp", "--cwd", "/w"}
+	c := strings.Join(ClaudeArgs(Options{Command: []string{"claude"}, AutoApprove: true, ToolsCmd: tools}), " ")
+	if !strings.Contains(c, "--mcp-config") || !strings.Contains(c, "--allowedTools mcp__pocketdesk__send_to_phone") || strings.Contains(c, "--permission-prompt-tool") {
+		t.Fatalf("免审批的 Claude Code 也应挂上发到手机工具: %s", c)
+	}
+	x := strings.Join(CodexArgs(Options{Command: []string{"codex"}, Config: []string{"a=1"}, ToolsCmd: tools}, ""), " ")
+	for _, want := range []string{"-c a=1", `-c mcp_servers.pocketdesk.command="/bin/pd"`, `-c mcp_servers.pocketdesk.args=["mcp","--cwd","/w"]`, `-c mcp_servers.pocketdesk.tools.send_to_phone.approval_mode="approve"`} {
+		if !strings.Contains(x, want) {
+			t.Fatalf("Codex 缺少 %s: %s", want, x)
+		}
+	}
+	if s := acpMCPServers(Options{ToolsCmd: tools}); len(s) != 1 || s[0].(map[string]any)["command"] != "/bin/pd" {
+		t.Fatalf("ACP MCP 服务 %v", s)
+	}
+	if s := acpMCPServers(Options{}); len(s) != 0 {
+		t.Fatal("未配置时不挂 MCP 服务")
 	}
 }
 
@@ -300,6 +323,40 @@ func TestMissingBinary(t *testing.T) {
 	}
 }
 
+func TestSendMCPTool(t *testing.T) {
+	in := strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"send_to_phone","arguments":{"paths":["a.pdf"]}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"send_to_phone","arguments":{"paths":[]}}}`,
+		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"approve","arguments":{}}}`,
+	}, "\n") + "\n"
+	var buf bytes.Buffer
+	var mu sync.Mutex
+	w := writerFunc(func(b []byte) (int, error) { mu.Lock(); defer mu.Unlock(); return buf.Write(b) })
+	err := ServeMCP(context.Background(), strings.NewReader(in), w, MCPTools{Send: func(_ context.Context, paths []string) ([]string, error) {
+		return paths, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]map[string]any{}
+	for _, l := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		var m map[string]any
+		json.Unmarshal([]byte(l), &m)
+		byID[string(mustJSON(m["id"]))] = m["result"].(map[string]any)
+	}
+	if list := byID["1"]["tools"].([]any); len(list) != 1 || list[0].(map[string]any)["name"] != "send_to_phone" {
+		t.Fatalf("未开启审批时只列出发到手机工具: %v", list)
+	}
+	text := func(id string) string { return byID[id]["content"].([]any)[0].(map[string]any)["text"].(string) }
+	if byID["2"]["isError"] != false || !strings.Contains(text("2"), "a.pdf") {
+		t.Fatalf("发送结果 %v", byID["2"])
+	}
+	if byID["3"]["isError"] != true || byID["4"]["isError"] != true {
+		t.Fatal("没有文件、未开启的工具应报错")
+	}
+}
+
 func TestApprovalMCPServer(t *testing.T) {
 	in := strings.Join([]string{
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`,
@@ -311,12 +368,12 @@ func TestApprovalMCPServer(t *testing.T) {
 	var buf bytes.Buffer
 	var mu sync.Mutex
 	w := writerFunc(func(b []byte) (int, error) { mu.Lock(); defer mu.Unlock(); return buf.Write(b) })
-	err := ServeApprovalMCP(context.Background(), strings.NewReader(in), w, func(_ context.Context, tool string, input map[string]any) (map[string]any, error) {
+	err := ServeMCP(context.Background(), strings.NewReader(in), w, MCPTools{Approve: func(_ context.Context, tool string, input map[string]any) (map[string]any, error) {
 		if tool != "Bash" || input["command"] != "ls" {
 			t.Errorf("参数 %s %v", tool, input)
 		}
 		return ClaudeBehavior(Decision{Allow: true}, input), nil
-	})
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -587,11 +644,11 @@ func TestClaudeFinalBlockMatchesStream(t *testing.T) {
 }
 
 func TestAutoApproveArgs(t *testing.T) {
-	c := strings.Join(ClaudeArgs(Options{Command: []string{"claude"}, AutoApprove: true, ApproveCmd: []string{"pd", "mcp"}}), " ")
+	c := strings.Join(ClaudeArgs(Options{Command: []string{"claude"}, AutoApprove: true, ToolsCmd: []string{"pd", "mcp"}}), " ")
 	if !strings.Contains(c, "--dangerously-skip-permissions") || strings.Contains(c, "--permission-prompt-tool") {
 		t.Fatalf("Claude Code 免审批参数 %s", c)
 	}
-	if c := strings.Join(ClaudeArgs(Options{Command: []string{"claude"}, ApproveCmd: []string{"pd", "mcp"}}), " "); strings.Contains(c, "--dangerously") || !strings.Contains(c, "--permission-prompt-tool") {
+	if c := strings.Join(ClaudeArgs(Options{Command: []string{"claude"}, ToolsCmd: []string{"pd", "mcp", "--approve"}}), " "); strings.Contains(c, "--dangerously") || !strings.Contains(c, "--permission-prompt-tool") {
 		t.Fatalf("普通会话参数 %s", c)
 	}
 	x := strings.Join(CodexArgs(Options{Command: []string{"codex"}, AutoApprove: true}, ""), " ")
