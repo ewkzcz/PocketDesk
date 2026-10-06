@@ -46,6 +46,9 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		Rows           int    `json:"rows"`
 		Command        string `json:"command"`
 		AutoApprove    bool   `json:"autoApprove"`
+		Instruction    string `json:"instruction"`
+		Preset         string `json:"preset"`
+		Title          string `json:"title"`
 	}
 	if err := readJSON(r, &in); err != nil {
 		writeErr(w, r, err)
@@ -58,7 +61,10 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		sess, err = s.Terms.Create(r.Context(), terminal.Options{WorkspaceID: in.WorkspaceID, Cwd: in.Cwd, Cols: in.Cols, Rows: in.Rows, Command: in.Command})
 	} else {
 		// 2、Agent
-		sess, err = s.Sessions.CreateWith(r.Context(), session.NewSession{Kind: in.Kind, WorkspaceID: in.WorkspaceID, Cwd: in.Cwd, Model: in.Model, AutoApprove: in.AutoApprove})
+		sess, err = s.Sessions.CreateWith(r.Context(), session.NewSession{Kind: in.Kind, WorkspaceID: in.WorkspaceID, Cwd: in.Cwd, Model: in.Model, AutoApprove: in.AutoApprove, Instruction: in.Instruction, Preset: in.Preset})
+		if err == nil && in.Title != "" {
+			sess, err = s.Store.UpdateSession(r.Context(), sess.ID, store.SessionPatch{Title: &in.Title})
+		}
 		if err == nil && in.AgentSessionID != "" {
 			sess, err = s.Store.UpdateSession(r.Context(), sess.ID, store.SessionPatch{AgentSessionID: &in.AgentSessionID})
 		}

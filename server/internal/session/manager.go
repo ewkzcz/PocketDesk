@@ -205,6 +205,9 @@ type NewSession struct {
 	Model       string
 	// AutoApprove：免审批会话
 	AutoApprove bool
+	// Instruction、Preset：通讯录模板的系统提示词与模板标识参数
+	Instruction string
+	Preset      string
 }
 
 /** CreateWith：按参数新建会话 */
@@ -223,7 +226,7 @@ func (m *Manager) CreateWith(ctx context.Context, n NewSession) (store.Session, 
 		return store.Session{}, err
 	}
 	// 3、写库
-	s, err := m.d.Store.CreateSession(ctx, store.Session{ID: security.NewID(), Kind: kind, Title: agent.Label(kind), WorkspaceID: wsID, Cwd: rel, Model: model, State: StateIdle, AutoApprove: n.AutoApprove})
+	s, err := m.d.Store.CreateSession(ctx, store.Session{ID: security.NewID(), Kind: kind, Title: agent.Label(kind), WorkspaceID: wsID, Cwd: rel, Model: model, State: StateIdle, AutoApprove: n.AutoApprove, Instruction: n.Instruction, Preset: n.Preset})
 	if err != nil {
 		return s, err
 	}
@@ -385,10 +388,18 @@ func (m *Manager) startTurn(ctx context.Context, rt *runtime, in Input) {
 	}
 	// 3、发送
 	m.setState(ctx, rt, StateRunning)
-	if err := proc.Send(ctx, agent.Message{Text: in.Text, Attachments: in.Attachments, Skills: in.Skills}); err != nil {
+	if err := proc.Send(ctx, agent.Message{Text: withInstruction(rt.sess.Instruction, in.Text), Attachments: in.Attachments, Skills: in.Skills}); err != nil {
 		m.emit(ctx, rt.id, "error", map[string]any{"message": "发送失败：" + err.Error(), "retryable": true})
 		m.finishTurn(ctx, rt, proc)
 	}
+}
+
+/** withInstruction：模板会话每轮把系统提示词放在用户输入前面，没有模板时原样返回 */
+func withInstruction(instruction, text string) string {
+	if strings.TrimSpace(instruction) == "" {
+		return text
+	}
+	return instruction + "\n\n---\n用户输入：\n" + text
 }
 
 /** startProc：启动驱动进程并开始转发事件 */
@@ -785,6 +796,9 @@ type Patch struct {
 	Muted *bool `json:"muted"`
 	// Provider：切换模型供应商，空字符串为跟随电脑当前设置
 	Provider *string `json:"provider"`
+	// Instruction、Preset：修改通讯录模板的系统提示词与参数，下一轮起生效
+	Instruction *string `json:"instruction"`
+	Preset      *string `json:"preset"`
 }
 
 /**
@@ -800,7 +814,7 @@ func (m *Manager) Update(ctx context.Context, id string, p Patch) (store.Session
 		return cur, err
 	}
 	// 1、目录
-	sp := store.SessionPatch{Title: p.Title, Pinned: p.Pinned, Model: p.Model, Muted: p.Muted, Provider: p.Provider}
+	sp := store.SessionPatch{Title: p.Title, Pinned: p.Pinned, Model: p.Model, Muted: p.Muted, Provider: p.Provider, Instruction: p.Instruction, Preset: p.Preset}
 	var providerName string
 	if p.Provider != nil && *p.Provider != cur.Provider {
 		// 换供应商后原来的模型多半不可用，未同时指定模型时改用供应商默认模型

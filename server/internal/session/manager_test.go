@@ -823,3 +823,26 @@ func TestCommandChangesOffice(t *testing.T) {
 		t.Fatalf("工作目录里的新文件 %+v", got)
 	}
 }
+
+func TestPresetInstruction(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	s, err := f.m.CreateWith(ctx, NewSession{Kind: "claude", WorkspaceID: "w1", Cwd: ".", Instruction: "你是翻译官", Preset: `{"id":"translate"}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Instruction != "你是翻译官" || s.Preset != `{"id":"translate"}` {
+		t.Fatalf("模板字段没有保存: %+v", s)
+	}
+	n := "新提示词"
+	got, err := f.m.Update(ctx, s.ID, Patch{Instruction: &n})
+	if err != nil || got.Instruction != n {
+		t.Fatalf("修改模板提示词失败: %v %+v", err, got)
+	}
+	if withInstruction("", "你好") != "你好" {
+		t.Fatal("没有模板时应原样发送")
+	}
+	if !strings.HasPrefix(withInstruction("甲", "乙"), "甲") || !strings.HasSuffix(withInstruction("甲", "乙"), "乙") {
+		t.Fatal("模板提示词应放在用户输入前面")
+	}
+}
