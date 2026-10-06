@@ -8,7 +8,9 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_state.dart';
+import '../../core/auth_gate.dart';
 import '../../data/models.dart';
+import '../../net/api.dart';
 import '../../net/events.dart';
 import '../agents.dart';
 import '../format.dart';
@@ -44,7 +46,7 @@ class _SessionsPageState extends State<SessionsPage> {
    *
    * 处理流程：
    * 1、列出电脑上已安装的 Agent（离线时列出全部）
-   * 2、始终显示「新建终端」（未开启时点进去会提示去电脑端开启），最后是「扫一扫」
+   * 2、依次是「新建终端」「截取电脑屏幕」「扫一扫」
    */
   Future<void> _plusMenu() async {
     final scope = context.read<AppState>().scope;
@@ -65,8 +67,9 @@ class _SessionsPageState extends State<SessionsPage> {
       // 免审批：Claude Code 跳过全部权限确认，Codex 不审批也不进沙箱
       if (scope != null && (status?.features.agents ?? true))
         for (final k in installed.where((k) => k == 'claude' || k == 'codex')) ('${agentFor(k).label} 免审批', LucideIcons.zap300, () => newAgentSession(context, k, autoApprove: true)),
-      // 2、终端与扫码；终端没开启时点进去会提示去电脑端开启
+      // 2、终端、截屏与扫码；终端没开启时点进去会提示去电脑端开启
       if (scope != null) ('新建终端', LucideIcons.terminal300, () => newTerminal(context)),
+      if (scope != null) ('截取电脑屏幕', LucideIcons.monitor300, _screenshot),
       ('扫一扫', LucideIcons.scanLine300, () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const PairPage()))),
     ];
     final i = await showMenu<int>(
@@ -87,6 +90,19 @@ class _SessionsPageState extends State<SessionsPage> {
       ],
     );
     if (i != null && mounted) await items[i].$3();
+  }
+
+  /** _screenshot：验证身份后让电脑截屏，截图稍后在文件传输助手里收到 */
+  Future<void> _screenshot() async {
+    final scope = context.read<AppState>().scope;
+    if (scope == null) return;
+    if (!await context.read<AuthGate>().ensure('验证身份以截取电脑屏幕') || !mounted) return;
+    try {
+      await scope.conn.api.screenshot();
+      if (mounted) toast(context, '已截屏，截图会发到文件传输助手');
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.offline ? '电脑不在线，稍后再试' : e.message);
+    }
   }
 
   /** _openAssistant：重新显示并打开文件传输助手 */

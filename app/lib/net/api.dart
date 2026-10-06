@@ -314,6 +314,9 @@ class PdApi {
   /** assistantText：文件传输助手发文字 */
   Future<void> assistantText(String text, {String clientId = ''}) => send('POST', '/api/assistant/messages', body: {'text': text, 'clientId': clientId});
 
+  /** screenshot：让电脑截一张屏，截图随后作为文件发到手机 */
+  Future<void> screenshot() => send('POST', '/api/screenshot', wait: const Duration(seconds: 30));
+
   /** exportLogs：电脑端日志压缩包 */
   Future<List<int>> exportLogs() async => (await send('POST', '/api/logs', wait: const Duration(minutes: 1))).bodyBytes;
 }
