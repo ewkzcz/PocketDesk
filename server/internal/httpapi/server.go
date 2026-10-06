@@ -108,6 +108,14 @@ func (s *Server) deviceRoutes(mux *http.ServeMux, prefix string, a func(http.Han
 	h("GET /api/outbox/{id}/file", s.outboxFile)
 	h("POST /api/outbox/{id}/ack", s.outboxAck)
 	h("POST /api/assistant/messages", s.assistantText)
+	// 资料库：收藏、剪切板、提示词
+	h("GET /api/library", s.libraryList)
+	h("POST /api/library", s.libraryAdd)
+	h("POST /api/library/blob", s.libraryAddBlob)
+	h("DELETE /api/library", s.libraryClear)
+	h("GET /api/library/{id}/blob", s.libraryBlob)
+	h("PATCH /api/library/{id}", s.libraryPatch)
+	h("DELETE /api/library/{id}", s.libraryDelete)
 	// 会话与审批
 	h("GET /api/sessions", s.listSessions)
 	h("POST /api/sessions", s.createSession)

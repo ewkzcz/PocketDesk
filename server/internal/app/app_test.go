@@ -330,6 +330,8 @@ func TestEndToEnd(t *testing.T) {
 	t.Run("桌面端管理手机文件", func(t *testing.T) { phoneFilesFlow(t, e) })
 	t.Run("桌面端与手机共用会话接口", func(t *testing.T) { desktopSharedFlow(t, e) })
 	t.Run("会话与审批", func(t *testing.T) { sessionFlow(t, e) })
+	t.Run("资料库", func(t *testing.T) { libraryFlow(t, e) })
+	t.Run("通讯录模板会话", func(t *testing.T) { presetFlow(t, e) })
 	t.Run("终端", func(t *testing.T) { terminalFlow(t, e) })
 	t.Run("管理入口防护", func(t *testing.T) { adminGuardFlow(t, e) })
 
@@ -1124,5 +1126,115 @@ func placesFlow(t *testing.T, e *env) {
 	newIn := filepath.Join(t.TempDir(), "收件")
 	if res, body = e.do("PUT", "/api/dirs", map[string]string{"inboxDir": newIn}, nil); res.StatusCode != 200 || !strings.Contains(string(body), "收件") {
 		t.Fatalf("更换收件目录 %d %s", res.StatusCode, body)
+	}
+}
+
+/** libraryFlow：收藏、剪切板、提示词的增删改查，图片内容上传下载，手机与桌面端共用 */
+func libraryFlow(t *testing.T, e *env) {
+	var x struct {
+		ID   string `json:"id"`
+		Kind string `json:"kind"`
+		Size int64  `json:"size"`
+	}
+	res, body := e.do("POST", "/api/library", map[string]any{"kind": "fav", "title": "接口约定", "body": "POST /api/library"}, nil)
+	if res.StatusCode != 201 {
+		t.Fatalf("新增收藏 %d %s", res.StatusCode, body)
+	}
+	json.Unmarshal(body, &x)
+	if res, _ := e.do("POST", "/api/library", map[string]any{"kind": "nope", "body": "x"}, nil); res.StatusCode != 400 {
+		t.Fatalf("未知类型应被拒绝 %d", res.StatusCode)
+	}
+	if res, _ := e.do("POST", "/api/library", map[string]any{"kind": "fav"}, nil); res.StatusCode != 400 {
+		t.Fatalf("空内容应被拒绝 %d", res.StatusCode)
+	}
+	// 图片内容放在请求体里
+	png := []byte{0x89, 'P', 'N', 'G', 1, 2, 3}
+	res, body = e.do("POST", "/api/library/blob?kind=clip&mime=image%2Fpng&name="+url.QueryEscape("截图.png"), png, nil)
+	if res.StatusCode != 201 {
+		t.Fatalf("上传图片 %d %s", res.StatusCode, body)
+	}
+	var img struct {
+		ID   string `json:"id"`
+		Size int64  `json:"size"`
+		Name string `json:"name"`
+		Mime string `json:"mime"`
+	}
+	json.Unmarshal(body, &img)
+	if img.Size != int64(len(png)) || img.Name != "截图.png" || img.Mime != "image/png" {
+		t.Fatalf("图片记录 %+v", img)
+	}
+	res, got := e.do("GET", "/api/library/"+img.ID+"/blob", nil, nil)
+	if res.StatusCode != 200 || !bytes.Equal(got, png) || res.Header.Get("Content-Type") != "image/png" {
+		t.Fatalf("下载图片 %d %q", res.StatusCode, res.Header.Get("Content-Type"))
+	}
+	// 置顶并在桌面端同样能读到
+	if res, _ := e.do("PATCH", "/api/library/"+x.ID, map[string]any{"pinned": true, "title": "新标题"}, nil); res.StatusCode != 200 {
+		t.Fatalf("修改 %d", res.StatusCode)
+	}
+	var favs []struct {
+		ID     string `json:"id"`
+		Title  string `json:"title"`
+		Pinned bool   `json:"pinned"`
+	}
+	if code := e.adminDo("GET", "/admin/p/api/library?kind=fav", nil, &favs); code != 200 || len(favs) != 1 || !favs[0].Pinned || favs[0].Title != "新标题" {
+		t.Fatalf("桌面端读收藏 %d %+v", code, favs)
+	}
+	// 清空只清未置顶的
+	e.do("POST", "/api/library", map[string]any{"kind": "fav", "body": "临时"}, nil)
+	if res, _ := e.do("DELETE", "/api/library?kind=fav", nil, nil); res.StatusCode != 200 {
+		t.Fatal("清空失败")
+	}
+	_, body = e.do("GET", "/api/library?kind=fav", nil, nil)
+	if !strings.Contains(string(body), x.ID) || strings.Contains(string(body), "临时") {
+		t.Fatalf("清空应保留置顶 %s", body)
+	}
+	if res, _ := e.do("DELETE", "/api/library/"+x.ID, nil, nil); res.StatusCode != 200 {
+		t.Fatal("删除失败")
+	}
+	if res, _ := e.do("DELETE", "/api/library/"+x.ID, nil, nil); res.StatusCode != 404 {
+		t.Fatalf("重复删除应为 404，实际 %d", res.StatusCode)
+	}
+}
+
+/** presetFlow：通讯录模板会话——新建时带系统提示词，每一轮都放在用户输入前面，可修改参数 */
+func presetFlow(t *testing.T, e *env) {
+	var wsList []struct {
+		ID string `json:"id"`
+	}
+	_, body := e.do("GET", "/api/ws", nil, nil)
+	json.Unmarshal(body, &wsList)
+	res, body := e.do("POST", "/api/sessions", map[string]any{"kind": "claude", "workspaceId": wsList[0].ID, "cwd": ".", "title": "翻译 · Claude Code", "instruction": "你是翻译官，译成英文", "preset": `{"id":"translate"}`}, nil)
+	if res.StatusCode != 201 {
+		t.Fatalf("新建模板会话 %d %s", res.StatusCode, body)
+	}
+	var sess struct {
+		ID          string `json:"id"`
+		Title       string `json:"title"`
+		Instruction string `json:"instruction"`
+		Preset      string `json:"preset"`
+	}
+	json.Unmarshal(body, &sess)
+	if sess.Title != "翻译 · Claude Code" || sess.Instruction != "你是翻译官，译成英文" || sess.Preset != `{"id":"translate"}` {
+		t.Fatalf("会话字段 %+v", sess)
+	}
+	c := e.dial("/ws")
+	defer c.Close()
+	c.WriteJSON(map[string]any{"type": "hello", "cursors": map[string]int64{sess.ID: 0}})
+	readUntil(t, c, func(m wsMsg) bool { return m.Type == "ready" })
+	e.do("POST", "/api/sessions/"+sess.ID+"/messages", map[string]string{"text": "hi"}, nil)
+	got := readUntil(t, c, func(m wsMsg) bool { return m.Type == "msg.done" })
+	reply := string(got[len(got)-1].Data)
+	if !strings.Contains(reply, "你是翻译官") || !strings.Contains(reply, "hi") {
+		t.Fatalf("交给 Agent 的内容应带系统提示词 %s", reply)
+	}
+	// 用户消息记录里只显示用户自己输入的内容
+	for _, m := range got {
+		if m.Type == "msg.user" && strings.Contains(string(m.Data), "翻译官") {
+			t.Fatalf("用户消息不应包含系统提示词 %s", m.Data)
+		}
+	}
+	res, body = e.do("PATCH", "/api/sessions/"+sess.ID, map[string]string{"instruction": "你是翻译官，译成日文"}, nil)
+	if res.StatusCode != 200 || !strings.Contains(string(body), "译成日文") {
+		t.Fatalf("修改提示词 %d %s", res.StatusCode, body)
 	}
 }

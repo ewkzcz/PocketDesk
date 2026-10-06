@@ -115,6 +115,21 @@ var migrations = []string{
 		created_at INTEGER NOT NULL,
 		updated_at INTEGER NOT NULL
 	)`,
+	`CREATE TABLE IF NOT EXISTS library (
+		id TEXT PRIMARY KEY,
+		kind TEXT NOT NULL,
+		title TEXT NOT NULL DEFAULT '',
+		body TEXT NOT NULL DEFAULT '',
+		mime TEXT NOT NULL DEFAULT '',
+		name TEXT NOT NULL DEFAULT '',
+		size INTEGER NOT NULL DEFAULT 0,
+		meta TEXT NOT NULL DEFAULT '',
+		pinned INTEGER NOT NULL DEFAULT 0,
+		blob BLOB,
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_library_kind ON library(kind, pinned, updated_at)`,
 	`CREATE TABLE IF NOT EXISTS turn_diffs (
 		session_id TEXT NOT NULL,
 		ref TEXT NOT NULL,
@@ -131,6 +146,8 @@ var columns = []struct{ table, name, def string }{
 	{"sessions", "muted", "INTEGER NOT NULL DEFAULT 0"},
 	{"sessions", "provider", "TEXT NOT NULL DEFAULT ''"},
 	{"sessions", "log_offset", "INTEGER NOT NULL DEFAULT 0"},
+	{"sessions", "instruction", "TEXT NOT NULL DEFAULT ''"},
+	{"sessions", "preset", "TEXT NOT NULL DEFAULT ''"},
 }
 
 /**

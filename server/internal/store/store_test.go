@@ -355,3 +355,37 @@ func TestOpenAddsNewColumnsToOldDatabase(t *testing.T) {
 		s.Close()
 	}
 }
+
+func TestLibrary(t *testing.T) {
+	s, ctx := openTest(t), context.Background()
+	a, err := s.AddLibrary(ctx, LibraryItem{ID: "a", Kind: "clip", Title: "文字", Body: "hello", Mime: "text/plain"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddLibrary(ctx, LibraryItem{ID: "b", Kind: "clip", Mime: "image/png", Name: "x.png"}, []byte{1, 2, 3}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddLibrary(ctx, LibraryItem{ID: "c", Kind: "prompt", Title: "提示"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	clips, _ := s.Library(ctx, "clip", 0)
+	if len(clips) != 2 || clips[0].ID != "b" && clips[0].ID != "a" {
+		t.Fatalf("剪切板条目 %+v", clips)
+	}
+	if b, err := s.LibraryBlob(ctx, "b"); err != nil || len(b) != 3 {
+		t.Fatalf("读取内容失败 %v %v", err, b)
+	}
+	pin := true
+	if _, err := s.UpdateLibrary(ctx, a.ID, LibraryPatch{Pinned: &pin}); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := s.ClearLibrary(ctx, "clip"); n != 1 {
+		t.Fatalf("清空应保留置顶，删除了 %d 条", n)
+	}
+	if err := s.DeleteLibrary(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Fatal("删除不存在的条目应报不存在")
+	}
+	if list, _ := s.Library(ctx, "prompt", 0); len(list) != 1 {
+		t.Fatal("清空剪切板不应影响提示词")
+	}
+}
