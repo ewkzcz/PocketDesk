@@ -44,6 +44,19 @@ Future<String?> pickComputerFolder(BuildContext context, {String title = '选择
 /** WorkDir：新会话的工作区与其中的目录 */
 typedef WorkDir = ({Workspace ws, String cwd});
 
+/** defaultWorkDir：默认工作目录（没有设置默认时用第一个工作空间），不弹选择菜单 */
+Future<WorkDir?> defaultWorkDir(BuildContext context) async {
+  final r = await _load(context);
+  if (r == null || !context.mounted) return null;
+  final list = r.$2;
+  final w = list.where((w) => w.isDefault).firstOrNull ?? list.firstOrNull;
+  if (w == null) {
+    toast(context, '电脑上还没有工作目录，请先在「我 → 工作空间」添加');
+    return null;
+  }
+  return (ws: w, cwd: '.');
+}
+
 /**
  * pickWorkDir：为新会话或终端选择工作目录
  *

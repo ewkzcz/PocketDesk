@@ -15,6 +15,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/app_state.dart';
 import '../../core/auth_gate.dart';
+import '../../core/library_store.dart';
 import '../../core/transfer_manager.dart';
 import '../../data/chat.dart';
 import '../../data/models.dart';
@@ -37,6 +38,9 @@ import 'agent_pickers.dart';
 import 'diff_page.dart';
 import 'dir_picker.dart';
 import 'session_actions.dart';
+import 'library_pages.dart' show favoriteText, showPromptPicker;
+import 'preset_pages.dart';
+import '../../core/presets.dart';
 import 'session_settings_page.dart';
 import 'settings_pages.dart' show TransferSettingsPage;
 import 'terminal_page.dart';
@@ -107,6 +111,8 @@ class _ChatPageState extends State<ChatPage> {
     scope.transfers.addListener(_onTransfers);
     _scroll.addListener(_onScroll);
     _input.addListener(_onInput);
+    // 模板会话要用到自定义模板的参数定义
+    if (_session?.isPreset ?? false) unawaited(scope.library.refresh(LibraryKind.presets));
     unawaited(_load());
   }
 
@@ -534,6 +540,9 @@ class _ChatPageState extends State<ChatPage> {
           if (p != null) _insert('`$p` ');
         case 'phrases':
           await _phrasesSheet();
+        case 'prompts':
+          final t = await showPromptPicker(context);
+          if (t != null && mounted) _insert(t);
         case 'model':
           await _modelMenu(s);
         case 'skills':
@@ -616,8 +625,10 @@ class _ChatPageState extends State<ChatPage> {
     final text = _textOf(it);
     if (text.isEmpty) return;
     unawaited(HapticFeedback.selectionClick());
+    final labels = ['复制', '收藏', '选择文字', '复制全部对话', '引用回复', '多选', '转发到其他会话', '存为 md 文件', '删除'];
     final i = await actionSheet(context, const [
       SheetAction('复制', icon: LucideIcons.copy300),
+      SheetAction('收藏', icon: LucideIcons.star300),
       SheetAction('选择文字', icon: LucideIcons.textCursorInput300),
       SheetAction('复制全部对话', icon: LucideIcons.copyPlus300),
       SheetAction('引用回复', icon: LucideIcons.messageSquareQuote300),
@@ -626,29 +637,32 @@ class _ChatPageState extends State<ChatPage> {
       SheetAction('存为 md 文件', icon: LucideIcons.fileDown300),
       SheetAction('删除', icon: LucideIcons.trash2300, danger: true),
     ]);
-    if (!mounted) return;
-    switch (i) {
-      case 0:
+    if (i == null || !mounted) return;
+    switch (labels[i]) {
+      case '复制':
         await _copy([it]);
-      case 1:
+      case '收藏':
+        final s = _session;
+        await favoriteText(context, text: text, source: s == null ? '' : sessionTitle(s));
+      case '选择文字':
         await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => SelectTextPage(text: text, markdown: it is AgentItem || it is UserItem)));
-      case 2:
+      case '复制全部对话':
         await _copy((_log?.items ?? const <ChatItem>[]).where((e) => !_hidden.contains(e.seq)));
-      case 3:
+      case '引用回复':
         setState(() => _quote = text.length > 200 ? '${text.substring(0, 200)}…' : text);
         _focus.requestFocus();
-      case 4:
+      case '多选':
         setState(() {
           _selecting = true;
           _selected
             ..clear()
             ..add(it);
         });
-      case 5:
+      case '转发到其他会话':
         await _forward([it]);
-      case 6:
+      case '存为 md 文件':
         await _saveMd([it]);
-      case 7:
+      case '删除':
         _remove([it]);
     }
   }
@@ -906,7 +920,7 @@ class _ChatPageState extends State<ChatPage> {
   Widget _itemWidget(_Entry e, SessionInfo s) {
     final it = e.item;
     final kind = s.kind;
-    Widget agent(Widget child) => AgentRow(kind: kind, showAvatar: e.avatar, child: child);
+    Widget agent(Widget child) => AgentRow(kind: kind, showAvatar: e.avatar, avatar: presetAvatarFor(s, size: PdSize.chatAvatar), child: child);
     final w = switch (it) {
       final UserItem u => UserBubble(item: u),
       final AgentItem a => agent(AgentBubble(item: a)),
@@ -942,6 +956,35 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  /** _lastUserText：最近一条我发出的文字（换 Agent 处理时可以带过去） */
+  String _lastUserText() {
+    final items = _log?.items ?? const <ChatItem>[];
+    for (var i = items.length - 1; i >= 0; i--) {
+      final it = items[i];
+      if (it is UserItem && it.text.trim().isNotEmpty && !_hidden.contains(it.seq)) return it.text;
+    }
+    return '';
+  }
+
+  /** _presetChips：模板会话输入栏上方显示当前参数，点一下修改 */
+  Widget _presetChips(SessionInfo s) {
+    final ref = PresetRef.parse(s.preset);
+    if (ref == null) return const SizedBox.shrink();
+    final t = findPreset(_scope?.library, ref.id);
+    final labels = {for (final p in t?.params ?? const <PresetParam>[]) p.key: p.label};
+    return SizedBox(
+      height: 42,
+      child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(12, 6, 12, 6), children: [
+        for (final e in ref.params.entries)
+          if (e.value.trim().isNotEmpty && labels.containsKey(e.key)) ...[
+            QuickChip(label: '${labels[e.key]}：${e.value}', onTap: () => showPresetSheet(context, s, lastInput: _lastUserText())),
+            const SizedBox(width: 8),
+          ],
+        QuickChip(label: '换 Agent', icon: LucideIcons.repeat2300, onTap: () => showPresetSheet(context, s, lastInput: _lastUserText())),
+      ]),
+    );
+  }
+
   /** _panelItems：扩展面板内容 */
   List<PanelItem> _panelItems(SessionInfo s) => [
         const PanelItem('album', '相册', LucideIcons.image300),
@@ -949,6 +992,7 @@ class _ChatPageState extends State<ChatPage> {
         const PanelItem('file', '文件', LucideIcons.file300),
         if (s.isAgent) const PanelItem('wsfile', '工作区文件', LucideIcons.folderOpen300),
         const PanelItem('phrases', '快捷短语', LucideIcons.messageSquareText300),
+        const PanelItem('prompts', '提示词', LucideIcons.bookMarked300),
         if (s.isAgent) PanelItem('model', supportsProvider(s) ? '模型与供应商' : '切换模型', LucideIcons.cpu300),
         if (supportsProvider(s)) const PanelItem('skills', 'Skills', LucideIcons.sparkles300),
         if (s.isAgent) const PanelItem('stop', '打断', LucideIcons.circleStop300),
@@ -1004,6 +1048,8 @@ class _ChatPageState extends State<ChatPage> {
                       tooltip: '收发目录',
                       onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const TransferSettingsPage())),
                     ),
+                  if (s.isPreset)
+                    PdIconButton(icon: LucideIcons.slidersHorizontal300, tooltip: '模板参数', onTap: () => showPresetSheet(context, s, lastInput: _lastUserText())),
                   PdIconButton(
                     icon: LucideIcons.ellipsis300,
                     tooltip: '会话设置',
@@ -1094,6 +1140,8 @@ class _ChatPageState extends State<ChatPage> {
                   QuickChip(label: '修改', icon: LucideIcons.pencil300, onTap: _pickSkills),
                 ]),
               )
+            else if (s.isPreset && _input.text.isEmpty)
+              _presetChips(s)
             else if (s.isAgent && _input.text.isEmpty)
               SizedBox(
                 height: 42,

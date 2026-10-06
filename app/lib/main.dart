@@ -26,6 +26,7 @@ import 'data/local_db.dart';
 import 'transfer/naming.dart' as naming;
 import 'ui/notify_router.dart';
 import 'ui/shell.dart';
+import 'ui/styles.dart';
 import 'ui/theme.dart';
 
 /**
@@ -130,8 +131,8 @@ class PocketDeskApp extends StatelessWidget {
           title: 'PocketDesk',
           navigatorKey: pdNavigator,
           debugShowCheckedModeBanner: false,
-          theme: buildTheme(Brightness.light),
-          darkTheme: buildTheme(Brightness.dark),
+          theme: buildTheme(Brightness.light, PdThemes.byId(s.styleId)),
+          darkTheme: buildTheme(Brightness.dark, PdThemes.byId(s.styleId)),
           themeMode: s.themeMode,
           locale: const Locale('zh', 'CN'),
           supportedLocales: const [Locale('zh', 'CN'), Locale('en')],

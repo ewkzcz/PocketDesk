@@ -165,8 +165,7 @@ void main() {
     TransferTask task(String name, String st) => TransferTask(id: name, hostId: 'h1', direction: Direction.up, source: '/x/$name', name: name, size: 1000, createdAt: 1, dateFolder: '20261001', status: st, doneBytes: 400, error: st == TaskStatus.failed ? '文件已被修改' : '');
     m.tasks.addAll([task('失败的.docx', TaskStatus.failed), task('排队的.pdf', TaskStatus.queued)]);
     m.clearNotice();
-    await tester.tap(find.text('传输').last);
-    await settle(tester);
+    await openDiscover(tester, '传输');
     expect(find.text('失败的.docx'), findsOneWidget);
     await tester.drag(find.text('失败的.docx'), const Offset(-300, 0));
     await settle(tester);
@@ -266,13 +265,11 @@ void main() {
 
   testWidgets('传输页与文件传输助手可直接进入收发目录设置', (tester) async {
     final env = await start(tester);
-    await tester.tap(find.text('传输').last);
-    await settle(tester);
+    await openDiscover(tester, '传输');
     await tester.tap(find.bySemanticsLabel('收发目录'));
     await settle(tester);
     expect(find.text('电脑收件目录'), findsOneWidget);
-    await tester.tap(find.bySemanticsLabel('返回').last);
-    await settle(tester);
+    await backToHome(tester);
     await tester.tap(find.text('消息').last);
     await settle(tester);
     await tester.tap(find.text('文件传输助手'));
@@ -425,8 +422,7 @@ void main() {
 
   testWidgets('文件页「+」新建文件夹与新建文件', (tester) async {
     final env = await start(tester);
-    await tester.tap(find.text('文件').last);
-    await settle(tester);
+    await openDiscover(tester, '文件');
     await tester.tap(find.bySemanticsLabel('上传或新建').last);
     await settle(tester);
     expect(find.text('上传文件'), findsOneWidget);
@@ -448,8 +444,7 @@ void main() {
 
   testWidgets('Markdown 在手机上直接排版：表格、任务列表、公式、图片，记住阅读位置', (tester) async {
     final env = await start(tester);
-    await tester.tap(find.text('文件').last);
-    await settle(tester);
+    await openDiscover(tester, '文件');
     await tester.tap(find.text('README.md'));
     await settle(tester);
     expect(find.text('周报'), findsOneWidget);
@@ -511,8 +506,7 @@ void main() {
     conn.link = LinkState.offline;
     // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
     conn.notifyListeners();
-    await tester.tap(find.text('文件').last);
-    await settle(tester);
+    await openDiscover(tester, '文件');
     expect(find.text('README.md'), findsNothing);
     // 电脑恢复在线，不用点重试
     env.server.workspacesDown = false;
@@ -524,8 +518,7 @@ void main() {
 
   testWidgets('文件长按菜单与排序', (tester) async {
     final env = await start(tester);
-    await tester.tap(find.text('文件').last);
-    await settle(tester);
+    await openDiscover(tester, '文件');
     await tester.longPress(find.text('README.md'));
     await settle(tester);
     for (final t in ['下载到手机', '重命名', '移动', '复制路径', '发给会话', '删除']) {
@@ -584,6 +577,9 @@ void main() {
     await tester.tap(find.bySemanticsLabel('返回').last);
     await settle(tester);
     await tester.tap(find.text('外观'));
+    await settle(tester);
+    await tester.scrollUntilVisible(find.text('浅色'), 300);
+    await tester.ensureVisible(find.text('浅色'));
     await settle(tester);
     await tester.tap(find.text('浅色'));
     await settle(tester);

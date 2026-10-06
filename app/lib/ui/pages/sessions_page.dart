@@ -14,10 +14,12 @@ import '../../net/api.dart';
 import '../../net/events.dart';
 import '../agents.dart';
 import '../format.dart';
+import '../styles.dart';
 import '../swipe_row.dart';
 import '../tokens.dart';
 import '../widgets.dart';
 import 'agent_pickers.dart';
+import 'preset_pages.dart';
 import 'pair_page.dart';
 import 'session_actions.dart';
 
@@ -246,7 +248,8 @@ class _SessionRow extends StatelessWidget {
     } else if (s.preview.startsWith('已完成')) {
       status = Icon(LucideIcons.check300, size: 16, color: c.accent);
     }
-    return SwipeRow(
+    final st = context.style;
+    final row = SwipeRow(
       onTap: () => openSession(context, s),
       actions: [
         SwipeAction(s.pinned ? '取消置顶' : '置顶', c.neutral, () async {
@@ -267,7 +270,7 @@ class _SessionRow extends StatelessWidget {
         }),
       ],
       child: Container(
-        color: s.pinned ? c.bar : c.card,
+        color: st.inset ? (s.pinned ? c.accent.withValues(alpha: 0.07) : Colors.transparent) : (s.pinned ? c.bar : c.card),
         child: Column(children: [
           SizedBox(
             height: PdSize.listItem,
@@ -276,7 +279,7 @@ class _SessionRow extends StatelessWidget {
               child: Row(children: [
                 // 未读数显示在头像右上角；待审批时即使已读也保留红点提醒
                 Stack(clipBehavior: Clip.none, children: [
-                  AgentAvatar(s.kind),
+                  presetAvatarFor(s) ?? AgentAvatar(s.kind),
                   if (unread > 0 || s.state == SessionState.awaiting)
                     Positioned(top: -6, right: -6, child: unread > 0 ? CountBadge(unread) : const DotBadge()),
                 ]),
@@ -314,9 +317,15 @@ class _SessionRow extends StatelessWidget {
               ]),
             ),
           ),
-          if (!last) Padding(padding: const EdgeInsets.only(left: 76), child: Container(height: PdSize.divider, color: c.divider)),
+          if (!last && !st.inset) Padding(padding: const EdgeInsets.only(left: 76), child: Container(height: PdSize.divider, color: c.divider)),
         ]),
       ),
+    );
+    // 有卡片风格的主题里，每个会话是一张独立的圆角卡片
+    if (!st.inset) return row;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      child: DecoratedBox(decoration: st.card(c), child: ClipRRect(borderRadius: BorderRadius.circular(st.cardRadius), child: row)),
     );
   }
 }

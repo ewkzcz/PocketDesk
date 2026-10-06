@@ -14,6 +14,7 @@ import '../net/events.dart';
 import 'app_log.dart';
 import 'connection.dart';
 import 'device_signals.dart';
+import 'library_store.dart';
 import 'discovery.dart';
 import 'phone_space.dart';
 import 'sessions_store.dart';
@@ -48,6 +49,9 @@ class HostScope {
   final HostConnection conn;
   final SessionsStore sessions;
   final TransferManager transfers;
+
+  /** 资料库：收藏、剪切板、提示词 */
+  late final LibraryStore library = LibraryStore(api: () => conn.api);
   final List<StreamSubscription<dynamic>> subs = [];
   LinkState lastLink = LinkState.offline;
 
@@ -57,6 +61,7 @@ class HostScope {
       s.cancel();
     }
     transfers.dispose();
+    library.dispose();
     sessions.dispose();
     conn.dispose();
   }
@@ -182,6 +187,8 @@ class AppState extends ChangeNotifier {
         unawaited(s.transfers.pollOutbox());
       case 'host.status':
         unawaited(s.conn.refreshStatus());
+      case 'library.changed':
+        unawaited(s.library.refresh(Json.str(e.data['kind'])));
       case 'phone.req':
         unawaited(_phoneReq(s, e.data));
     }

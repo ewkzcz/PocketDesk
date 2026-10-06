@@ -71,6 +71,8 @@ Future<void> openSession(BuildContext context, SessionInfo s) async {
 /** sessionTitle：列表与顶栏显示的会话名 */
 String sessionTitle(SessionInfo s) {
   if (s.isAssistant) return '文件传输助手';
+  // 通讯录模板会话的标题在新建时就写好了（如「翻译 · Claude Code」），不再加前缀
+  if (s.isPreset && s.title.trim().isNotEmpty) return s.title.trim();
   final label = agentFor(s.kind).label;
   final t = s.title.trim();
   if (t.isEmpty || t == label) return s.isTerminal ? '终端' : '$label · 新会话';

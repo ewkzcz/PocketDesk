@@ -8,6 +8,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
@@ -409,12 +410,7 @@ class AboutPage extends StatelessWidget {
       body: ListView(children: [
         const SizedBox(height: 40),
         Center(
-          child: Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(color: c.accent, borderRadius: BorderRadius.circular(16)),
-            child: const Icon(LucideIcons.monitorSmartphone300, color: Colors.white, size: 36),
-          ),
+          child: ClipRRect(borderRadius: BorderRadius.circular(18), child: SvgPicture.asset('assets/icon/app-icon.svg', width: 72, height: 72, semanticsLabel: 'PocketDesk')),
         ),
         const SizedBox(height: 12),
         Center(child: Text('PocketDesk', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: c.text))),

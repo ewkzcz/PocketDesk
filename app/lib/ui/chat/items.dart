@@ -15,6 +15,8 @@ import '../../data/models.dart';
 import '../agents.dart';
 import '../file_kinds.dart';
 import '../format.dart';
+import '../avatars.dart';
+import '../styles.dart';
 import '../tokens.dart';
 import 'markdown.dart';
 
@@ -22,7 +24,7 @@ import 'markdown.dart';
 double bubbleMax(BuildContext context) => MediaQuery.sizeOf(context).width * PdSize.bubbleMaxFactor;
 
 /**
- * Bubble：带小三角的气泡
+ * Bubble：气泡，形状跟随风格（可带指向头像的小三角、渐变底色、粗描边硬阴影，或回复直接铺开不画底色）
  */
 class Bubble extends StatelessWidget {
   const Bubble({super.key, required this.mine, required this.child, this.color});
@@ -34,18 +36,29 @@ class Bubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.pd;
+    final st = context.style;
+    final flat = !mine && color == null && st.flatAgent;
     final bg = color ?? (mine ? c.bubbleMine : c.bubbleAgent);
-    const tail = 6.0;
-    return CustomPaint(
-      painter: _TailPainter(bg, mine),
-      child: Container(
-        margin: EdgeInsets.only(left: mine ? 0 : tail, right: mine ? tail : 0),
-        constraints: BoxConstraints(maxWidth: bubbleMax(context)),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(PdSize.bubbleRadius)),
-        child: child,
-      ),
+    final tail = st.bubbleTail && !flat ? 6.0 : 0.0;
+    final gradient = mine && color == null ? st.mineGradient : null;
+    final heavy = st.shadow == PdShadowKind.hard;
+    final deco = flat
+        ? null
+        : BoxDecoration(
+            color: gradient == null ? bg : null,
+            gradient: gradient == null ? null : LinearGradient(colors: gradient, begin: Alignment.topLeft, end: Alignment.bottomRight),
+            borderRadius: BorderRadius.circular(st.bubbleRadius),
+            border: heavy || (st.outline > 0 && !mine) ? Border.all(color: st.outlineColor ?? c.divider, width: heavy ? st.outline : st.outline) : null,
+            boxShadow: heavy ? st.shadows : null,
+          );
+    final box = Container(
+      margin: EdgeInsets.only(left: mine ? 0 : tail, right: mine ? tail : 0),
+      constraints: BoxConstraints(maxWidth: bubbleMax(context)),
+      padding: flat ? const EdgeInsets.symmetric(vertical: 4) : const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: deco,
+      child: child,
     );
+    return tail > 0 ? CustomPaint(painter: _TailPainter(bg, mine), child: box) : box;
   }
 }
 
@@ -106,7 +119,7 @@ class UserBubble extends StatelessWidget {
     final text = item.fileName.isNotEmpty && item.text.isEmpty ? '[文字] ${item.fileName}' : item.text;
     return Row(mainAxisAlignment: MainAxisAlignment.end, crossAxisAlignment: CrossAxisAlignment.start, children: [
       if (item.queued) Padding(padding: const EdgeInsets.only(right: 6, top: 10), child: Text('排队中', style: TextStyle(fontSize: PdFont.tiny, color: c.text3))),
-      Bubble(
+      Flexible(child: Bubble(
         mine: true,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           if (text.isNotEmpty) Text(text, style: TextStyle(fontSize: PdFont.item, height: 1.5, color: c.bubbleMineText)),
@@ -129,22 +142,27 @@ class UserBubble extends StatelessWidget {
               ]),
             ),
         ]),
-      ),
+      )),
+      const SizedBox(width: 8),
+      const MyAvatar(size: PdSize.chatAvatar),
     ]);
   }
 }
 
 /** AgentRow：Agent 一侧的一行（头像 + 内容） */
 class AgentRow extends StatelessWidget {
-  const AgentRow({super.key, required this.kind, required this.child, this.showAvatar = true});
+  const AgentRow({super.key, required this.kind, required this.child, this.showAvatar = true, this.avatar});
 
   final String kind;
   final Widget child;
   final bool showAvatar;
 
+  /** 替换默认的 Agent 头像（模板会话显示模板头像） */
+  final Widget? avatar;
+
   @override
   Widget build(BuildContext context) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        SizedBox(width: PdSize.chatAvatar, child: showAvatar ? AgentAvatar(kind, size: PdSize.chatAvatar) : null),
+        SizedBox(width: PdSize.chatAvatar, child: showAvatar ? (avatar ?? AgentAvatar(kind, size: PdSize.chatAvatar)) : null),
         const SizedBox(width: 8),
         Flexible(child: Align(alignment: Alignment.centerLeft, child: child)),
       ]);

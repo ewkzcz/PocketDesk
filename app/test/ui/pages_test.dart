@@ -36,8 +36,7 @@ void main() {
         await shot(tester, '$tag-01-sessions');
 
         // 文件页
-        await tester.tap(find.text('文件').last);
-        await settle(tester);
+        await openDiscover(tester, '文件');
         expect(find.text('README.md'), findsOneWidget);
         expect(find.text('20261001'), findsOneWidget);
         await shot(tester, '$tag-02-files');
@@ -45,6 +44,8 @@ void main() {
         await settle(tester);
         expect(find.text('a.md'), findsOneWidget);
         await shot(tester, '$tag-03-files-sub');
+
+        await backToHome(tester);
 
         // 传输页：放入几种状态的任务
         final m = env.app.scope!.transfers;
@@ -60,13 +61,14 @@ void main() {
           task('周报草稿.docx', Direction.up, TaskStatus.done, 4823449, 4823449)..finishedAt = ago(const Duration(hours: 1)),
         ]);
         m.clearNotice();
-        await tester.tap(find.text('传输').last);
-        await settle(tester);
+        await openDiscover(tester, '传输');
         expect(find.textContaining('视频教程'), findsOneWidget);
         await shot(tester, '$tag-04-transfer');
         await tester.tap(find.text('已完成'));
         await settle(tester);
         expect(find.text('周报草稿.docx'), findsOneWidget);
+
+        await backToHome(tester);
 
         // 我
         await tester.tap(find.text('我').last);

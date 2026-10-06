@@ -6,6 +6,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import 'styles.dart';
 import 'tokens.dart';
 
 /**
@@ -27,32 +28,44 @@ class PdBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.pd;
-    final fg = dark ? Colors.white : c.text;
+    final st = context.style;
+    final fg = dark ? Colors.white : c.onBar;
     // 按本页是否可返回判断（页面关闭动画期间导航状态会短暂可返回，不能以此为准）
     final canPop = ModalRoute.of(context)?.impliesAppBarDismissal ?? false;
     final side = actions.length > 1 ? 44.0 * actions.length + 4 : 56.0;
     final lead = leading ?? (canPop ? PdIconButton(icon: LucideIcons.chevronLeft300, color: fg, tooltip: '返回', onTap: () => Navigator.of(context).maybePop()) : null);
+    // 有背景装饰的风格里顶栏半透明，让光斑透出来；硬阴影风格用粗线收边
+    final glass = st.backdrop != PdBackdropKind.none && st.backdrop != PdBackdropKind.dots;
+    final bg = dark ? c.termBar : (glass ? c.topBar.withValues(alpha: 0.55) : c.topBar);
+    final lineColor = dark ? c.termKey : (st.shadow == PdShadowKind.hard ? (st.outlineColor ?? c.divider) : (glass ? Colors.transparent : c.divider));
+    final lineWidth = st.shadow == PdShadowKind.hard && !dark ? st.outline : PdSize.divider;
+    final left = st.titleLeft && !dark;
+    final titleStyle = TextStyle(
+      fontSize: subtitle.isEmpty ? PdFont.title : PdFont.listTitle,
+      fontWeight: st.titleWeight,
+      color: fg,
+      fontFamily: dark ? null : st.titleFont?.first,
+      fontFamilyFallback: dark ? null : st.titleFont,
+    );
+    final titleBox = GestureDetector(
+      onTap: onTitleTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: left ? CrossAxisAlignment.start : CrossAxisAlignment.center, children: [
+        Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: titleStyle),
+        if (subtitle.isNotEmpty) Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.tiny, color: dark ? PdDarkUi.subtle : fg.withValues(alpha: 0.6))),
+      ]),
+    );
     return Material(
-      color: dark ? c.termBar : c.bar,
+      color: bg,
       child: SafeArea(
         bottom: false,
         child: Container(
           height: preferredSize.height,
-          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: dark ? c.termKey : c.divider, width: PdSize.divider))),
+          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: lineColor, width: lineWidth))),
           child: Row(children: [
-            SizedBox(width: side, child: lead == null ? null : Align(alignment: Alignment.centerLeft, child: lead)),
-            Expanded(
-              child: GestureDetector(
-                onTap: onTitleTap,
-                behavior: HitTestBehavior.opaque,
-                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: subtitle.isEmpty ? PdFont.title : PdFont.listTitle, fontWeight: FontWeight.w600, color: fg)),
-                  if (subtitle.isNotEmpty)
-                    Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: PdFont.tiny, color: dark ? PdDarkUi.subtle : c.text3)),
-                ]),
-              ),
-            ),
-            SizedBox(width: side, child: Row(mainAxisAlignment: MainAxisAlignment.end, children: actions)),
+            if (left && lead == null) const SizedBox(width: PdSize.gutter) else SizedBox(width: left ? 44 : side, child: lead == null ? null : Align(alignment: Alignment.centerLeft, child: lead)),
+            Expanded(child: titleBox),
+            SizedBox(width: left ? null : side, child: Row(mainAxisSize: left ? MainAxisSize.min : MainAxisSize.max, mainAxisAlignment: MainAxisAlignment.end, children: actions)),
           ]),
         ),
       ),
@@ -90,7 +103,7 @@ class InsetDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        color: color ?? context.pd.card,
+        color: color ?? (context.style.inset ? Colors.transparent : context.pd.card),
         padding: EdgeInsets.only(left: indent),
         child: Container(height: PdSize.divider, color: context.pd.divider),
       );
@@ -100,7 +113,7 @@ class InsetDivider extends StatelessWidget {
  * PdCell：设置行（图标、标题、右侧说明、箭头或开关）
  */
 class PdCell extends StatelessWidget {
-  const PdCell({super.key, required this.title, this.icon, this.value = '', this.onTap, this.trailing, this.danger = false, this.subtitle = '', this.arrow = true});
+  const PdCell({super.key, required this.title, this.icon, this.value = '', this.onTap, this.trailing, this.danger = false, this.subtitle = '', this.arrow = true, this.tint, this.leadingAvatar});
 
   final String title;
   final IconData? icon;
@@ -111,11 +124,18 @@ class PdCell extends StatelessWidget {
   final bool danger;
   final bool arrow;
 
+  /** 图标底色：设置后图标放在同色小方块里（用于发现页等入口） */
+  final Color? tint;
+
+  /** 行首头像（用于通讯录），设置后不再显示图标 */
+  final Widget? leadingAvatar;
+
   @override
   Widget build(BuildContext context) {
     final c = context.pd;
+    final st = context.style;
     return Material(
-      color: c.card,
+      color: st.inset ? Colors.transparent : c.card,
       child: InkWell(
         onTap: onTap,
         child: ConstrainedBox(
@@ -123,7 +143,18 @@ class PdCell extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: PdSize.gutter, vertical: 8),
             child: Row(children: [
-              if (icon != null) ...[Icon(icon, size: 22, color: danger ? c.danger : c.text2), const SizedBox(width: 12)],
+              if (leadingAvatar != null) ...[leadingAvatar!, const SizedBox(width: 12)] else if (icon != null && tint != null) ...[
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(color: tint, borderRadius: BorderRadius.circular((st.smallRadius * 1.1).clamp(5, 12))),
+                  child: Icon(icon, size: 19, color: Colors.white),
+                ),
+                const SizedBox(width: 12),
+              ] else if (icon != null) ...[
+                Icon(icon, size: 22, color: danger ? c.danger : c.text2),
+                const SizedBox(width: 12),
+              ],
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                   Text(title, style: TextStyle(fontSize: PdFont.item, color: danger ? c.danger : c.text)),
@@ -158,17 +189,27 @@ class PdGroup extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.pd;
+    final st = context.style;
     final rows = <Widget>[];
     for (var i = 0; i < children.length; i++) {
       if (i > 0) rows.add(InsetDivider(indent: indent));
       rows.add(children[i]);
     }
+    final body = st.inset
+        ? Container(
+            margin: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: st.card(c),
+            clipBehavior: Clip.antiAlias,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: rows),
+          )
+        : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: rows);
+    final pad = st.inset ? 12.0 + 6 : PdSize.gutter;
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        if (header.isNotEmpty) Padding(padding: const EdgeInsets.fromLTRB(PdSize.gutter, 0, PdSize.gutter, 6), child: Text(header, style: TextStyle(fontSize: PdFont.summary, color: c.text3))),
-        ...rows,
-        if (footer.isNotEmpty) Padding(padding: const EdgeInsets.fromLTRB(PdSize.gutter, 6, PdSize.gutter, 0), child: Text(footer, style: TextStyle(fontSize: PdFont.time, color: c.text3, height: 1.5))),
+        if (header.isNotEmpty) Padding(padding: EdgeInsets.fromLTRB(pad, 0, pad, 6), child: Text(header, style: TextStyle(fontSize: PdFont.summary, color: c.text3, fontWeight: FontWeight.w500))),
+        body,
+        if (footer.isNotEmpty) Padding(padding: EdgeInsets.fromLTRB(pad, 6, pad, 0), child: Text(footer, style: TextStyle(fontSize: PdFont.time, color: c.text3, height: 1.5))),
       ]),
     );
   }

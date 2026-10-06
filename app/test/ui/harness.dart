@@ -105,6 +105,10 @@ class UiServer {
   /** 读取工作区列表时模拟连不上电脑 */
   bool workspacesDown = false;
 
+  /** 资料库（收藏、剪切板、提示词、自定义模板）与图片内容 */
+  final library = <Map<String, dynamic>>[];
+  final blobs = <String, List<int>>{};
+
   final calls = <String>[];
   final bodies = <String, Object?>{};
 
@@ -152,9 +156,35 @@ class UiServer {
       });
     }
     if (p == '/api/sessions' && req.method == 'GET') return _json(sessions);
+    if (p == '/api/library' && req.method == 'GET') return _json(library.where((x) => x['kind'] == q['kind']).toList());
+    if (p == '/api/library' && req.method == 'POST') {
+      final b = (jsonDecode(req.body) as Map).cast<String, dynamic>();
+      final x = {...b, 'id': 'lib${library.length + 1}-${'0' * 8}', 'size': 0, 'createdAt': ago(Duration.zero), 'updatedAt': ago(Duration.zero)};
+      library.add(x);
+      return _json(x, 201);
+    }
+    if (p == '/api/library/blob' && req.method == 'POST') {
+      final id = 'lib${library.length + 1}-${'0' * 8}';
+      final x = {'id': id, 'kind': q['kind'], 'title': q['title'] ?? '', 'body': '', 'mime': q['mime'], 'name': Uri.decodeComponent(q['name'] ?? ''), 'size': req.bodyBytes.length, 'createdAt': ago(Duration.zero), 'updatedAt': ago(Duration.zero)};
+      blobs[id] = req.bodyBytes;
+      library.add(x);
+      return _json(x, 201);
+    }
+    final lb = RegExp(r'^/api/library/([\w-]+)/blob$').firstMatch(p);
+    if (lb != null) return http.Response.bytes(blobs[lb.group(1)] ?? pngBytes, 200, headers: {'content-type': 'image/png'});
+    final li = RegExp(r'^/api/library/([\w-]+)$').firstMatch(p);
+    if (li != null && req.method == 'PATCH') {
+      final x = library.firstWhere((x) => x['id'] == li.group(1));
+      x.addAll((jsonDecode(req.body) as Map).cast<String, dynamic>());
+      return _json(x);
+    }
+    if (li != null && req.method == 'DELETE') {
+      library.removeWhere((x) => x['id'] == li.group(1));
+      return _json({'ok': true});
+    }
     if (p == '/api/sessions' && req.method == 'POST') {
       final b = (jsonDecode(req.body) as Map).cast<String, dynamic>();
-      final s = {'id': 'new1', 'kind': b['kind'], 'title': '', 'workspaceId': b['workspaceId'], 'cwd': '.', 'model': '', 'state': 'idle', 'pinned': false, 'lastSeq': 0, 'preview': '', 'updatedAt': ago(Duration.zero), 'autoApprove': b['autoApprove'] ?? false};
+      final s = {'id': 'new1', 'kind': b['kind'], 'title': b['title'] ?? '', 'workspaceId': b['workspaceId'], 'cwd': '.', 'model': '', 'state': 'idle', 'pinned': false, 'lastSeq': 0, 'preview': '', 'updatedAt': ago(Duration.zero), 'autoApprove': b['autoApprove'] ?? false, 'instruction': b['instruction'] ?? '', 'preset': b['preset'] ?? ''};
       sessions.add(s);
       return _json(s, 201);
     }
@@ -298,14 +328,18 @@ bool _fontsLoaded = false;
 Future<void> loadFonts() async {
   if (_fontsLoaded) return;
   _fontsLoaded = true;
-  final cjk = File('/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc');
+  final cjk = [
+    '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
+    '/System/Library/Fonts/Hiragino Sans GB.ttc',
+    '/System/Library/Fonts/STHeiti Medium.ttc',
+  ].map(File.new).firstWhere((f) => f.existsSync(), orElse: () => File('/nonexistent'));
   if (await cjk.exists()) {
     final bytes = await cjk.readAsBytes();
     for (final family in ['Roboto', 'monospace', 'SF Mono', 'Menlo']) {
       await (FontLoader(family)..addFont(Future.value(ByteData.view(bytes.buffer)))).load();
     }
   }
-  for (final w in [300, 400]) {
+  for (final w in [300, 400, 600]) {
     final data = rootBundle.load('packages/lucide_icons_flutter/assets/build_font/LucideVariable-w$w.ttf');
     await (FontLoader('packages/lucide_icons_flutter/Lucide$w')..addFont(data)).load();
   }
@@ -327,8 +361,8 @@ class UiEnv {
   /**
    * create：创建并连接（在 runAsync 中调用）
    */
-  static Future<UiEnv> create({ThemeMode theme = ThemeMode.light, bool paired = true, bool biometric = false, void Function(UiServer s)? setup}) async {
-    SharedPreferences.setMockInitialValues({'theme': theme.name, 'biometric': biometric, 'host': paired ? 'h1' : '', 'autoReceive': false});
+  static Future<UiEnv> create({ThemeMode theme = ThemeMode.light, bool paired = true, bool biometric = false, String style = 'wechat', void Function(UiServer s)? setup}) async {
+    SharedPreferences.setMockInitialValues({'theme': theme.name, 'style': style, 'biometric': biometric, 'host': paired ? 'h1' : '', 'autoReceive': false});
     final settings = AppSettings(await SharedPreferences.getInstance());
     final db = await openTestDb();
     final vault = MemoryVault();
@@ -404,6 +438,20 @@ void setSize(WidgetTester tester, Size size, {double textScale = 1}) {
   tester.platformDispatcher.textScaleFactorTestValue = textScale;
   addTearDown(tester.view.reset);
   addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+}
+
+/** openDiscover：切到「发现」，点开其中的一项（文件、传输等） */
+Future<void> openDiscover(WidgetTester tester, String entry) async {
+  await tester.tap(find.text('发现').last);
+  await settle(tester);
+  await tester.tap(find.text(entry));
+  await settle(tester);
+}
+
+/** backToHome：一路返回到带底部标签的首页 */
+Future<void> backToHome(WidgetTester tester) async {
+  tester.state<NavigatorState>(find.byType(Navigator).first).popUntil((r) => r.isFirst);
+  await settle(tester);
 }
 
 /** settle：推进动画（不等待无限动画），并让本地数据库等真实异步操作完成 */

@@ -1,5 +1,5 @@
 /**
- * 主框架：底部四个 Tab（消息、文件、传输、我），打开 App 与回到前台时的身份验证，接收系统分享。
+ * 主框架：底部四个 Tab（消息、通讯录、发现、我），打开 App 与回到前台时的身份验证，接收系统分享。
  */
 library;
 
@@ -7,6 +7,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
@@ -16,10 +17,12 @@ import '../core/settings.dart';
 import '../transfer/task.dart';
 import 'notify_router.dart';
 import 'widgets.dart';
-import 'pages/files_page.dart';
+import 'pages/contacts_page.dart';
+import 'pages/discover_page.dart';
 import 'pages/me_page.dart';
 import 'pages/sessions_page.dart';
 import 'pages/transfer_page.dart';
+import 'styles.dart';
 import 'tokens.dart';
 
 /** ShareSource：系统分享来源，测试时为空 */
@@ -131,7 +134,7 @@ class HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final n = await app.shareFiles(files, text: text);
     if (!mounted) return;
     messenger.showSnackBar(SnackBar(content: Text(n > 0 ? '已发送到文件传输助手' : '没有可发送的内容')));
-    if (files.isNotEmpty) select(2);
+    if (files.isNotEmpty) await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const TransferPage()));
   }
 
   /** select：切换 Tab */
@@ -143,27 +146,36 @@ class HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (locked) return LockView(onUnlock: _unlock);
     final app = context.watch<AppState>();
     final scope = app.scope;
+    final st = context.style;
     return Scaffold(
-      body: IndexedStack(index: tab, children: const [SessionsPage(), FilesPage(), TransferPage(), MePage()]),
+      body: IndexedStack(index: tab, children: const [SessionsPage(), ContactsPage(), DiscoverPage(), MePage()]),
       bottomNavigationBar: ListenableBuilder(
         listenable: Listenable.merge([scope?.sessions, scope?.transfers]),
         builder: (context, _) {
           final unread = scope?.sessions.totalUnread ?? 0;
           final running = scope?.transfers.tasks.where((t) => t.status == TaskStatus.running || t.status == TaskStatus.queued).length ?? 0;
-          return Container(
-            decoration: BoxDecoration(color: c.bar, border: Border(top: BorderSide(color: c.divider, width: PdSize.divider))),
-            child: SafeArea(
+          final items = Row(children: [
+            _TabItem(icon: LucideIcons.messageCircle300, activeIcon: LucideIcons.messageCircle600, label: '消息', active: tab == 0, badge: unread, onTap: () => select(0)),
+            _TabItem(icon: LucideIcons.usersRound300, activeIcon: LucideIcons.usersRound600, label: '通讯录', active: tab == 1, onTap: () => select(1)),
+            _TabItem(icon: LucideIcons.compass300, activeIcon: LucideIcons.compass600, label: '发现', active: tab == 2, dot: running > 0, onTap: () => select(2)),
+            _TabItem(icon: LucideIcons.user300, activeIcon: LucideIcons.user600, label: '我', active: tab == 3, dot: app.scope == null && app.ready, onTap: () => select(3)),
+          ]);
+          // 悬浮胶囊：底栏与屏幕边缘留出空隙，圆角、描边与阴影跟随风格
+          if (st.tabPill) {
+            return SafeArea(
               top: false,
-              child: SizedBox(
-                height: PdSize.tabBar,
-                child: Row(children: [
-                  _TabItem(icon: LucideIcons.messageCircle300, label: '消息', active: tab == 0, badge: unread, onTap: () => select(0)),
-                  _TabItem(icon: LucideIcons.folder300, label: '文件', active: tab == 1, onTap: () => select(1)),
-                  _TabItem(icon: LucideIcons.arrowUpDown300, label: '传输', active: tab == 2, dot: running > 0, onTap: () => select(2)),
-                  _TabItem(icon: LucideIcons.user300, label: '我', active: tab == 3, dot: app.scope == null && app.ready, onTap: () => select(3)),
-                ]),
+              child: Container(
+                height: PdSize.tabBar + 4,
+                margin: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                decoration: BoxDecoration(color: st.cardColor(c), borderRadius: BorderRadius.circular(32), border: st.border(c), boxShadow: st.shadows),
+                child: items,
               ),
-            ),
+            );
+          }
+          final heavy = st.shadow == PdShadowKind.hard;
+          return Container(
+            decoration: BoxDecoration(color: c.bar, border: Border(top: BorderSide(color: heavy ? (st.outlineColor ?? c.divider) : c.divider, width: heavy ? st.outline : PdSize.divider))),
+            child: SafeArea(top: false, child: SizedBox(height: PdSize.tabBar, child: items)),
           );
         },
       ),
@@ -173,9 +185,10 @@ class HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
 /** _TabItem：底部 Tab 按钮 */
 class _TabItem extends StatelessWidget {
-  const _TabItem({required this.icon, required this.label, required this.active, required this.onTap, this.badge = 0, this.dot = false});
+  const _TabItem({required this.icon, required this.activeIcon, required this.label, required this.active, required this.onTap, this.badge = 0, this.dot = false});
 
   final IconData icon;
+  final IconData activeIcon;
   final String label;
   final bool active;
   final VoidCallback onTap;
@@ -196,7 +209,7 @@ class _TabItem extends StatelessWidget {
           onTap: onTap,
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
             Stack(clipBehavior: Clip.none, children: [
-              Icon(icon, size: 24, color: color),
+              Icon(active ? activeIcon : icon, size: 24, color: color),
               if (badge > 0)
                 Positioned(
                   left: 14,
@@ -236,12 +249,7 @@ class LockView extends StatelessWidget {
       body: SafeArea(
         child: Center(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(color: c.accent, borderRadius: BorderRadius.circular(16)),
-              child: const Icon(LucideIcons.monitorSmartphone300, color: Colors.white, size: 36),
-            ),
+            ClipRRect(borderRadius: BorderRadius.circular(18), child: SvgPicture.asset('assets/icon/app-icon.svg', width: 72, height: 72, semanticsLabel: 'PocketDesk')),
             const SizedBox(height: 16),
             Text('PocketDesk', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: c.text)),
             const SizedBox(height: 32),

@@ -157,7 +157,7 @@ void main() {
 
   test('文件：列目录、读写与冲突', () async {
     final api = conn.api;
-    final ws = (await api.workspaces()).single;
+    final ws = (await api.workspaces()).firstWhere((w) => w.name == '联调工作区');
     final list = await api.list(ws.id, '.');
     expect(list.entries.map((e) => e.name), containsAll(['README.md', 'notes.txt']));
     final r = await api.readFile(ws.id, 'notes.txt');
@@ -211,7 +211,7 @@ void main() {
 
   test('终端：输入命令并收到输出', () async {
     final api = conn.api;
-    final ws = (await api.workspaces()).single;
+    final ws = (await api.workspaces()).firstWhere((w) => w.name == '联调工作区');
     final s = await api.createSession('terminal', ws.id, '.', cols: 80, rows: 24);
     final ch = pinnedSocketFactory(conn.httpClient)(api.base.replace(scheme: 'wss', path: '/term/${s.id}'), api.headers());
     final out = StringBuffer();
@@ -224,6 +224,29 @@ void main() {
     await sub.cancel();
     await ch.sink.close();
     await api.closeTerminal(s.id);
+  }, skip: _bin.isEmpty);
+
+  test('资料库：收藏、剪切板图片内容、提示词与模板会话字段', () async {
+    final api = conn.api;
+    final fav = await api.addLibrary('fav', title: '约定', body: '内容 A', meta: '来自联调');
+    expect((await api.library('fav')).single.title, '约定');
+    final img = await api.addLibraryBlob('clip', [1, 2, 3, 4], mime: 'image/png', name: '图 1.png');
+    expect(img.size, 4);
+    expect(img.name, '图 1.png');
+    expect(await api.libraryBlob(img.id), [1, 2, 3, 4]);
+    final pinned = await api.patchLibrary(fav.id, pinned: true);
+    expect(pinned.pinned, isTrue);
+    await api.deleteLibrary(img.id);
+    expect(await api.library('clip'), isEmpty);
+    // 模板会话：系统提示词与模板标识随会话保存，可以修改
+    final ws = (await api.workspaces()).firstWhere((w) => w.name == '联调工作区');
+    final s = await api.createSession('claude', ws.id, '.', title: '翻译 · Claude Code', instruction: '你是翻译官', preset: '{"id":"translate"}');
+    expect(s.isPreset, isTrue);
+    expect(s.instruction, '你是翻译官');
+    final n = await api.patchSession(s.id, instruction: '你是日文翻译官');
+    expect(n.instruction, '你是日文翻译官');
+    await api.clearLibrary('fav');
+    expect((await api.library('fav')).single.id, fav.id);
   }, skip: _bin.isEmpty);
 
   test('网络波动：连接反复被切断时消息不丢、不重、不乱序', () async {

@@ -13,9 +13,12 @@ import '../../core/app_log.dart';
 import '../../core/app_state.dart';
 import '../../core/settings.dart';
 import '../../net/api.dart';
+import '../avatars.dart';
 import '../share.dart';
+import '../styles.dart';
 import '../tokens.dart';
 import '../widgets.dart';
+import 'appearance_page.dart';
 import 'pair_page.dart';
 import 'places.dart';
 import 'settings_pages.dart';
@@ -25,15 +28,6 @@ import 'settings_pages.dart';
  */
 class MePage extends StatelessWidget {
   const MePage({super.key});
-
-  /** _theme：选择外观 */
-  Future<void> _theme(BuildContext context) async {
-    final s = context.read<AppSettings>();
-    const modes = [ThemeMode.system, ThemeMode.light, ThemeMode.dark];
-    const labels = ['跟随系统', '浅色', '深色'];
-    final i = await actionSheet(context, [for (var j = 0; j < 3; j++) SheetAction(labels[j], icon: s.themeMode == modes[j] ? LucideIcons.check300 : null)], title: '外观');
-    if (i != null) s.themeMode = modes[i];
-  }
 
   /**
    * _exportLogs：导出日志
@@ -80,23 +74,66 @@ class MePage extends StatelessWidget {
     return Scaffold(
       appBar: const PdBar(title: '我'),
       body: ListView(padding: const EdgeInsets.only(top: 12), children: [
+        const _ProfileCard(),
         _HostCard(scope: app.scope),
         PdGroup(children: [
-          PdCell(icon: LucideIcons.scanLine300, title: '配对新电脑', onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const PairPage()))),
+          PdCell(icon: LucideIcons.scanLine300, tint: PdTint.transfer, title: '配对新电脑', onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const PairPage()))),
         ]),
         PdGroup(children: [
-          PdCell(icon: LucideIcons.folderTree300, title: '工作空间', onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const WorkspacesPage()))),
-          PdCell(icon: LucideIcons.globe300, title: '异地连接', onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const RemotePage()))),
-          PdCell(icon: LucideIcons.smartphone300, title: '手机工作空间', onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const PhoneSpacePage()))),
-          PdCell(icon: LucideIcons.arrowUpDown300, title: '传输设置', onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const TransferSettingsPage()))),
-          PdCell(icon: LucideIcons.shieldCheck300, title: '安全设置', onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SecuritySettingsPage()))),
-          PdCell(icon: LucideIcons.palette300, title: '外观', value: settings.themeLabel, onTap: () => _theme(context)),
+          PdCell(icon: LucideIcons.folderTree300, tint: PdTint.workspace, title: '工作空间', onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const WorkspacesPage()))),
+          PdCell(icon: LucideIcons.globe300, tint: PdTint.remote, title: '异地连接', onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const RemotePage()))),
+          PdCell(icon: LucideIcons.smartphone300, tint: PdTint.phone, title: '手机工作空间', onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const PhoneSpacePage()))),
+          PdCell(icon: LucideIcons.arrowUpDown300, tint: PdTint.transfer, title: '传输设置', onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const TransferSettingsPage()))),
+          PdCell(icon: LucideIcons.shieldCheck300, tint: PdTint.security, title: '安全设置', onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SecuritySettingsPage()))),
+          PdCell(icon: LucideIcons.palette300, tint: PdTint.look, title: '外观', value: '${PdThemes.byId(settings.styleId).name} · ${settings.themeLabel}', onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AppearancePage()))),
         ]),
         PdGroup(children: [
-          PdCell(icon: LucideIcons.fileText300, title: '日志导出', onTap: () => _exportLogs(context)),
-          PdCell(icon: LucideIcons.info300, title: '关于', value: 'v$appVersion', onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AboutPage()))),
+          PdCell(icon: LucideIcons.fileText300, tint: PdTint.logs, title: '日志导出', onTap: () => _exportLogs(context)),
+          PdCell(icon: LucideIcons.info300, tint: PdTint.about, title: '关于', value: 'v$appVersion', onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AboutPage()))),
         ]),
       ]),
+    );
+  }
+}
+
+/**
+ * _ProfileCard：我的头像与昵称，点击更换头像
+ */
+class _ProfileCard extends StatelessWidget {
+  const _ProfileCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.pd;
+    final st = context.style;
+    final s = context.watch<AppSettings>();
+    final hero = st.heroGradient;
+    final fg = hero != null && st.barFilled ? Colors.white : c.text;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      decoration: st.card(c).copyWith(gradient: hero != null && st.barFilled ? LinearGradient(colors: hero) : null),
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => pickAvatar(context, key: 'me', title: '设置我的头像'),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(children: [
+              const MyAvatar(size: 64),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(s.nickname.isEmpty ? '我' : s.nickname, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: fg, fontFamily: st.titleFont?.first, fontFamilyFallback: st.titleFont)),
+                  const SizedBox(height: 4),
+                  Text('点击更换头像', style: TextStyle(fontSize: PdFont.time, color: fg.withValues(alpha: 0.65))),
+                ]),
+              ),
+              Icon(LucideIcons.chevronRight300, size: 18, color: fg.withValues(alpha: 0.5)),
+            ]),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -116,10 +153,10 @@ class _HostCard extends StatelessWidget {
     void open() => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ComputersPage()));
     Widget card(String name, Widget status) => Container(
           margin: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+          decoration: context.style.card(c),
+          clipBehavior: Clip.antiAlias,
           child: Material(
-            color: c.card,
-            borderRadius: BorderRadius.circular(PdSize.cardRadius),
-            clipBehavior: Clip.antiAlias,
+            color: Colors.transparent,
             child: InkWell(
               onTap: open,
               child: Padding(

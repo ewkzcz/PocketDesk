@@ -36,6 +36,40 @@ class AppSettings extends ChangeNotifier {
         ThemeMode.system => '跟随系统',
       };
 
+  /** styleId：界面风格标识（微信、Codex、QQ、Claude、冰川玻璃、极光、新粗野、纸刊） */
+  String get styleId => _prefs.getString('style') ?? 'wechat';
+
+  set styleId(String v) {
+    _prefs.setString('style', v);
+    notifyListeners();
+  }
+
+  /** avatarSpec：头像设置（preset:编号 或 file:路径），空表示用默认头像；键为 me 或会话类型 */
+  String avatarSpec(String key) => _prefs.getString('avatar:$key') ?? '';
+
+  void setAvatarSpec(String key, String spec) {
+    spec.isEmpty ? _prefs.remove('avatar:$key') : _prefs.setString('avatar:$key', spec);
+    notifyListeners();
+  }
+
+  /** nickname：我的昵称，显示在通讯录与聊天里 */
+  String get nickname => _prefs.getString('nickname') ?? '';
+
+  set nickname(String v) {
+    v.isEmpty ? _prefs.remove('nickname') : _prefs.setString('nickname', v);
+    notifyListeners();
+  }
+
+  /** presetAgent：通讯录模板上次选用的 Agent */
+  String presetAgent(String id) => _prefs.getString('presetAgent:$id') ?? '';
+
+  void setPresetAgent(String id, String kind) => _prefs.setString('presetAgent:$id', kind);
+
+  /** presetParams：通讯录模板上次填写的参数（JSON 文本） */
+  String presetParams(String id) => _prefs.getString('presetParams:$id') ?? '';
+
+  void setPresetParams(String id, String json) => _prefs.setString('presetParams:$id', json);
+
   /** wifiOnly：仅在 Wi-Fi 下传输 */
   bool get wifiOnly => _prefs.getBool('wifiOnly') ?? false;
   set wifiOnly(bool v) => _set('wifiOnly', v);
