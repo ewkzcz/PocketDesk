@@ -61,4 +61,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/avatars/
+    - assets/icon/
     - assets/mermaid/
