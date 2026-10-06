@@ -158,6 +158,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .pd-search input { flex: 1; min-width: 0; border: 0; outline: none; background: none; color: var(--pd-text); font-size: 12px; }
 .pd-plus { width: 28px; height: 28px; border: 0; border-radius: 6px; background: var(--pd-input); color: var(--pd-text-2); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
 .pd-plus:hover { background: var(--pd-press); }
+.pd-check { width: 18px; height: 18px; flex-shrink: 0; border: 1.5px solid var(--pd-text-3); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; }
+.pd-check.on { background: var(--pd-accent, #2F6BFF); border-color: var(--pd-accent, #2F6BFF); }
+.pd-selbar { flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--pd-line); }
 .pd-list-body { flex: 1; min-height: 0; overflow-y: auto; }
 
 .pd-row { width: 100%; height: var(--pd-row-h); display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 0; background: none; text-align: left; cursor: default; color: var(--pd-text); }

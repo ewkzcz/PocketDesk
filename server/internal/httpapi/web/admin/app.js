@@ -396,6 +396,7 @@
   var hidden = load('pd.hidden', {});
   var hiddenSess = load('pd.hiddenSessions', {});   // 只在电脑端删除的会话，手机端不受影响
   var query = '';
+  var selMode = false, selected = {};   // 批量清理：是否在多选、已勾选的会话
   var pending = [];              // 当前会话待发送的附件 { name, path }
   var providerNames = {};        // 供应商 ID → 名称（标题栏显示）
   var shownRequests = {};
@@ -699,12 +700,21 @@
     el.style.width = lw ? lw + 'px' : '';
     if (r.page === 'chat') {
       var body = document.getElementById('rows');
-      if (!body) {
+      if (!body || el.dataset.sel !== (selMode ? '1' : '')) {
+        el.dataset.sel = selMode ? '1' : '';
         el.innerHTML = '<div class="pd-list-top"><label class="pd-search">' + icon('search', 14) + '<input id="search" placeholder="搜索" value="' + esc(query) + '"></label>' +
-          '<button class="pd-plus" data-act="new" title="新建会话" aria-label="新建会话">' + icon('plus', 16) + '</button></div><div class="pd-list-body" id="rows"></div>';
+          (selMode ? '' : '<button class="pd-plus" data-act="sel-start" title="批量清理" aria-label="批量清理">' + icon('list-checks', 16) + '</button>' +
+          '<button class="pd-plus" data-act="new" title="新建会话" aria-label="新建会话">' + icon('plus', 16) + '</button>') + '</div><div class="pd-list-body" id="rows"></div>' +
+          (selMode ? '<div class="pd-selbar" id="selbar"></div>' : '');
         body = el.querySelector('.pd-list-body');
       }
       body.innerHTML = sessionRows(r.sid);
+      var bar = document.getElementById('selbar');
+      if (bar) {
+        var n = Object.keys(selected).length;
+        bar.innerHTML = '<button class="pd-btn" data-act="sel-all">' + (n && n === visibleSessions().length ? '取消全选' : '全选') + '</button><span class="pd-muted" style="flex:1;text-align:center">已选 ' + n + ' 项</span>' +
+          '<button class="pd-btn pd-btn-danger" data-act="sel-delete"' + (n ? '' : ' disabled') + '>删除</button><button class="pd-btn" data-act="sel-cancel">完成</button>';
+      }
     } else if (r.page === 'phone') {
       el.innerHTML = '<div class="pd-list-top"><div class="pd-list-title">文件</div></div><div class="pd-list-body">' + fsRows() + '</div>';
     } else {
@@ -715,13 +725,19 @@
     }
   }
 
-  /** sessionRows：会话列表（置顶在前，按更新时间排列） */
-  function sessionRows(active) {
+  /** visibleSessions：列表里能看到的会话（置顶在前，按更新时间排列，按搜索词过滤） */
+  function visibleSessions() {
     var q = query.trim().toLowerCase();
-    var list = sessions.slice().sort(function (a, b) {
+    return sessions.slice().sort(function (a, b) {
       if (!!b.pinned !== !!a.pinned) { return b.pinned ? 1 : -1; }
       return (b.updatedAt || 0) - (a.updatedAt || 0);
     }).filter(function (s) { return !hiddenSess[s.id] && (!q || (title(s) + ' ' + (s.preview || '')).toLowerCase().indexOf(q) >= 0); });
+  }
+
+  /** sessionRows：会话列表 */
+  function sessionRows(active) {
+    var q = query.trim();
+    var list = visibleSessions();
     if (!list.length) { return '<div class="pd-empty">' + (q ? '没有找到' : '还没有会话') + '</div>'; }
     return list.map(function (s) {
       var n = unread[s.id] || 0;
@@ -730,7 +746,8 @@
       if (waiting) { sub = '<span class="pd-red">[待审批]</span> ' + esc((s.preview || '').replace(/^待确认：/, '')); }
       else if (s.state === 'running') { sub = '执行中' + (s.preview ? ' · ' + sub : '…'); }
       var mark = n ? '<span class="pd-badge">' + (n > 99 ? '99+' : n) + '</span>' : waiting ? '<span class="pd-dot"></span>' : '';
-      return '<button class="pd-row' + (s.id === active ? ' active' : '') + (s.pinned && s.id !== active ? ' pinned' : '') + '" data-go="chat/' + encodeURIComponent(s.id) + '" data-sid="' + esc(s.id) + '">' +
+      var pick = selMode ? '<span class="pd-check' + (selected[s.id] ? ' on' : '') + '">' + (selected[s.id] ? icon('check', 12) : '') + '</span>' : '';
+      return '<button class="pd-row' + (!selMode && s.id === active ? ' active' : '') + (s.pinned && s.id !== active ? ' pinned' : '') + '" ' + (selMode ? 'data-act="sel-toggle" data-id="' : 'data-go="chat/' + encodeURIComponent(s.id) + '" data-sid="') + esc(s.id) + '">' + pick +
         '<div class="pd-row-avatar">' + avatarHtml(s.kind) + mark + '</div>' +
         '<div class="pd-row-main"><div class="pd-row-line"><span class="pd-row-title">' + esc(title(s)) + '</span>' + (s.autoApprove ? '<span class="pd-tag-auto">免审批</span>' : '') +
         '<span class="pd-row-time">' + listTime(s.updatedAt) + '</span></div><div class="pd-row-sub">' + (sub || '&nbsp;') + '</div></div></button>';
@@ -1037,6 +1054,8 @@
     ['/resume', '接着电脑上的会话聊', 'history'],
     ['/new', '在同一 Agent 和目录下开新会话', 'plus'],
     ['/stop', '打断当前执行', 'square'],
+    ['/status', '查看当前会话状态', 'info'],
+    ['/usage', '查看本会话用量', 'layout-grid'],
     ['/compact', '压缩上下文', 'layout-grid']
   ];
   var cmdIndex = 0;
@@ -1054,8 +1073,6 @@
     var s = session(route().sid);
     if (!box || !input) { return; }
     var list = s && isAgent(s) ? matchCmds(input.value) : [];
-    ['/status', '查看当前会话状态', 'info'],
-    ['/usage', '查看本会话用量', 'layout-grid'],
     if (!list.length) { box.innerHTML = ''; box.hidden = true; return; }
     cmdIndex = Math.min(cmdIndex, list.length - 1);
     box.hidden = false;
@@ -1084,6 +1101,8 @@
       case '/model': chooseModel(s); break;
       case '/provider': chooseProvider(s); break;
       case '/skills': skillsModal(s); break;
+      case '/status': statusModal(s); break;
+      case '/usage': usageModal(s); break;
       case '/resume': externalModal(); break;
       case '/stop':
         api('POST', P + '/api/sessions/' + encodeURIComponent(s.id) + '/interrupt').then(function () { toast('已打断'); }).catch(function (er) { toast(er.message); });
@@ -1100,25 +1119,6 @@
     }
   }
 
-  /** patchSession：修改会话并刷新界面 */
-      case '/status': statusModal(s); break;
-      case '/usage': usageModal(s); break;
-  function patchSession(s, body, done) {
-    return api('PATCH', P + '/api/sessions/' + encodeURIComponent(s.id), body).then(function (s2) {
-      Object.assign(s, s2);
-      renderHead();
-      renderList();
-      if (done) { toast(done); }
-      return s2;
-    }).catch(function (er) { toast(er.message); });
-  }
-
-  /** chooseModel：切换模型（列表来自 Agent 或所选供应商） */
-  function chooseModel(s) {
-    api('GET', P + '/api/agents/' + s.kind + '/models' + (s.provider ? '?provider=' + encodeURIComponent(s.provider) : '')).then(function (list) {
-      list = list || [];
-      modal('切换模型', (list.length ? '<div class="pd-pick-list">' + list.map(function (m) {
-        return '<button class="pd-pick-row' + (m === s.model ? ' active' : '') + '" data-act="model-pick" data-model="' + esc(m) + '">' + icon(m === s.model ? 'check' : 'cpu', 16) + '<span class="pd-mono">' + esc(m) + '</span></button>';
   /** infoRows：弹窗里的「名称 内容」列表 */
   function infoRows(rows) {
     return '<dl class="pd-kv">' + rows.map(function (r) { return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('') + '</dl>';
@@ -1154,6 +1154,23 @@
     modal('本会话用量', infoRows(rows), '<button class="pd-btn pd-btn-primary" data-act="modal-close">好</button>');
   }
 
+  /** patchSession：修改会话并刷新界面 */
+  function patchSession(s, body, done) {
+    return api('PATCH', P + '/api/sessions/' + encodeURIComponent(s.id), body).then(function (s2) {
+      Object.assign(s, s2);
+      renderHead();
+      renderList();
+      if (done) { toast(done); }
+      return s2;
+    }).catch(function (er) { toast(er.message); });
+  }
+
+  /** chooseModel：切换模型（列表来自 Agent 或所选供应商） */
+  function chooseModel(s) {
+    api('GET', P + '/api/agents/' + s.kind + '/models' + (s.provider ? '?provider=' + encodeURIComponent(s.provider) : '')).then(function (list) {
+      list = list || [];
+      modal('切换模型', (list.length ? '<div class="pd-pick-list">' + list.map(function (m) {
+        return '<button class="pd-pick-row' + (m === s.model ? ' active' : '') + '" data-act="model-pick" data-model="' + esc(m) + '">' + icon(m === s.model ? 'check' : 'cpu', 16) + '<span class="pd-mono">' + esc(m) + '</span></button>';
       }).join('') + '</div>' : '<div class="pd-muted">没有查到可选模型，可以直接填写</div>') +
         '<div class="pd-field" style="margin-top:10px"><label for="model-custom">其他模型</label><input class="pd-input pd-mono" id="model-custom" placeholder="填写模型名称" value=""></div>',
         (s.model ? '<button class="pd-btn" data-act="model-pick" data-model="">恢复默认</button>' : '') + '<button class="pd-btn" data-act="modal-close">取消</button><button class="pd-btn pd-btn-primary" data-act="model-custom">使用</button>');
@@ -1779,6 +1796,30 @@
         if (t.classList.contains('pd-scrim') && e.target !== t) { return; }
         closeModal();
         break;
+      case 'sel-start': selMode = true; selected = {}; renderList(); break;
+      case 'sel-cancel': selMode = false; selected = {}; renderList(); break;
+      case 'sel-toggle':
+        if (selected[id]) { delete selected[id]; } else { selected[id] = true; }
+        renderList();
+        break;
+      case 'sel-all':
+        var vis = visibleSessions();
+        selected = Object.keys(selected).length === vis.length ? {} : vis.reduce(function (m, x) { m[x.id] = true; return m; }, {});
+        renderList();
+        break;
+      case 'sel-delete':
+        var ids = Object.keys(selected);
+        if (!ids.length) { break; }
+        confirmBox('删除 ' + ids.length + ' 个聊天', '只删除电脑上的这些聊天，手机上的会话保留。', '删除', function () {
+          ids.forEach(hideSession);
+          selMode = false;
+          selected = {};
+          if (ids.indexOf(route().sid) >= 0) { location.hash = 'chat'; }
+          renderList();
+          renderRail();
+          toast('已删除');
+        });
+        break;
       case 'pair': startPair(); break;
       case 'pair-refresh': startPair(); break;
       case 'pair-close':
@@ -2164,7 +2205,8 @@
       return;
     }
     var s = session(row.dataset.sid);
-    popMenu(e.clientX, e.clientY, [['pin', s.pinned ? '取消置顶' : '置顶', false, 'pin'], [unread[s.id] ? 'read' : 'unread', unread[s.id] ? '标为已读' : '标为未读', false, 'message-circle'], '-', ['delete', '删除', true, 'trash']]).then(function (k) {
+    popMenu(e.clientX, e.clientY, [['pin', s.pinned ? '取消置顶' : '置顶', false, 'pin'], [unread[s.id] ? 'read' : 'unread', unread[s.id] ? '标为已读' : '标为未读', false, 'message-circle'], '-', ['multi', '批量清理', false, 'list-checks'], ['delete', '删除', true, 'trash']]).then(function (k) {
+      if (k === 'multi') { selMode = true; selected = {}; selected[s.id] = true; renderList(); }
       if (k === 'delete') { deleteSession(s.id); }
       if (k === 'pin') { chatMenu('pin', s.id); }
       if (k === 'read') { setUnread(s.id, 0); renderList(); renderRail(); }
