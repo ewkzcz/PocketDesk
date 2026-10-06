@@ -261,6 +261,8 @@ class SessionInfo {
     this.autoApprove = false,
     this.muted = false,
     this.provider = '',
+    this.instruction = '',
+    this.preset = '',
   });
 
   final String id;
@@ -285,6 +287,12 @@ class SessionInfo {
   /** provider：本会话使用的模型供应商（CC Switch 中的供应商 ID），空为跟随电脑 */
   final String provider;
 
+  /** instruction：通讯录模板的系统提示词，每轮发送时放在用户输入前面 */
+  final String instruction;
+
+  /** preset：通讯录模板标识与参数（JSON 文本），空表示普通会话 */
+  final String preset;
+
   /** fromJson：解析 */
   factory SessionInfo.fromJson(Map<String, dynamic> j) => SessionInfo(
         id: _s(j['id']),
@@ -302,6 +310,8 @@ class SessionInfo {
         autoApprove: _b(j['autoApprove']),
         muted: _b(j['muted']),
         provider: _s(j['provider']),
+        instruction: _s(j['instruction']),
+        preset: _s(j['preset']),
       );
 
   /** copyWith：复制并修改部分字段 */
@@ -322,7 +332,12 @@ class SessionInfo {
         autoApprove: autoApprove,
         muted: muted ?? this.muted,
         provider: provider,
+        instruction: instruction,
+        preset: preset,
       );
+
+  /** isPreset：是否为通讯录模板会话 */
+  bool get isPreset => preset.isNotEmpty;
 
   /** isAgent：是否为 AI 编程工具会话 */
   bool get isAgent => kind == 'claude' || kind == 'codex' || kind == 'pi' || kind == 'dsh';
@@ -493,4 +508,46 @@ abstract final class Json {
   static bool boolean(Object? v, [bool d = false]) => _b(v, d);
   static Map<String, dynamic> map(Object? v) => _m(v);
   static List<dynamic> list(Object? v) => _l(v);
+}
+
+/** LibraryItem：资料库里的一条资料（收藏、剪切板条目、提示词） */
+class LibraryItem {
+  const LibraryItem({required this.id, required this.kind, this.title = '', this.body = '', this.mime = 'text/plain', this.name = '', this.size = 0, this.meta = '', this.pinned = false, this.createdAt = 0, this.updatedAt = 0});
+
+  final String id;
+  final String kind;
+  final String title;
+  final String body;
+  final String mime;
+  final String name;
+  final int size;
+
+  /** meta：附加说明（收藏的来源、提示词的分类等） */
+  final String meta;
+  final bool pinned;
+  final int createdAt;
+  final int updatedAt;
+
+  factory LibraryItem.fromJson(Map<String, dynamic> j) => LibraryItem(
+        id: _s(j['id']),
+        kind: _s(j['kind']),
+        title: _s(j['title']),
+        body: _s(j['body']),
+        mime: _s(j['mime'], 'text/plain'),
+        name: _s(j['name']),
+        size: _i(j['size']),
+        meta: _s(j['meta']),
+        pinned: _b(j['pinned']),
+        createdAt: _i(j['createdAt']),
+        updatedAt: _i(j['updatedAt']),
+      );
+
+  /** isImage：是否为图片内容 */
+  bool get isImage => mime.startsWith('image/');
+
+  /** isText：是否为纯文字内容 */
+  bool get isText => size == 0 && !isImage;
+
+  /** hasBlob：是否带图片或文件内容 */
+  bool get hasBlob => size > 0;
 }

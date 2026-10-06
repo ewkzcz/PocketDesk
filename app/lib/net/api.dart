@@ -194,8 +194,9 @@ class PdApi {
   /** sessions：会话列表 */
   Future<List<SessionInfo>> sessions() async => Json.list(await json('GET', '/api/sessions')).map((e) => SessionInfo.fromJson(Json.map(e))).toList();
 
-  /** createSession：新建 Agent 或终端会话 */
-  Future<SessionInfo> createSession(String kind, String ws, String cwd, {String model = '', String agentSessionId = '', int cols = 0, int rows = 0, String command = '', bool autoApprove = false}) async {
+  /** createSession：新建 Agent 或终端会话；通讯录模板会话带上标题、系统提示词与模板参数 */
+  Future<SessionInfo> createSession(String kind, String ws, String cwd,
+      {String model = '', String agentSessionId = '', int cols = 0, int rows = 0, String command = '', bool autoApprove = false, String title = '', String instruction = '', String preset = ''}) async {
     final j = await json('POST', '/api/sessions', body: {
       'kind': kind,
       'workspaceId': ws,
@@ -206,12 +207,15 @@ class PdApi {
       if (rows > 0) 'rows': rows,
       if (command.isNotEmpty) 'command': command,
       if (autoApprove) 'autoApprove': true,
+      if (title.isNotEmpty) 'title': title,
+      if (instruction.isNotEmpty) 'instruction': instruction,
+      if (preset.isNotEmpty) 'preset': preset,
     });
     return SessionInfo.fromJson(Json.map(j));
   }
 
   /** patchSession：改名、置顶、切换模型或目录 */
-  Future<SessionInfo> patchSession(String id, {String? title, bool? pinned, String? model, String? cwd, bool? muted, String? provider}) async {
+  Future<SessionInfo> patchSession(String id, {String? title, bool? pinned, String? model, String? cwd, bool? muted, String? provider, String? instruction, String? preset}) async {
     final j = await json('PATCH', '/api/sessions/$id', body: {
       'title': ?title,
       'pinned': ?pinned,
@@ -219,6 +223,8 @@ class PdApi {
       'cwd': ?cwd,
       'muted': ?muted,
       'provider': ?provider,
+      'instruction': ?instruction,
+      'preset': ?preset,
     });
     return SessionInfo.fromJson(Json.map(j));
   }
@@ -319,4 +325,31 @@ class PdApi {
 
   /** exportLogs：电脑端日志压缩包 */
   Future<List<int>> exportLogs() async => (await send('POST', '/api/logs', wait: const Duration(minutes: 1))).bodyBytes;
+
+  /* ---------- 资料库：收藏、剪切板、提示词 ---------- */
+
+  /** library：某一类资料（fav、clip、prompt） */
+  Future<List<LibraryItem>> library(String kind) async => Json.list(await json('GET', '/api/library', query: {'kind': kind})).map((e) => LibraryItem.fromJson(Json.map(e))).toList();
+
+  /** addLibrary：新增文字资料 */
+  Future<LibraryItem> addLibrary(String kind, {String title = '', String body = '', String mime = 'text/plain', String name = '', String meta = '', bool pinned = false}) async =>
+      LibraryItem.fromJson(Json.map(await json('POST', '/api/library', body: {'kind': kind, 'title': title, 'body': body, 'mime': mime, 'name': name, 'meta': meta, 'pinned': pinned})));
+
+  /** addLibraryBlob：新增图片或文件资料（内容放在请求体里，最大 25 MB） */
+  Future<LibraryItem> addLibraryBlob(String kind, List<int> bytes, {required String mime, String name = '', String title = '', String meta = ''}) async => LibraryItem.fromJson(Json.map(jsonDecode(utf8.decode(
+        (await send('POST', '/api/library/blob', query: {'kind': kind, 'mime': mime, 'name': Uri.encodeComponent(name), 'title': title, if (meta.isNotEmpty) 'meta': meta}, body: bytes, extra: {'Content-Type': mime}, wait: const Duration(minutes: 2))).bodyBytes,
+      ))));
+
+  /** libraryBlob：下载资料的图片或文件内容 */
+  Future<List<int>> libraryBlob(String id) async => (await send('GET', '/api/library/${Uri.encodeComponent(id)}/blob', wait: const Duration(minutes: 2))).bodyBytes;
+
+  /** patchLibrary：改标题、正文、说明或置顶 */
+  Future<LibraryItem> patchLibrary(String id, {String? title, String? body, String? meta, bool? pinned}) async =>
+      LibraryItem.fromJson(Json.map(await json('PATCH', '/api/library/${Uri.encodeComponent(id)}', body: {'title': ?title, 'body': ?body, 'meta': ?meta, 'pinned': ?pinned})));
+
+  /** deleteLibrary：删除一条资料 */
+  Future<void> deleteLibrary(String id) => send('DELETE', '/api/library/${Uri.encodeComponent(id)}');
+
+  /** clearLibrary：清空某一类里未置顶的资料 */
+  Future<void> clearLibrary(String kind) => send('DELETE', '/api/library', query: {'kind': kind});
 }
