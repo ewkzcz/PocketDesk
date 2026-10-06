@@ -4,9 +4,10 @@
 //   · Claude 桌面端、Claude Code、Codex 桌面端、Codex CLI、ChatGPT 桌面端发出的全部请求 → 住宅出口
 //   · 谷歌相关请求，以及 Claude / ChatGPT 网页（域名里带 claude、anthropic 的也算，新域名自动覆盖）→ 住宅出口
 //   · HomeGuard 的出口核验与体检探测 → 住宅出口，检测结果反映的就是 Claude 实际走的线路
+//   · 微信的请求 → 直连（Claude、Codex、谷歌看不到你的真实 IP；腾讯，以及解析微信域名的阿里与腾讯 DNS 能看到）
 //   · 其他所有请求 → 基础节点
 //   · 住宅出口 = 先连基础节点，再从住宅代理出去，网站看到的是住宅 IP
-//   · 默认不经过代理的只有：本机、局域网、Tailscale 组网内部、连接基础节点本身（这些本来就不上公网或无法代理）
+//   · 默认不经过代理的只有：本机、局域网、Tailscale 组网内部、微信及其域名解析（国内加密 DNS 的 443 端口）、连接基础节点本身（前几项本来就不上公网或无法代理）
 //   · 防 DNS 与 IPv6 泄露：DNS 查询走基础节点且全程加密；IPv6 也由 TUN 接管
 //
 // 分组（Clash 里只显示这两组，订阅自带的分组保留但隐藏）：
@@ -60,6 +61,18 @@ function main(config) {
     'members.3322.org', 'whois.pconline.com.cn', 'qifu-api.baidubce.com', 'api.live.bilibili.com', 'www.taobao.com'
   ];
 
+  // 直连的微信：从日本等海外出口连微信，会被分到境外机房，图片、文件发不出去；直连后只有腾讯看到真实 IP
+  // 程序按所在路径匹配；网址让浏览器里的微信网页与小程序、以及这些域名的解析都走国内
+  const DIRECT_APPS = [
+    '(?i)/wechat\\.app/',                  // macOS 微信，含它自带的小程序等辅助进程
+    '(?i)\\\\(wechat|weixin)\\.exe$'        // Windows 微信
+  ];
+  const DIRECT_DOMAINS = [
+    'weixin.qq.com', 'wx.qq.com', 'wechat.com', 'weixin.com', 'qpic.cn', 'qlogo.cn', 'servicewechat.com', 'wx.gtimg.com'
+  ];
+
+  const CN_DOH = ['223.5.5.5', '1.12.12.12'];
+
   // 走住宅出口的程序，按程序所在路径匹配（macOS、Windows 通用，不区分大小写）
   const RESIDENTIAL_APPS = [
     '(?i)/claude\\.app/',          // Claude 桌面端，以及它自带的 Claude Code
@@ -104,6 +117,8 @@ function main(config) {
     'IP-CIDR6,fd7a:115c:a1e0::/48,DIRECT,no-resolve'  // Tailscale 组网内部（IPv6）
   ];
   config.rules = local.concat(
+    // 微信程序直连，放在拦截 QUIC 之前，微信自己的 UDP 才不会被拦
+    DIRECT_APPS.map((r) => 'PROCESS-PATH-REGEX,' + r + ',DIRECT'),
     // 拦截 QUIC，浏览器会改用 TCP，确保按规则走代理
     ['AND,((NETWORK,UDP),(DST-PORT,443)),REJECT'],
     RESIDENTIAL_APPS.map((r) => 'PROCESS-PATH-REGEX,' + r + ',' + RES_GROUP),
@@ -111,6 +126,10 @@ function main(config) {
     CHECK_HOSTS.map((d) => 'DOMAIN,' + d + ',' + RES_GROUP),
     // 域名里带这些词的一律走住宅出口：官方换了新域名也不用改脚本
     RESIDENTIAL_KEYWORDS.map((k) => 'DOMAIN-KEYWORD,' + k + ',' + RES_GROUP),
+    // 微信网址直连，排在 AI 与谷歌规则之后，不会抢走它们的流量
+    DIRECT_DOMAINS.map((d) => 'DOMAIN-SUFFIX,' + d + ',DIRECT'),
+    // 解析微信域名用的国内加密 DNS（只放行 443 的 DoH）：从海外出口去问，拿到的仍是海外机房地址
+    CN_DOH.map((ip) => 'AND,((IP-CIDR,' + ip + '/32),(DST-PORT,443),(NETWORK,TCP)),DIRECT'),
     ['GEOSITE,google,' + RES_GROUP, 'MATCH,' + BASE]
   );
   // 按程序分流需要识别每个连接来自哪个程序
@@ -132,7 +151,8 @@ function main(config) {
     'default-nameserver': ['tls://223.5.5.5:853', 'tls://1.12.12.12:853'],
     'proxy-server-nameserver': ['https://223.5.5.5/dns-query', 'https://1.12.12.12/dns-query'],
     nameserver: ['https://1.1.1.1/dns-query', 'https://8.8.8.8/dns-query'],
-    'nameserver-policy': { '+.ts.net': '100.100.100.100' }
+    // 微信的域名用国内加密 DNS 解析，否则会拿到海外机房的地址（只暴露这几个域名的查询，且全程加密）
+    'nameserver-policy': Object.assign({ '+.ts.net': '100.100.100.100' }, ...DIRECT_DOMAINS.map((d) => ({ ['+.' + d]: CN_DOH.map((ip) => 'https://' + ip + '/dns-query') })))
   });
   const filter = new Set(config.dns['fake-ip-filter'] || []);
   ['+.ts.net', '+.local', '+.lan', 'localhost'].forEach((x) => filter.add(x));
