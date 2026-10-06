@@ -249,6 +249,7 @@ void main() {
     await settle(tester);
     expect(find.textContaining('还没安装'), findsWidgets);
     expect(find.text('下载 Tailscale'), findsOneWidget);
+    await shot(tester, 'flow-remote');
     await finish(tester, env);
   });
 
@@ -736,10 +737,12 @@ void main() {
     // 供应商
     await tester.tap(find.bySemanticsLabel('会话设置'));
     await settle(tester);
+    await shot(tester, 'flow-session-settings');
     await tester.tap(find.text('模型供应商'));
     await settle(tester);
     expect(find.text('跟随电脑当前设置'), findsOneWidget);
     expect(find.text('当前：DeepSeek'), findsOneWidget);
+    await shot(tester, 'flow-provider');
     await tester.tap(find.text('中转站'));
     await settle(tester);
     expect((env.server.bodies['PATCH /api/sessions/cc'] as Map)['provider'], 'relay');

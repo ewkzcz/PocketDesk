@@ -339,6 +339,14 @@ Future<void> loadFonts() async {
       await (FontLoader(family)..addFont(Future.value(ByteData.view(bytes.buffer)))).load();
     }
   }
+  // 衬线标题字体（Claude、纸刊风格）：用宋体，截图里的标题才有字
+  final serif = File('/System/Library/Fonts/Supplemental/Songti.ttc');
+  if (await serif.exists()) {
+    final bytes = await serif.readAsBytes();
+    for (final family in ['Georgia', 'Songti SC', 'Noto Serif CJK SC', 'serif']) {
+      await (FontLoader(family)..addFont(Future.value(ByteData.view(bytes.buffer)))).load();
+    }
+  }
   for (final w in [300, 400, 600]) {
     final data = rootBundle.load('packages/lucide_icons_flutter/assets/build_font/LucideVariable-w$w.ttf');
     await (FontLoader('packages/lucide_icons_flutter/Lucide$w')..addFont(data)).load();
@@ -362,7 +370,12 @@ class UiEnv {
    * create：创建并连接（在 runAsync 中调用）
    */
   static Future<UiEnv> create({ThemeMode theme = ThemeMode.light, bool paired = true, bool biometric = false, String style = 'wechat', void Function(UiServer s)? setup}) async {
-    SharedPreferences.setMockInitialValues({'theme': theme.name, 'style': style, 'biometric': biometric, 'host': paired ? 'h1' : '', 'autoReceive': false});
+    // 出图时可用 PD_STYLE、PD_THEME（light 或 dark）统一指定风格与明暗
+    style = Platform.environment['PD_STYLE'] ?? style;
+    theme = ThemeMode.values.asNameMap()[Platform.environment['PD_THEME']] ?? theme;
+    // 出图时可用 PD_AVATAR 指定「我」的头像图片文件
+    final avatar = Platform.environment['PD_AVATAR'];
+    SharedPreferences.setMockInitialValues({'theme': theme.name, 'style': style, 'biometric': biometric, 'host': paired ? 'h1' : '', 'autoReceive': false, if (avatar != null) 'avatar:me': 'file:$avatar'});
     final settings = AppSettings(await SharedPreferences.getInstance());
     final db = await openTestDb();
     final vault = MemoryVault();
@@ -408,6 +421,25 @@ class UiEnv {
     await Future<void>.delayed(const Duration(milliseconds: 300));
     await db.db.close();
   }
+}
+
+/** demoPhoto：画一张带渐变和图形的演示图片（PNG），用于看图缩放截图 */
+Future<Uint8List> demoPhoto() async {
+  final rec = ui.PictureRecorder();
+  final c = Canvas(rec);
+  const w = 900.0, h = 600.0;
+  c.drawRect(const Rect.fromLTWH(0, 0, w, h), Paint()..shader = ui.Gradient.linear(Offset.zero, const Offset(w, h), const [Color(0xFFF2B27A), Color(0xFFD97757), Color(0xFF3A2A5C)], const [0, 0.5, 1]));
+  c.drawCircle(const Offset(690, 170), 90, Paint()..color = const Color(0xFFFFE9B8));
+  final hill = Path()
+    ..moveTo(0, 470)
+    ..quadraticBezierTo(220, 300, 450, 440)
+    ..quadraticBezierTo(680, 560, w, 380)
+    ..lineTo(w, h)
+    ..lineTo(0, h)
+    ..close();
+  c.drawPath(hill, Paint()..color = const Color(0xFF2B1F3D));
+  final img = await rec.endRecording().toImage(w.toInt(), h.toInt());
+  return (await img.toByteData(format: ui.ImageByteFormat.png))!.buffer.asUint8List();
 }
 
 /** 截图根节点 */

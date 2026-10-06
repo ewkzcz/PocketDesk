@@ -195,6 +195,9 @@ void main() {
     await tester.tap(find.text('收藏夹'));
     await settle(tester);
     expect(find.text('顺便把测试也补上'), findsWidgets);
+    await tester.pump(const Duration(seconds: 4));
+    await settle(tester);
+    await shot(tester, 'feat-fav');
     await finish(tester, env);
   });
 
@@ -212,6 +215,9 @@ void main() {
     await settle(tester);
     expect(env.server.library.single['title'], '代码解释');
     expect(find.text('代码解释'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 4));
+    await settle(tester);
+    await shot(tester, 'feat-prompt');
     await backToHome(tester);
     await tester.tap(find.text('消息').last);
     await settle(tester);
@@ -231,13 +237,14 @@ void main() {
   });
 
   testWidgets('看图：关闭在右上角，按钮与双击都能缩放', (tester) async {
+    final photo = (await tester.runAsync(demoPhoto))!;
     final env = await start(
       tester,
       page: ImageGalleryPage(
         count: 1,
         index: 0,
         titleOf: (_) => '截图.png',
-        loader: (_) async => MemoryImage(UiServer.pngBytes),
+        loader: (_) async => MemoryImage(photo),
         actionsOf: (_) => [GalleryAction(LucideIcons.share2300, '分享', () {})],
       ),
     );
