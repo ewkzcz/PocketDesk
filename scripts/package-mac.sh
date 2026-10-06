@@ -39,7 +39,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 	<key>CFBundlePackageType</key><string>APPL</string>
 	<key>CFBundleShortVersionString</key><string>$version</string>
 	<key>CFBundleVersion</key><string>$version</string>
-	<key>LSMinimumSystemVersion</key><string>11.0</string>
+	<key>LSMinimumSystemVersion</key><string>12.3</string>
 	<key>NSHighResolutionCapable</key><true/>
 	<key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
 </dict>
@@ -57,7 +57,8 @@ done
 iconutil -c icns "$set_dir" -o "$app/Contents/Resources/AppIcon.icns"
 
 # 4、本机签名（未上架分发时系统要求至少有本地签名才能运行）
-codesign --force --deep -s - "$app"
+# 指定按应用标识识别：每次重新打包后，系统仍认得这是同一个应用，已允许的「屏幕录制」等权限不会失效
+codesign --force --deep -s - -r='designated => identifier "com.pocketdesk.desktop"' "$app"
 echo "已打包：${app}（版本 ${version}）"
 
 # 5、安装

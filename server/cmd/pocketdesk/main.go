@@ -14,7 +14,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -69,7 +68,7 @@ func main() {
 	case "serve":
 		err = serve(dataDir, args)
 	case "app":
-		err = desktopApp(dataDir, "settings/overview")
+		err = desktopApp(dataDir, "chat")
 	case "open":
 		page := "settings/overview"
 		if len(args) > 0 {
@@ -196,12 +195,9 @@ func ensureService(dataDir string) error {
 	if err != nil {
 		return err
 	}
-	c := exec.Command(exe, "serve")
-	detach(c)
-	if err := c.Start(); err != nil {
+	if err := startService(exe); err != nil {
 		return fmt.Errorf("启动电脑端服务失败: %w", err)
 	}
-	go c.Wait()
 	for i := 0; i < 150; i++ {
 		if serviceUp(dataDir) {
 			return nil

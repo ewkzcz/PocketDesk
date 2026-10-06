@@ -1,13 +1,13 @@
 /**
- * 截屏：手机发起，电脑截下当前屏幕，截图按普通文件发回这台手机。
+ * 截屏：手机或电脑端发起，电脑截下当前屏幕，截图按普通文件发回发起的手机（电脑端发起时发给所有手机）。
  */
 package httpapi
 
 import (
-	"context"
+	"errors"
+	"github.com/ewkzcz/pocketdesk/server/internal/hub"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"time"
@@ -34,18 +34,24 @@ func (s *Server) screenshot(w http.ResponseWriter, r *http.Request) {
 	defer os.RemoveAll(dir)
 	name := "屏幕截图 " + time.Now().Format("2006-01-02 15.04.05") + ".png"
 	file := filepath.Join(dir, name)
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-	defer cancel()
-	if out, err := exec.CommandContext(ctx, "screencapture", "-x", "-t", "png", file).CombinedOutput(); err != nil {
-		writeErr(w, r, errf(500, "screenshot_failed", "截屏失败："+string(out)))
+	if err := captureScreen(file); err != nil {
+		if errors.Is(err, errScreenDenied) {
+			writeErr(w, r, errf(403, "screen_denied", "PocketDesk 还没有屏幕录制权限：请在电脑上弹出的窗口里点「允许」（没弹出就到「系统设置 → 隐私与安全性 → 屏幕录制」里打开 PocketDesk），然后退出并重新打开 PocketDesk，再截一次"))
+			return
+		}
+		writeErr(w, r, errf(500, "screenshot_failed", "截屏失败："+err.Error()))
 		return
 	}
 	if info, err := os.Stat(file); err != nil || info.Size() == 0 {
-		writeErr(w, r, errf(500, "screenshot_failed", "截屏失败，请在电脑的「系统设置 → 隐私与安全性 → 屏幕录制」里允许 PocketDesk"))
+		writeErr(w, r, errf(500, "screenshot_failed", "截屏失败，没有生成图片"))
 		return
 	}
-	// 2、发给手机
-	it, err := s.Outbox.Send(r.Context(), file, deviceOf(r).ID)
+	// 2、发给手机：电脑端发起时不指定手机
+	target := deviceOf(r).ID
+	if target == hub.DesktopDevice {
+		target = ""
+	}
+	it, err := s.Outbox.Send(r.Context(), file, target)
 	if err != nil {
 		writeErr(w, r, err)
 		return
